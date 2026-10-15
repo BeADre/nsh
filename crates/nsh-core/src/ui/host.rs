@@ -249,11 +249,13 @@ pub fn modal() -> Modal {
     Modal(node)
 }
 
-/// A canvas showing `drawing` (draw it again, e.g. from `on_layout`'s
-/// size, to change it).
-pub fn canvas(drawing: impl Into<Arc<Drawing>>) -> CanvasView {
+/// A canvas showing what `painter` recorded (draw again, e.g. from
+/// `on_layout`'s size, to change it; native values in it move natively).
+pub fn canvas(painter: impl Into<Painter>) -> CanvasView {
+    let painter = painter.into();
     let mut node = ElNode::new(Tag::Canvas);
-    node.attrs.drawing = Some(drawing.into());
+    node.attrs.drawing = Some(Arc::new(painter.drawing));
+    node.attrs.bound = painter.nodes;
     CanvasView(node)
 }
 
@@ -487,6 +489,14 @@ impl Scroll {
     /// [`Self::on_refresh`], clear it when done).
     pub fn refreshing(self, refreshing: bool) -> Self {
         self.set(Prop::Refreshing(refreshing))
+    }
+
+    /// Follows the scroll offset (along its axis) with a native value:
+    /// headers that shrink, parallax, with no render per frame.
+    pub fn scroll_value(mut self, value: &super::NativeValue) -> Self {
+        set(&mut self.0, Prop::ScrollValue(Some(value.node().id())));
+        self.0.attrs.bound.push(value.node().clone());
+        self
     }
 
     /// Pulled down to refresh (enables pull to refresh).
@@ -727,18 +737,26 @@ impl NativeView {
     }
 }
 
-/// A number in a drawing.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// A number in a drawing: a constant, or a native value the canvas reads
+/// while it draws (it draws again natively as the value moves).
+#[derive(Debug, Clone, PartialEq)]
 pub struct CanvasArg(pub(crate) CanvasArgKind);
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum CanvasArgKind {
     Const(f32),
+    Node(super::NativeNode),
 }
 
 impl From<f32> for CanvasArg {
     fn from(n: f32) -> Self {
         Self(CanvasArgKind::Const(n))
+    }
+}
+
+impl<A: super::Animated> From<&A> for CanvasArg {
+    fn from(a: &A) -> Self {
+        Self(CanvasArgKind::Node(a.native_node()))
     }
 }
 
@@ -748,6 +766,8 @@ impl From<f32> for CanvasArg {
 #[derive(Debug, Clone, Default)]
 pub struct Painter {
     drawing: Drawing,
+    /// The native values the drawing reads, kept alive with it.
+    nodes: Vec<super::NativeNode>,
 }
 
 impl Painter {
@@ -764,6 +784,11 @@ impl Painter {
     fn num(&mut self, n: impl Into<CanvasArg>) -> Num {
         match n.into().0 {
             CanvasArgKind::Const(n) => Num::Const(n),
+            CanvasArgKind::Node(node) => {
+                let slot = self.drawing.slot(node.id());
+                self.nodes.push(node);
+                Num::Slot(slot)
+            }
         }
     }
 
@@ -1026,8 +1051,11 @@ impl Painter {
     }
 }
 
-impl From<Painter> for Arc<Drawing> {
-    fn from(p: Painter) -> Self {
-        Arc::new(p.drawing)
+impl From<Drawing> for Painter {
+    fn from(drawing: Drawing) -> Self {
+        Self {
+            drawing,
+            nodes: Vec::new(),
+        }
     }
 }

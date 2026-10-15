@@ -105,6 +105,7 @@ impl Component for Button {
   | `useSafeAreaInsets()` | `cx.insets()` in the render: the insets where the component renders (the nearest screen's or modal's, else the surface's safe area) |
   | a signal or store at module level | `cx.global::<G>()` in the render (subscribes); `cx.update_global::<G, _>(..)` in listeners, tasks' updates and modules renders the readers again |
   | `createContext` / `<Ctx.Provider value>` / `useContext` | `cx.provide(value)` in the render; `cx.context::<T>()` below it (the nearest provider up the node tree, through the app's elements too; subscribes) |
+  | `createNativeValue`, `Animated.spring`, `interpolate` | `cx.native_value(0.0)` (in `setup`, kept in a field); `.bind_translate_y(&v)` / `.bind_opacity(..)` / `.bind_background(..)` / `.bind_scale(..)` / `.bind_rotate(..)`, `.pan_values(..)` (drags move it natively), `scroll().scroll_value(&v)`, canvas arguments (`Painter::new().fill_rect(0.0, 0.0, &v, 4.0)`); `v.spring(to, Spring::default())` / `.timing(..)` / `.decay(..)` return an `AnimationEnd` to await; `v.interpolate(..)`, `.add(..)`, `.diff_clamp(..)` derive nodes |
   | `ref={el}`, `el.focus()` | `cx.element_ref()` (in `setup`, kept in a field), `.element_ref(&self.field)` on the element each render, `self.field.focus()` / `.scroll_to(..)` / `.seek(..)` / `.command(..)` from listeners and tasks |
 
   `render(&self)` cannot change state. Timers are tasks: a `tokio::time` sleep, then an update.
@@ -113,6 +114,11 @@ impl Component for Button {
   answer is the root's `Dialog` event, which the core resolves; JS never sees it);
   `dismiss_keyboard()`, `animate_layout(..)`, and the status bar (below). `cx.update_global::<G, _>(|g, cx| ..)` is
   state the surface's components and modules share.
+- **Native values** (`ui/animated.rs`) are nodes of the platform's animation graph with the core's ids (from 2^31,
+  apart from JS's); the last handle released frees the node. Deriving the same node again (a render calling
+  `interpolate` each time) gets the live one, so bindings stay as they are. Bound style properties go into the
+  element's inline style, before the app's `style` on a host (the core keeps the app's and composes the two). The
+  animations' ends come back through `Core::animations_finished` (the engine hands JS the rest).
 - **Element refs** (`ui/element_ref.rs`) hold the node of the element that carries them, set when the render is
   applied and cleared when the element goes; their commands go out through the executor, and an event's handling
   applies them right after its own changes, so they keep their order.

@@ -25,6 +25,7 @@
 //! expands, so both stay dense. How the core runs components:
 //! `docs/dev/components.md`.
 
+pub(crate) mod animated;
 mod component;
 mod element;
 mod element_ref;
@@ -40,12 +41,8 @@ mod value;
 
 pub use nsh_macros::{Event, JsObject, PropEnum, Props, methods, module};
 
-pub(crate) use self::{
-    component::AnyInstance,
-    element::{ElKind, ErasedCx, Globals, ListConfig, PlaceFn, Provided, RenderReads, RenderScope},
-    task::{Action, AnswerSlot, Executor},
-};
 pub use self::{
+    animated::{AnimOperand, Animated, AnimationEnd, NativeNode, NativeValue, Spring},
     component::{
         Component, ComponentSpec, Event, EventSpec, Method, MethodSpec, NoEvent, Param, PropKind,
         PropSpec, Props, Registry, typescript,
@@ -75,6 +72,11 @@ pub use self::{
     theme::{Theme, ThemeColors, ThemeError},
     value::{JsValue, NodeRef, PropError, SharedString, TsType, TsTypes},
 };
+pub(crate) use self::{
+    component::AnyInstance,
+    element::{ElKind, ErasedCx, Globals, ListConfig, PlaceFn, Provided, RenderReads, RenderScope},
+    task::{Action, AnswerSlot, Executor},
+};
 pub use crate::{
     AccessibilityRole, AccessibilityState, Dialog, DialogButton, DialogButtonStyle, EdgeInsets,
     EventKind, EventPayload, LayoutAnimation, LayoutCurve, LayoutProperty, LayoutTransition,
@@ -88,6 +90,8 @@ pub mod prelude {
         AccessibilityState,
         Accessible,
         AdaptiveColor,
+        // Native animation values.
+        Animated,
         AsyncCx,
         // Host elements.
         CanvasView,
@@ -121,6 +125,8 @@ pub mod prelude {
         Modal,
         ModuleCx,
         NativeEvent,
+        NativeNode,
+        NativeValue,
         NativeView,
         NoEvent,
         Painter,
@@ -137,6 +143,7 @@ pub mod prelude {
         Selection,
         SharedString,
         Slot,
+        Spring,
         Styled,
         Task,
         Theme,

@@ -4021,4 +4021,156 @@ mod components {
         shown.sort();
         assert_eq!(shown, ["accent 0 clicks 1", "accent 1 clicks 1"]);
     }
+
+    /// A sheet that follows drags natively and springs back when let go.
+    #[derive(Default)]
+    struct Sheet {
+        offset: Option<NativeValue>,
+        state: &'static str,
+        spring: Option<Task<()>>,
+    }
+
+    impl Component for Sheet {
+        const NAME: &'static str = "test.sheet";
+        type Props = FormProps;
+        type Event = NoEvent;
+
+        fn setup(&mut self, _: &FormProps, cx: &mut Context<'_, Self>) {
+            self.offset = Some(cx.native_value(0.0));
+            self.state = "resting";
+        }
+
+        fn render(&self, _: &FormProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            let offset = self.offset.as_ref().unwrap();
+            view()
+                .bind_translate_y(offset)
+                .bind_opacity(&offset.interpolate(&[0.0, 300.0], &[1.0, 0.2]))
+                .pan_values(None, Some(offset))
+                .on_pan_end(cx.listener(|this: &mut Self, e: &PanEvent, cx| {
+                    assert_eq!(e.value_y, Some(120.0));
+                    let end = this.offset.as_ref().unwrap().spring(0.0, Spring::default());
+                    this.state = "springing";
+                    cx.notify();
+                    this.spring = Some(cx.spawn(|this, _| async move {
+                        let finished = end.await;
+                        this.update(move |this, cx| {
+                            this.state = if finished { "back" } else { "stopped" };
+                            cx.notify();
+                        })
+                        .await;
+                    }));
+                }))
+                .child(text(self.state))
+        }
+    }
+
+    #[test]
+    fn native_values_bind_animate_and_end() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let mut c = core();
+        let mut registry = Registry::new();
+        registry.register::<Sheet>();
+        c.set_components(registry);
+        c.set_task_runtime(runtime.handle().clone());
+        apply(
+            &mut c,
+            vec![
+                Op::Create {
+                    id: 2,
+                    tag: Tag::View,
+                },
+                Op::SetProp {
+                    id: 2,
+                    prop: Prop::Component("test.sheet".into()),
+                },
+                Op::Insert {
+                    parent: ROOT_ID,
+                    child: 2,
+                    before: None,
+                },
+            ],
+        );
+        let batch = c.commit().unwrap();
+        let anims: Vec<_> = batch
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                MountItem::Anim(op) => Some(op.clone()),
+                _ => None,
+            })
+            .collect();
+        // The value and its interpolation, in the core's id range.
+        let value = match anims[0] {
+            nsh_anim::AnimOp::CreateValue { node, value: 0.0 } => node,
+            ref op => panic!("{op:?}"),
+        };
+        assert!(value >= 1 << 31);
+        assert!(
+            matches!(anims[1], nsh_anim::AnimOp::CreateInterpolate { input, .. } if input == value)
+        );
+        assert_eq!(texts(&batch), ["resting"]);
+
+        // Let go: a spring starts; its end resolves the task.
+        let payload = EventPayload::Pan {
+            translation_x: 0.0,
+            translation_y: 120.0,
+            velocity_x: 0.0,
+            velocity_y: 300.0,
+            value_x: None,
+            value_y: Some(120.0),
+        };
+        assert!(c.component_event(2, EventKind::PanEnd, &payload));
+        let batch = c.commit().unwrap();
+        let animation = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Anim(nsh_anim::AnimOp::Start {
+                    node, animation, ..
+                }) if *node == value => Some(*animation),
+                _ => None,
+            })
+            .expect("a spring");
+        assert_eq!(texts(&batch), ["springing"]);
+        let mut finished = vec![
+            nsh_anim::Finished {
+                animation,
+                finished: true,
+            },
+            // JS's stay for JS.
+            nsh_anim::Finished {
+                animation: 7,
+                finished: true,
+            },
+        ];
+        c.animations_finished(&mut finished);
+        assert_eq!(finished.len(), 1);
+        let _guard = runtime.enter();
+        assert_eq!(
+            run_until(&mut c, |s| s.contains(&"back".to_owned())),
+            ["back"]
+        );
+
+        // Released with the component: the value and what derives from it.
+        apply(
+            &mut c,
+            vec![
+                Op::Remove {
+                    parent: ROOT_ID,
+                    child: 2,
+                },
+                Op::Release { id: 2 },
+            ],
+        );
+        let batch = [c.commit(), c.commit()];
+        let released = batch
+            .iter()
+            .flatten()
+            .flat_map(|b| &b.items)
+            .filter(|i| matches!(i, MountItem::Anim(nsh_anim::AnimOp::Release { .. })))
+            .count();
+        assert_eq!(released, 2, "{batch:?}");
+    }
 }

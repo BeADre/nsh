@@ -393,6 +393,13 @@ impl<'a, C: Component> Context<'a, C> {
         ));
     }
 
+    /// A native animation value starting at `value` (Solid:
+    /// `createNativeValue`): keep it in a field, bind it to styles, drags,
+    /// scroll offsets or drawings, and animate it from listeners and tasks.
+    pub fn native_value(&self, value: f32) -> super::NativeValue {
+        super::NativeValue::new(&self.inner.executor, value)
+    }
+
     /// A handle for an element of the render (Solid: `ref`): keep it in a
     /// field, put it on the element with [`Element::element_ref`], call its
     /// commands from listeners and tasks.
@@ -478,6 +485,11 @@ pub struct Attrs {
     pub(crate) drawing: Option<Arc<crate::canvas::Drawing>>,
     /// The handle the render put on the element (not a prop).
     pub(crate) element_ref: Option<super::ElementRef>,
+    /// Style properties bound to native animation nodes (kept alive while
+    /// bound).
+    pub(crate) animated: Vec<(crate::StyleDecl, super::NativeNode)>,
+    /// Native nodes host props read (drags, scroll offsets), kept alive.
+    pub(crate) bound: Vec<super::NativeNode>,
 }
 
 impl Attrs {
@@ -768,6 +780,52 @@ pub trait Element: IntoElement + Sized {
         self
     }
 
+    /// Binds `opacity` to a native value (it moves natively).
+    fn bind_opacity(mut self, value: &impl super::Animated) -> Self {
+        let node = value.native_node();
+        let decl = crate::StyleDecl::Animated(nsh_anim::AnimProp::Opacity, node.id());
+        self.node().attrs.animated.push((decl, node));
+        self
+    }
+
+    /// Binds the background color to a node of colors
+    /// ([`super::NativeNode::interpolate_colors`]).
+    fn bind_background(mut self, value: &impl super::Animated) -> Self {
+        let node = value.native_node();
+        let decl = crate::StyleDecl::Animated(nsh_anim::AnimProp::BackgroundColor, node.id());
+        self.node().attrs.animated.push((decl, node));
+        self
+    }
+
+    /// Appends a transform step driven by a native value, after the styles'
+    /// transforms.
+    fn bind_transform(mut self, kind: crate::TransformKind, value: &impl super::Animated) -> Self {
+        let node = value.native_node();
+        let decl = crate::StyleDecl::Transform(kind, kind.identity(), Some(node.id()));
+        self.node().attrs.animated.push((decl, node));
+        self
+    }
+
+    /// Moves it right by a native value (points).
+    fn bind_translate_x(self, value: &impl super::Animated) -> Self {
+        self.bind_transform(crate::TransformKind::TranslateX, value)
+    }
+
+    /// Moves it down by a native value (points).
+    fn bind_translate_y(self, value: &impl super::Animated) -> Self {
+        self.bind_transform(crate::TransformKind::TranslateY, value)
+    }
+
+    /// Scales it by a native value.
+    fn bind_scale(self, value: &impl super::Animated) -> Self {
+        self.bind_transform(crate::TransformKind::Scale, value)
+    }
+
+    /// Rotates it by a native value (degrees, clockwise).
+    fn bind_rotate(self, value: &impl super::Animated) -> Self {
+        self.bind_transform(crate::TransformKind::Rotate, value)
+    }
+
     /// Puts `handle` on this element: its commands (`focus`, `scroll_to`)
     /// go here.
     fn element_ref(mut self, handle: &super::ElementRef) -> Self {
@@ -953,6 +1011,25 @@ pub trait Interactive: Element {
     /// Touches on it or inside it, every phase (custom gestures).
     fn on_touch(self, listener: Listener<TouchEvent>) -> Self {
         self.on(EventKind::Touch, events::typed(listener, events::touch))
+    }
+
+    /// Drags move these values natively (by the drag's translation from
+    /// where they were), with no render per frame; bind them to its
+    /// transform to follow the finger. `on_pan_end` reports where they
+    /// ended, to spring them on.
+    fn pan_values(
+        mut self,
+        x: Option<&super::NativeValue>,
+        y: Option<&super::NativeValue>,
+    ) -> Self {
+        let x = x.map(|v| v.node().clone());
+        let y = y.map(|v| v.node().clone());
+        let prop = Prop::PanValues(x.as_ref().map(|n| n.id()), y.as_ref().map(|n| n.id()));
+        super::host::set(self.node(), prop);
+        let bound = &mut self.node().attrs.bound;
+        bound.extend(x);
+        bound.extend(y);
+        self
     }
 
     /// A drag started on it (the platform recognizes it).

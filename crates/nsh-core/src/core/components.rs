@@ -92,8 +92,39 @@ pub(super) struct Instance {
     event_handlers: Vec<(NodeId, Listener<dyn Any>)>,
     /// What the last render read of the environment.
     reads: RenderReads,
+    /// The app's `style` on the host, applied after the root's own inline
+    /// style and native values.
+    app_style: Option<crate::StylePatch>,
     dirty: bool,
     renders: u32,
+}
+
+impl Instance {
+    fn new(
+        inner: Inner,
+        spec: Option<Arc<ComponentSpec>>,
+        js_children: Vec<NodeId>,
+        app_style: Option<crate::StylePatch>,
+    ) -> Self {
+        Self {
+            inner,
+            spec,
+            class: "".into(),
+            class_list: Vec::new(),
+            user: None,
+            js_events: EventMask::default(),
+            root: None,
+            js_children,
+            children_at: Placement::None,
+            slots: Vec::new(),
+            handlers: Vec::new(),
+            event_handlers: Vec::new(),
+            reads: RenderReads::default(),
+            app_style,
+            dirty: false,
+            renders: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,6 +208,8 @@ pub(super) struct Components {
     /// Image sizes asked for (`Image.getSize`), by request id: their answers.
     image_infos: FxHashMap<u32, AnswerSlot<Result<ImageSize, String>>>,
     next_image_info: u32,
+    /// The ends of the animations components started, by id.
+    animations: FxHashMap<nsh_anim::AnimId, AnswerSlot<bool>>,
     /// The insets screens and modals reported (`onInsets`).
     insets: FxHashMap<NodeId, EdgeInsets>,
     next_id: NodeId,
@@ -204,6 +237,7 @@ impl Default for Components {
             next_dialog: 1,
             image_infos: FxHashMap::default(),
             next_image_info: 1,
+            animations: FxHashMap::default(),
             insets: FxHashMap::default(),
             // Odd: JS allocates the even ids (1 is the root).
             next_id: 3,
@@ -253,7 +287,12 @@ impl Components {
 /// The inline style of `id` from a JS style (an object or an array of
 /// them; keys and values as in React Native). Values that are objects or
 /// arrays (transforms, offsets) are not taken.
-fn inline_style(id: NodeId, value: Option<&JsonValue>) -> Op {
+fn inline_style(
+    id: NodeId,
+    value: Option<&JsonValue>,
+    animated: &[(crate::StyleDecl, crate::ui::NativeNode)],
+    app: Option<&crate::StylePatch>,
+) -> Op {
     fn walk(value: &JsonValue, style: &mut crate::Style, patch: &mut crate::StylePatch) {
         use crate::StyleValue as V;
         match value {
@@ -282,6 +321,11 @@ fn inline_style(id: NodeId, value: Option<&JsonValue>) -> Op {
     let mut patch = crate::StylePatch::default();
     if let Some(value) = value {
         walk(value, &mut style, &mut patch);
+    }
+    // Native values over the rest, then (on a host) the app's style.
+    let app = app.map(|p| p.decls()).unwrap_or_default();
+    for decl in animated.iter().map(|(d, _)| d).chain(app) {
+        let _ = patch.push(&mut style, decl.clone());
     }
     Op::SetStyle { id, style, patch }
 }
@@ -419,6 +463,22 @@ impl<M: TextEngine> Core<M> {
     /// (`Some`).
     pub(super) fn intercept(&mut self, op: Op) -> Result<Option<Op>, ApplyError> {
         match op {
+            // The app's style on a host goes after the root's own.
+            Op::SetStyle { id, patch, .. } if self.is_host(id) => {
+                let inst = self.components.instances.get_mut(&id).expect("host");
+                inst.app_style = (!patch.is_empty()).then_some(patch);
+                let (inline, animated) = match &inst.root {
+                    Some(root) => (root.attrs.inline.clone(), root.attrs.animated.clone()),
+                    None => (None, Vec::new()),
+                };
+                let app = inst.app_style.clone();
+                Ok(Some(inline_style(
+                    id,
+                    inline.as_ref(),
+                    &animated,
+                    app.as_ref(),
+                )))
+            }
             // A slot's node joins its host: the render places it.
             Op::Insert { parent, child, .. }
                 if self.is_host(parent) && self.components.slot_names.contains_key(&child) =>
@@ -664,23 +724,12 @@ impl<M: TextEngine> Core<M> {
             .collect();
         self.components.instances.insert(
             cell,
-            Box::new(Instance {
-                inner: Inner::Row { place, index: 0 },
-                spec: None,
-                class: "".into(),
-                class_list: Vec::new(),
-                user: None,
-                js_events: EventMask::default(),
-                root: None,
+            Box::new(Instance::new(
+                Inner::Row { place, index: 0 },
+                None,
                 js_children,
-                children_at: Placement::None,
-                slots: Vec::new(),
-                handlers: Vec::new(),
-                event_handlers: Vec::new(),
-                reads: RenderReads::default(),
-                dirty: false,
-                renders: 0,
-            }),
+                None,
+            )),
         );
         self.components.mark(cell);
     }
@@ -829,25 +878,15 @@ impl<M: TextEngine> Core<M> {
                 (None, Inner::Missing)
             }
         };
+        // A style JS set before the component prop.
+        let app_style = self
+            .key(host)
+            .ok()
+            .map(|k| self.nodes[k as usize].inline_style.clone())
+            .filter(|p| !p.is_empty());
         self.components.instances.insert(
             host,
-            Box::new(Instance {
-                inner,
-                spec,
-                class: "".into(),
-                class_list: Vec::new(),
-                user: None,
-                js_events: EventMask::default(),
-                root: None,
-                js_children: Vec::new(),
-                children_at: Placement::None,
-                slots: Vec::new(),
-                handlers: Vec::new(),
-                event_handlers: Vec::new(),
-                reads: RenderReads::default(),
-                dirty: false,
-                renders: 0,
-            }),
+            Box::new(Instance::new(inner, spec, Vec::new(), app_style)),
         );
         self.components.mark(host);
     }
@@ -878,6 +917,10 @@ impl<M: TextEngine> Core<M> {
 
     /// Renders the components whose props or state changed.
     pub(super) fn render_components(&mut self) {
+        // What handles asked for since (native values released, ...).
+        for action in self.components.executor.take_actions() {
+            self.apply_action(action);
+        }
         if self.components.dirty.is_empty() {
             return;
         }
@@ -969,7 +1012,7 @@ impl<M: TextEngine> Core<M> {
                 Vec::new(),
             ),
         };
-        self.apply_attrs(host, &el.attrs, &old_attrs);
+        self.apply_attrs_over(host, &el.attrs, &old_attrs, inst.app_style.as_ref());
         let user = inst.user.clone();
         let classes = self.apply_styles(host, &el.style, &old_style, old_classes, user);
         // The host listens to its component's events and to JS's.
@@ -1011,6 +1054,18 @@ impl<M: TextEngine> Core<M> {
     }
 
     fn apply_attrs(&mut self, id: NodeId, new: &Attrs, old: &Attrs) {
+        self.apply_attrs_over(id, new, old, None);
+    }
+
+    /// [`Self::apply_attrs`] for a host: the app's style goes after the
+    /// root's (and is sent again with it).
+    fn apply_attrs_over(
+        &mut self,
+        id: NodeId,
+        new: &Attrs,
+        old: &Attrs,
+        app: Option<&crate::StylePatch>,
+    ) {
         if old.element_ref != new.element_ref
             && let Some(r) = &old.element_ref
         {
@@ -1025,8 +1080,8 @@ impl<M: TextEngine> Core<M> {
             let _ = self.apply_op(Op::SetProp { id, prop });
         }
         self.components.props = props;
-        if new.inline != old.inline {
-            let _ = self.apply_op(inline_style(id, new.inline.as_ref()));
+        if new.inline != old.inline || new.animated != old.animated {
+            let _ = self.apply_op(inline_style(id, new.inline.as_ref(), &new.animated, app));
         }
         if new.drawing != old.drawing
             && let Some(drawing) = &new.drawing
@@ -1567,6 +1622,13 @@ impl<M: TextEngine> Core<M> {
                 });
             }
             Action::Return(call, result) => self.reply(crate::ROOT_ID, call, result),
+            Action::Anim(op) => {
+                let _ = self.apply_op(Op::Anim(op));
+            }
+            Action::Animate { op, animation, end } => {
+                self.components.animations.insert(animation, end);
+                let _ = self.apply_op(Op::Anim(op));
+            }
             Action::ImageInfo(uri, answer) => {
                 let id = self.components.next_image_info;
                 self.components.next_image_info += 1;
@@ -1577,6 +1639,18 @@ impl<M: TextEngine> Core<M> {
                 });
             }
         }
+    }
+
+    /// Native animations that ended: the components' resolve their
+    /// [`crate::ui::AnimationEnd`]s; JS's stay in `finished`.
+    pub fn animations_finished(&mut self, finished: &mut Vec<nsh_anim::Finished>) {
+        finished.retain(|f| match self.components.animations.remove(&f.animation) {
+            Some(end) => {
+                end.borrow_mut().deliver(f.finished);
+                false
+            }
+            None => f.animation < crate::ui::animated::FIRST_ID,
+        });
     }
 
     /// The answer to image info request `id`.

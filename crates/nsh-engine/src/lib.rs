@@ -1089,7 +1089,11 @@ fn handle<M: TextEngine>(host: &Host, state: &mut State<M>, message: Message) ->
         }
         Message::Zoom(id, scale) => state.core.set_zoom(id, scale),
         Message::ComponentSize(id, size) => state.core.set_component_size(id, size),
-        Message::AnimationsFinished(finished) => host.animations_finished(&finished),
+        Message::AnimationsFinished(mut finished) => {
+            // The components' animations end in the core, JS's in JS.
+            state.core.animations_finished(&mut finished);
+            host.animations_finished(&finished);
+        }
         Message::Resize(size) => state.core.set_viewport(size),
         Message::Wake => {}
         Message::Environment(env) => {
