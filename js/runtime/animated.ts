@@ -1,21 +1,23 @@
 // `nsh/animated`: native values, the animation graph and layout animations.
 // Everything runs on the UI thread; JS only describes it.
 
-import { command, OP_ANIM, ops, schedule } from "./_core";
+import { command, ops, schedule } from "./_core";
 
-// Sub-ops of OP_ANIM.
-const ANIM_VALUE = 0; // node, value
-const ANIM_INTERPOLATE = 1; // node, input, inputRange, outputRange, extrapolateLeft, extrapolateRight, easing
-const ANIM_MATH = 2; // node, op, a, b
-const ANIM_SET = 3; // node, value
-const ANIM_START = 4; // node, animation id, config
-const ANIM_STOP = 5; // node
-const ANIM_RELEASE = 6; // node
-const ANIM_DIFF_CLAMP = 7; // node, input, min, max
-const ANIM_START_COMPOSITE = 8; // animation id, composite key, spec
-const ANIM_STOP_ANIMATION = 9; // animation id
-const ANIM_RESET_COMPOSITE = 10; // composite key
-const ANIM_RELEASE_COMPOSITE = 11; // composite key
+import {
+  ANIM_DIFF_CLAMP,
+  ANIM_INTERPOLATE,
+  ANIM_MATH,
+  ANIM_RELEASE,
+  ANIM_RELEASE_COMPOSITE,
+  ANIM_RESET_COMPOSITE,
+  ANIM_SET,
+  ANIM_START,
+  ANIM_START_COMPOSITE,
+  ANIM_STOP,
+  ANIM_STOP_ANIMATION,
+  ANIM_VALUE,
+  OP_ANIM,
+} from "./protocol.gen";
 
 // --- Native animation values -------------------------------------------
 

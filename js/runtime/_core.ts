@@ -25,16 +25,8 @@ import tailwindTheme from "nsh:tailwind-theme";
 import uiTheme from "nsh:theme";
 import type { GestureResponderEvent, TouchPoint, ViewProps } from "./types";
 
-export const OP_CREATE = 0; // id, tag
-export const OP_CREATE_TEXT = 1; // id, text
-export const OP_SET_TEXT = 2; // id, text
-export const OP_SET_PROP = 3; // id, name, value
-export const OP_INSERT = 4; // parent, child, before (0 = append)
-export const OP_REMOVE = 5; // parent, child
-export const OP_RELEASE = 6; // id
-export const OP_ANIM = 7; // sub-op, node, args...
-export const OP_COMMAND = 8; // id, name, argument
-export const OP_DRAW = 9; // id, [canvas operations (CV_*)]
+// The op buffer's codes (generated from `nsh_core::js::protocol`).
+import { OP_COMMAND, OP_CREATE, OP_CREATE_TEXT, OP_INSERT, OP_RELEASE, OP_REMOVE, OP_SET_PROP, OP_SET_TEXT } from "./protocol.gen";
 
 declare function __nsh_commit(ops: unknown[]): void;
 

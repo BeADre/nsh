@@ -1,7 +1,8 @@
 //! Decoding of canvas drawings (`OP_DRAW`): the operations a `draw`
 //! callback recorded through the runtime's `CanvasRenderingContext2D`.
 //!
-//! The sub-opcodes must match `CANVAS_*` in `js/runtime/index.ts`.
+//! The codes (`CV_*`) are `nsh_core::js::canvas`'s, which the runtime's
+//! `canvas.gen.ts` is generated from.
 
 use std::sync::Arc;
 
@@ -12,54 +13,9 @@ use nsh_core::{
         Composite, Drawing, FillRule, GradientShape, LineCap, LineJoin, Num, Paint, PathOp,
         parse_svg_path,
     },
+    js::canvas::*,
 };
 use rquickjs::{Array, Ctx, Exception, Value};
-
-const SAVE: i32 = 0;
-const RESTORE: i32 = 1;
-const TRANSLATE: i32 = 2;
-const SCALE: i32 = 3;
-const ROTATE: i32 = 4;
-const TRANSFORM: i32 = 5;
-const SET_TRANSFORM: i32 = 6;
-const BEGIN_PATH: i32 = 7;
-const MOVE_TO: i32 = 8;
-const LINE_TO: i32 = 9;
-const QUAD_TO: i32 = 10;
-const CUBIC_TO: i32 = 11;
-const ARC: i32 = 12;
-const ARC_TO: i32 = 13;
-const ELLIPSE: i32 = 14;
-const RECT: i32 = 15;
-const ROUND_RECT: i32 = 16;
-const CLOSE: i32 = 17;
-const FILL: i32 = 18;
-const STROKE: i32 = 19;
-const CLIP: i32 = 20;
-const FILL_RECT: i32 = 21;
-const STROKE_RECT: i32 = 22;
-const CLEAR_RECT: i32 = 23;
-const FILL_STYLE: i32 = 24;
-const STROKE_STYLE: i32 = 25;
-const LINE_WIDTH: i32 = 26;
-const LINE_CAP: i32 = 27;
-const LINE_JOIN: i32 = 28;
-const MITER_LIMIT: i32 = 29;
-const LINE_DASH: i32 = 30;
-const LINE_DASH_OFFSET: i32 = 31;
-const GLOBAL_ALPHA: i32 = 32;
-const COMPOSITE: i32 = 33;
-const SHADOW_COLOR: i32 = 34;
-const SHADOW_BLUR: i32 = 35;
-const SHADOW_OFFSET: i32 = 36;
-const FONT: i32 = 37;
-const TEXT_ALIGN: i32 = 38;
-const TEXT_BASELINE: i32 = 39;
-const FILL_TEXT: i32 = 40;
-const STROKE_TEXT: i32 = 41;
-const DRAW_IMAGE: i32 = 42;
-/// In `Path2D` lists: SVG path data.
-const SVG_PATH: i32 = 50;
 
 struct Items<'a, 'js> {
     ctx: &'a Ctx<'js>,
@@ -158,55 +114,55 @@ pub(crate) fn decode<'js>(
             continue;
         }
         let op = match code {
-            SAVE => CanvasOp::Save,
-            RESTORE => CanvasOp::Restore,
-            TRANSLATE => {
+            CV_SAVE => CanvasOp::Save,
+            CV_RESTORE => CanvasOp::Restore,
+            CV_TRANSLATE => {
                 let [x, y] = r.nums(&mut drawing)?;
                 CanvasOp::Translate(x, y)
             }
-            SCALE => {
+            CV_SCALE => {
                 let [x, y] = r.nums(&mut drawing)?;
                 CanvasOp::Scale(x, y)
             }
-            ROTATE => CanvasOp::Rotate(r.num(&mut drawing)?),
-            TRANSFORM => CanvasOp::Transform(r.nums(&mut drawing)?),
-            SET_TRANSFORM => CanvasOp::SetTransform(r.nums(&mut drawing)?),
-            BEGIN_PATH => CanvasOp::BeginPath,
-            FILL => {
+            CV_ROTATE => CanvasOp::Rotate(r.num(&mut drawing)?),
+            CV_TRANSFORM => CanvasOp::Transform(r.nums(&mut drawing)?),
+            CV_SET_TRANSFORM => CanvasOp::SetTransform(r.nums(&mut drawing)?),
+            CV_BEGIN_PATH => CanvasOp::BeginPath,
+            CV_FILL => {
                 let path = path_value(ctx, r.value()?, &mut drawing)?;
                 CanvasOp::Fill(path, fill_rule(&r.string()?))
             }
-            STROKE => CanvasOp::Stroke(path_value(ctx, r.value()?, &mut drawing)?),
-            CLIP => {
+            CV_STROKE => CanvasOp::Stroke(path_value(ctx, r.value()?, &mut drawing)?),
+            CV_CLIP => {
                 let path = path_value(ctx, r.value()?, &mut drawing)?;
                 CanvasOp::Clip(path, fill_rule(&r.string()?))
             }
-            FILL_RECT => CanvasOp::FillRect(r.nums(&mut drawing)?),
-            STROKE_RECT => CanvasOp::StrokeRect(r.nums(&mut drawing)?),
-            CLEAR_RECT => CanvasOp::ClearRect(r.nums(&mut drawing)?),
-            FILL_STYLE | STROKE_STYLE => {
+            CV_FILL_RECT => CanvasOp::FillRect(r.nums(&mut drawing)?),
+            CV_STROKE_RECT => CanvasOp::StrokeRect(r.nums(&mut drawing)?),
+            CV_CLEAR_RECT => CanvasOp::ClearRect(r.nums(&mut drawing)?),
+            CV_FILL_STYLE | CV_STROKE_STYLE => {
                 let Some(paint) = paint(r.value()?, &mut drawing)? else {
                     continue;
                 };
-                if code == FILL_STYLE {
+                if code == CV_FILL_STYLE {
                     CanvasOp::FillStyle(paint)
                 } else {
                     CanvasOp::StrokeStyle(paint)
                 }
             }
-            LINE_WIDTH => CanvasOp::LineWidth(r.num(&mut drawing)?),
-            LINE_CAP => CanvasOp::LineCap(match r.string()?.as_str() {
+            CV_LINE_WIDTH => CanvasOp::LineWidth(r.num(&mut drawing)?),
+            CV_LINE_CAP => CanvasOp::LineCap(match r.string()?.as_str() {
                 "round" => LineCap::Round,
                 "square" => LineCap::Square,
                 _ => LineCap::Butt,
             }),
-            LINE_JOIN => CanvasOp::LineJoin(match r.string()?.as_str() {
+            CV_LINE_JOIN => CanvasOp::LineJoin(match r.string()?.as_str() {
                 "round" => LineJoin::Round,
                 "bevel" => LineJoin::Bevel,
                 _ => LineJoin::Miter,
             }),
-            MITER_LIMIT => CanvasOp::MiterLimit(r.float()?.max(1.0)),
-            LINE_DASH => {
+            CV_MITER_LIMIT => CanvasOp::MiterLimit(r.float()?.max(1.0)),
+            CV_LINE_DASH => {
                 let v = r.value()?;
                 let mut dash: Vec<f32> = match v.as_array() {
                     Some(a) => a
@@ -225,30 +181,30 @@ pub(crate) fn decode<'js>(
                 }
                 CanvasOp::LineDash(dash.into())
             }
-            LINE_DASH_OFFSET => CanvasOp::LineDashOffset(r.num(&mut drawing)?),
-            GLOBAL_ALPHA => CanvasOp::GlobalAlpha(r.num(&mut drawing)?),
-            COMPOSITE => match Composite::parse(&r.string()?) {
+            CV_LINE_DASH_OFFSET => CanvasOp::LineDashOffset(r.num(&mut drawing)?),
+            CV_GLOBAL_ALPHA => CanvasOp::GlobalAlpha(r.num(&mut drawing)?),
+            CV_COMPOSITE => match Composite::parse(&r.string()?) {
                 Some(c) => CanvasOp::Composite(c),
                 None => continue,
             },
-            SHADOW_COLOR => match Color::parse(&r.string()?) {
+            CV_SHADOW_COLOR => match Color::parse(&r.string()?) {
                 Some(c) => CanvasOp::ShadowColor(c),
                 None => continue,
             },
-            SHADOW_BLUR => CanvasOp::ShadowBlur(r.float()?.max(0.0)),
-            SHADOW_OFFSET => CanvasOp::ShadowOffset(r.float()?, r.float()?),
-            FONT => match CanvasFont::parse(&r.string()?) {
+            CV_SHADOW_BLUR => CanvasOp::ShadowBlur(r.float()?.max(0.0)),
+            CV_SHADOW_OFFSET => CanvasOp::ShadowOffset(r.float()?, r.float()?),
+            CV_FONT => match CanvasFont::parse(&r.string()?) {
                 Some(f) => CanvasOp::Font(f),
                 None => continue,
             },
-            TEXT_ALIGN => CanvasOp::TextAlign(match r.string()?.as_str() {
+            CV_TEXT_ALIGN => CanvasOp::TextAlign(match r.string()?.as_str() {
                 "end" => CanvasTextAlign::End,
                 "left" => CanvasTextAlign::Left,
                 "right" => CanvasTextAlign::Right,
                 "center" => CanvasTextAlign::Center,
                 _ => CanvasTextAlign::Start,
             }),
-            TEXT_BASELINE => CanvasOp::TextBaseline(match r.string()?.as_str() {
+            CV_TEXT_BASELINE => CanvasOp::TextBaseline(match r.string()?.as_str() {
                 "top" => CanvasTextBaseline::Top,
                 "hanging" => CanvasTextBaseline::Hanging,
                 "middle" => CanvasTextBaseline::Middle,
@@ -256,11 +212,11 @@ pub(crate) fn decode<'js>(
                 "bottom" => CanvasTextBaseline::Bottom,
                 _ => CanvasTextBaseline::Alphabetic,
             }),
-            FILL_TEXT | STROKE_TEXT => {
+            CV_FILL_TEXT | CV_STROKE_TEXT => {
                 let text: Arc<str> = r.string()?.into();
                 let [x, y] = r.nums(&mut drawing)?;
                 let max = r.value()?.as_number().map(|n| n as f32);
-                if code == FILL_TEXT {
+                if code == CV_FILL_TEXT {
                     CanvasOp::FillText {
                         text,
                         x,
@@ -276,7 +232,7 @@ pub(crate) fn decode<'js>(
                     }
                 }
             }
-            DRAW_IMAGE => {
+            CV_DRAW_IMAGE => {
                 let uri: Arc<str> = r.string()?.into();
                 let source = r.value()?;
                 let source = source.as_array().map(|a| {
@@ -315,17 +271,17 @@ fn path_op(
     drawing: &mut Drawing,
 ) -> rquickjs::Result<Option<PathOp>> {
     Ok(Some(match code {
-        MOVE_TO => {
+        CV_MOVE_TO => {
             let [x, y] = r.nums(drawing)?;
             PathOp::MoveTo(x, y)
         }
-        LINE_TO => {
+        CV_LINE_TO => {
             let [x, y] = r.nums(drawing)?;
             PathOp::LineTo(x, y)
         }
-        QUAD_TO => PathOp::QuadTo(r.nums(drawing)?),
-        CUBIC_TO => PathOp::CubicTo(r.nums(drawing)?),
-        ARC => {
+        CV_QUAD_TO => PathOp::QuadTo(r.nums(drawing)?),
+        CV_CUBIC_TO => PathOp::CubicTo(r.nums(drawing)?),
+        CV_ARC => {
             let [x, y, radius, start, end] = r.nums(drawing)?;
             PathOp::Arc {
                 x,
@@ -336,8 +292,8 @@ fn path_op(
                 ccw: r.bool()?,
             }
         }
-        ARC_TO => PathOp::ArcTo(r.nums(drawing)?),
-        ELLIPSE => {
+        CV_ARC_TO => PathOp::ArcTo(r.nums(drawing)?),
+        CV_ELLIPSE => {
             let geometry = r.nums(drawing)?;
             let [start, end] = r.nums(drawing)?;
             PathOp::Ellipse {
@@ -347,12 +303,12 @@ fn path_op(
                 ccw: r.bool()?,
             }
         }
-        RECT => PathOp::Rect(r.nums(drawing)?),
-        ROUND_RECT => {
+        CV_RECT => PathOp::Rect(r.nums(drawing)?),
+        CV_ROUND_RECT => {
             let rect = r.nums(drawing)?;
             PathOp::RoundRect(rect, r.nums(drawing)?)
         }
-        CLOSE => PathOp::Close,
+        CV_CLOSE => PathOp::Close,
         _ => return Ok(None),
     }))
 }
@@ -375,7 +331,7 @@ fn path_value<'js>(
     let mut ops = Vec::new();
     while r.more() {
         let code = r.int()?;
-        if code == SVG_PATH {
+        if code == CV_SVG_PATH {
             ops.extend(parse_svg_path(&r.string()?));
             continue;
         }

@@ -135,8 +135,10 @@ host it is an empty crate, so always run clippy on platform code with the Cataly
 - **Limits and checks are enforced in Rust, never in JS**: the JS runtime is compiled into every bundle and is as
   trusted as the app. QuickJS bytecode is trusted input (`Bundle::bytecode` is `unsafe`): it only loads from the app's
   own resources, the dev server and verified packages (`docs/dev/signed-packages.md`).
-- **Keep in sync**: the op buffer opcodes (`js/runtime/_core.ts`, `animated.ts`, `canvas.ts` ↔
-  `crates/nsh-js/src/protocol.rs`); `types.ts` ↔ what `style.rs` / `protocol.rs` accept; the order of `EventKind` ↔
+- **Generated, never hand-copied**: the op buffer's codes (`OP_*`, `ANIM_*`, `CV_*`), the canvas's recording methods
+  and properties, and the style types come from `crates/nsh-core/src/js/` (`protocol.gen.ts`, `canvas.gen.ts`,
+  `style.gen.ts`); a new style property is one line of `style_keys!` (`style.rs`) with its TS type.
+- **Keep in sync**: element props and events in `types.ts` ↔ `protocol.rs`; the order of `EventKind` ↔
   `Native.java`; `encode.rs` opcodes ↔ `Mounter.java`; new event payload keys ↔ the JNI event map's key list;
   `BUNDLE_NAME` / `BYTECODE_VERSION` ↔ the linked QuickJS.
 

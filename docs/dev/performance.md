@@ -38,5 +38,9 @@ after `nsh trace` timings and item counts. Current baselines (Apple Silicon):
   Pooling the style buffers bought 3%; a different global allocator in the binaries is the lever left. The glue must
   stay one effect per instance reading the props directly: the first version (`splitProps` / `mergeProps` /
   `spread`) cost 4.0ms of JS for the same first frame, more than the TSX Button.
+- Canvas recording (release `nsh trace`, minimum of the runs): 2500 iterations of `beginPath`, `moveTo`, `lineTo`,
+  `lineWidth =`, `strokeStyle =`, `stroke`, `fillRect` (17 500 calls) record in ~1.4ms, the same with the generated
+  methods (`canvas.gen.ts`, taken into the prototypes) as with the hand-written class: an A/B of the two mechanisms in
+  one QuickJS run measures 4.16 vs 4.22ms (medians within 1%) for 80 000 calls.
 
 The dev profile builds `rquickjs-sys` and `taffy` with `opt-level = 3`, so debug timings are meaningful too; release uses fat LTO.

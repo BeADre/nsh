@@ -8,6 +8,8 @@
 use nsh_anim::{
     AnimOp, AnimProp, Curve, Driver, EaseMode, Easing, Extrapolate, MathOp, Operand, Output,
 };
+// The op buffer's codes, shared with the generated `protocol.gen.ts`.
+use nsh_core::js::protocol::*;
 use nsh_core::{
     AccessibilityActionDef, AccessibilityProp, AccessibilityRole, AccessibilityState,
     AccessibilityValue, AutoCapitalize, AutoFill, CellSlot, Checked, Color, Command, EdgeInsets,
@@ -20,32 +22,6 @@ use nsh_core::{
 };
 use rquickjs::{Array, Ctx, Exception, Object, Type, Value};
 use rustc_hash::FxHashSet;
-
-// Must match the constants in `js/runtime/index.ts`.
-const OP_CREATE: i32 = 0;
-const OP_CREATE_TEXT: i32 = 1;
-const OP_SET_TEXT: i32 = 2;
-const OP_SET_PROP: i32 = 3;
-const OP_INSERT: i32 = 4;
-const OP_REMOVE: i32 = 5;
-const OP_RELEASE: i32 = 6;
-const OP_ANIM: i32 = 7;
-const OP_COMMAND: i32 = 8;
-const OP_DRAW: i32 = 9;
-
-// Sub-opcodes of `OP_ANIM`.
-const ANIM_VALUE: i32 = 0;
-const ANIM_INTERPOLATE: i32 = 1;
-const ANIM_MATH: i32 = 2;
-const ANIM_SET: i32 = 3;
-const ANIM_START: i32 = 4;
-const ANIM_STOP: i32 = 5;
-const ANIM_RELEASE: i32 = 6;
-const ANIM_DIFF_CLAMP: i32 = 7;
-const ANIM_START_COMPOSITE: i32 = 8;
-const ANIM_STOP_ANIMATION: i32 = 9;
-const ANIM_RESET_COMPOSITE: i32 = 10;
-const ANIM_RELEASE_COMPOSITE: i32 = 11;
 
 /// Reports each distinct problem once, so a bad style in a list does not
 /// flood the log.

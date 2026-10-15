@@ -113,7 +113,9 @@ const UI_MOBILE: &[EmbeddedFile] = embedded! { "ui/mobile":
 };
 
 /// The JS glue and declarations of what is written in Rust, generated
-/// from the specs once per process: the mobile UI's components and modules
+/// from the specs once per process: the op buffer's codes, the canvas's
+/// recording methods and the style types (`nsh_core::js`), the mobile UI's
+/// components and modules
 /// (`ui/mobile/components.gen.ts`, re-exported by `nsh/ui/mobile`), and the
 /// runtime's modules (`runtime/android.gen.ts`, re-exported by
 /// `nsh/android`; a module with no hand-written part is the generated file
@@ -132,6 +134,23 @@ fn generated() -> &'static [EmbeddedFile] {
                 lang: Lang::Ts,
             },
         }];
+        // What the runtime's own files are generated from (internal).
+        for (path, source) in [
+            ("protocol.gen.ts", nsh_core::js::protocol::typescript()),
+            ("canvas.gen.ts", nsh_core::js::canvas::typescript()),
+            ("style.gen.ts", nsh_core::js::style::typescript()),
+        ] {
+            files.push(EmbeddedFile {
+                root: "runtime",
+                path,
+                specifier: None,
+                module: Embedded {
+                    id: leak(format!("\0nsh:runtime/{path}")),
+                    source: leak(source),
+                    lang: Lang::Ts,
+                },
+            });
+        }
         for registry in nsh_core::runtime::registries() {
             let specifier = registry.namespace().expect("runtime modules have one");
             let name = specifier.strip_prefix("nsh/").unwrap_or(specifier);

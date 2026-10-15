@@ -1,171 +1,25 @@
 // Types of nsh apps: styles, the props of host elements and the JSX
 // namespace. Types only: nothing here reaches a bundle.
 //
-// Keep in sync with what the core accepts: `crates/nsh-core/src/style.rs`
-// (styles) and `crates/nsh-js/src/protocol.rs` (props and events).
+// The styles are generated from the core (`style.gen.ts`); keep the props
+// and events in sync with `crates/nsh-js/src/protocol.rs`.
 
 import type { YNode } from "./_core";
-import type { NativeNode, NativeValue } from "./animated";
+import type { NativeValue } from "./animated";
 
-/** A CSS-like color: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb()`,
- * `rgba()` or a named color (`black`, `white`, `transparent`, …). */
-export type ColorValue = string;
-
-/** Points, a percentage of the parent, or `"auto"`. */
-export type DimensionValue = number | `${number}%` | "auto";
-
-/** Points or a percentage of the parent. */
-export type LengthValue = number | `${number}%`;
-
-/** One transform step; angles are degrees (`"45deg"`, `"0.5rad"` or a
- * number). Native values (and nodes derived from them) animate a step
- * natively. */
-export type TransformStep =
-  | { translateX: number | NativeNode }
-  | { translateY: number | NativeNode }
-  | { scale: number | NativeNode }
-  | { scaleX: number | NativeNode }
-  | { scaleY: number | NativeNode }
-  | { rotate: number | string | NativeNode }
-  | { rotateZ: number | string | NativeNode }
-  | { rotateX: number | string | NativeNode }
-  | { rotateY: number | string | NativeNode }
-  | { skewX: number | string }
-  | { skewY: number | string }
-  | { perspective: number };
-
-type Align = "flex-start" | "flex-end" | "center" | "stretch" | "baseline";
-type Distribute = "flex-start" | "flex-end" | "center" | "stretch" | "space-between" | "space-around" | "space-evenly";
-
-/** Layout (flexbox with React Native's defaults: `column`, no shrinking). */
-export interface LayoutStyle {
-  display?: "flex" | "grid" | "block" | "none";
-  position?: "relative" | "absolute";
-  flexDirection?: "row" | "column" | "row-reverse" | "column-reverse";
-  flexWrap?: "wrap" | "nowrap" | "wrap-reverse";
-  flex?: number;
-  flexGrow?: number;
-  flexShrink?: number;
-  flexBasis?: DimensionValue;
-  justifyContent?: Exclude<Distribute, "stretch"> | "stretch";
-  alignItems?: Align;
-  alignSelf?: Align | "auto";
-  alignContent?: Distribute;
-  width?: DimensionValue;
-  height?: DimensionValue;
-  minWidth?: LengthValue;
-  minHeight?: LengthValue;
-  maxWidth?: LengthValue;
-  maxHeight?: LengthValue;
-  aspectRatio?: number;
-  top?: DimensionValue;
-  right?: DimensionValue;
-  bottom?: DimensionValue;
-  left?: DimensionValue;
-  margin?: DimensionValue;
-  marginHorizontal?: DimensionValue;
-  marginVertical?: DimensionValue;
-  marginTop?: DimensionValue;
-  marginRight?: DimensionValue;
-  marginBottom?: DimensionValue;
-  marginLeft?: DimensionValue;
-  padding?: LengthValue;
-  paddingHorizontal?: LengthValue;
-  paddingVertical?: LengthValue;
-  paddingTop?: LengthValue;
-  paddingRight?: LengthValue;
-  paddingBottom?: LengthValue;
-  paddingLeft?: LengthValue;
-  gap?: LengthValue;
-  rowGap?: LengthValue;
-  columnGap?: LengthValue;
-  /** Order among siblings (stable); also the native stacking order. */
-  zIndex?: number;
-  /** Layout direction; inherited by default. Right to left, `left` and `right` properties mean start and end (as in React Native). */
-  direction?: "inherit" | "ltr" | "rtl";
-  /** Left in left-to-right layouts, right in right-to-left ones. */
-  start?: DimensionValue;
-  end?: DimensionValue;
-  marginStart?: DimensionValue;
-  marginEnd?: DimensionValue;
-  paddingStart?: LengthValue;
-  paddingEnd?: LengthValue;
-}
-
-/** Styles of views (and of text, images and inputs, which are views). */
-export interface ViewStyle extends LayoutStyle {
-  backgroundColor?: ColorValue | NativeNode;
-  opacity?: number | NativeNode;
-  transform?: TransformStep[];
-  overflow?: "visible" | "hidden";
-  borderWidth?: number;
-  borderTopWidth?: number;
-  borderRightWidth?: number;
-  borderBottomWidth?: number;
-  borderLeftWidth?: number;
-  borderColor?: ColorValue;
-  borderTopColor?: ColorValue;
-  borderRightColor?: ColorValue;
-  borderBottomColor?: ColorValue;
-  borderLeftColor?: ColorValue;
-  borderStartWidth?: number;
-  borderEndWidth?: number;
-  borderStartColor?: ColorValue;
-  borderEndColor?: ColorValue;
-  borderStyle?: "solid" | "dashed" | "dotted";
-  /** `continuous`: corners whose curvature eases into the edges (iOS app icons). */
-  borderCurve?: "circular" | "continuous";
-  borderRadius?: number;
-  borderTopLeftRadius?: number;
-  borderTopRightRadius?: number;
-  borderBottomRightRadius?: number;
-  borderBottomLeftRadius?: number;
-  borderTopStartRadius?: number;
-  borderTopEndRadius?: number;
-  borderBottomStartRadius?: number;
-  borderBottomEndRadius?: number;
-  /** The point `transform` acts around: keywords, percentages and lengths ("top left", "50% 0", `[10, 20]`). Default the center. */
-  transformOrigin?: string | (number | string)[];
-  /** `"hidden"`: invisible while turned away (3D rotations). */
-  backfaceVisibility?: "visible" | "hidden";
-  shadowColor?: ColorValue;
-  /** Default `{ width: 0, height: -3 }`, as in React Native. */
-  shadowOffset?: { width: number; height: number };
-  shadowOpacity?: number;
-  shadowRadius?: number;
-}
-
-/** Styles of text (inherited by nested `<text>` spans) and inputs. */
-export interface TextStyle extends ViewStyle {
-  color?: ColorValue;
-  fontSize?: number;
-  /** `"normal"` (400), `"bold"` (700) or 100–900. */
-  fontWeight?: "normal" | "bold" | number | `${number}`;
-  fontStyle?: "normal" | "italic";
-  /** A system family or the name an imported font (`import Inter from "./Inter.ttf"`) evaluates to. */
-  fontFamily?: string;
-  lineHeight?: number;
-  letterSpacing?: number;
-  textAlign?: "auto" | "left" | "center" | "right" | "justify";
-  textDecorationLine?: "none" | "underline" | "line-through" | "underline line-through";
-  textDecorationColor?: ColorValue;
-  textTransform?: "none" | "uppercase" | "lowercase" | "capitalize";
-  textShadowColor?: ColorValue;
-  textShadowOffset?: { width: number; height: number };
-  textShadowRadius?: number;
-  /** OpenType number and letter forms. */
-  fontVariant?: ("small-caps" | "oldstyle-nums" | "lining-nums" | "tabular-nums" | "proportional-nums")[];
-  /** Base direction of the text; `auto` takes it from the content. */
-  writingDirection?: "auto" | "ltr" | "rtl";
-  /** Where text shorter than its box sits (`<text>` with a height). */
-  textAlignVertical?: "auto" | "top" | "center" | "bottom";
-}
-
-/** Styles of images. */
-export interface ImageStyle extends ViewStyle {
-  /** Recolors a template image. */
-  tintColor?: ColorValue;
-}
+// The style interfaces and the value types they use, generated from the
+// core's table of style properties (`nsh_core::js::style`).
+import type { ColorValue, ImageStyle, TextStyle, ViewStyle } from "./style.gen";
+export type {
+  ColorValue,
+  DimensionValue,
+  ImageStyle,
+  LayoutStyle,
+  LengthValue,
+  TextStyle,
+  TransformStep,
+  ViewStyle,
+} from "./style.gen";
 
 /** A style, or a list of styles merged left to right (falsy entries are
  * skipped). */

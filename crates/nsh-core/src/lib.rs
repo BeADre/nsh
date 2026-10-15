@@ -17,6 +17,7 @@ mod effects;
 mod fenwick;
 mod geometry;
 mod grid;
+pub mod js;
 mod mount;
 mod ops;
 mod props;
