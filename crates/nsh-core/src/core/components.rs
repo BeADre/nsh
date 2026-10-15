@@ -20,8 +20,8 @@ use crate::{
     tailwind::ClassList,
     ui::{
         AnyInstance, Attrs, Child, ComponentSpec, ElKind, ElNode, ErasedEventCx, IntoElement,
-        ListConfig, Listener, ParentElement, PlaceFn, Registry, SharedString, StyleRefinement,
-        Theme, view,
+        ListConfig, Listener, ParentElement, PlaceFn, Position, Registry, SharedString,
+        StyleRefinement, Theme, view,
     },
 };
 
@@ -152,8 +152,9 @@ pub(super) struct Components {
     slot_hosts: FxHashMap<NodeId, NodeId>,
     styles: FxHashMap<StyleRefinement, Arc<ClassList>>,
     /// The lists components place (the glue's, of `Items` props) -> the
-    /// row function of the component's last render.
-    lists: FxHashMap<NodeId, PlaceFn>,
+    /// row function of the component's last render, and the number of rows
+    /// its wrappers last saw.
+    lists: FxHashMap<NodeId, (PlaceFn, u32)>,
     next_id: NodeId,
     dirty: Vec<NodeId>,
     /// Reused buffers.
@@ -279,7 +280,7 @@ impl<M: TextEngine> Core<M> {
                 if self.components.slot_hosts.contains_key(&parent) && self.is_list(parent) =>
             {
                 self.apply_op(op)?;
-                if let Some(place) = self.components.lists.get(&parent).cloned() {
+                if let Some((place, _)) = self.components.lists.get(&parent).cloned() {
                     self.wrap_row(child, place);
                 }
                 Ok(None)
@@ -310,6 +311,31 @@ impl<M: TextEngine> Core<M> {
                 self.components.slot_names.remove(&id);
                 self.components.lists.remove(&id);
                 Ok(Some(Op::Release { id }))
+            }
+            // The number of rows changed: the rows' wrappers render again
+            // (they may depend on it: the last row).
+            Op::SetProp {
+                id,
+                prop: Prop::Count(count),
+            } if self.components.lists.contains_key(&id) => {
+                let key = self.key(id)?;
+                self.apply_op(Op::SetProp {
+                    id,
+                    prop: Prop::Count(count),
+                })?;
+                // A splice before may have changed the list's count already.
+                let seen = &mut self.components.lists.get_mut(&id).expect("list").1;
+                if std::mem::replace(seen, count) != count {
+                    let cells: Vec<NodeId> = self.nodes[key as usize]
+                        .children
+                        .iter()
+                        .map(|&c| self.nodes[c as usize].id)
+                        .collect();
+                    for cell in cells {
+                        self.components.mark(cell);
+                    }
+                }
+                Ok(None)
             }
             // A row cell shows another row: its wrapper renders again.
             Op::SetProp {
@@ -411,6 +437,23 @@ impl<M: TextEngine> Core<M> {
             }
             op => Ok(Some(op)),
         }
+    }
+
+    /// The number of rows of the list cell `cell` is in.
+    fn rows_of_cell(&self, cell: NodeId) -> usize {
+        let Ok(key) = self.key(cell) else { return 0 };
+        self.nodes
+            .get(self.nodes[key as usize].parent as usize)
+            .and_then(|list| list.list.as_ref())
+            .map_or(0, |list| list.count as usize)
+    }
+
+    /// The number of rows of list `list`.
+    fn rows_of_list(&self, list: NodeId) -> u32 {
+        self.key(list)
+            .ok()
+            .and_then(|k| self.nodes[k as usize].list.as_ref())
+            .map_or(0, |l| l.count)
     }
 
     /// Whether `id` is a list.
@@ -609,7 +652,11 @@ impl<M: TextEngine> Core<M> {
             }
             // The cell itself stays the list's: the wrapper goes inside.
             Inner::Row { place, index } => {
-                view().child(place(Child::row(), *index)).into_element().0
+                let at = Position {
+                    index: *index,
+                    count: self.rows_of_cell(host),
+                };
+                view().child(place(Child::row(), at)).into_element().0
             }
             Inner::Missing => ElNode::empty_view(),
         };
@@ -767,8 +814,9 @@ impl<M: TextEngine> Core<M> {
                     continue;
                 }
                 inst.children_at = Placement::Each;
-                for (i, &child) in inst.js_children.iter().enumerate() {
-                    let mut wrapper = place(Child::js(child), i).0;
+                let count = inst.js_children.len();
+                for (index, &child) in inst.js_children.iter().enumerate() {
+                    let mut wrapper = place(Child::js(child), Position { index, count }).0;
                     wrapper.key = Some(format!("\u{0}{child}").into());
                     each.push(wrapper);
                 }
@@ -846,7 +894,8 @@ impl<M: TextEngine> Core<M> {
                     self.components.props = props;
                     let mut e = self.reconcile_slot(prev, node, el, host, inst);
                     e.list = list.config;
-                    self.components.lists.insert(node, list.row.clone());
+                    let rows = self.rows_of_list(node);
+                    self.components.lists.insert(node, (list.row.clone(), rows));
                     let cells: Vec<NodeId> = match self.key(node) {
                         Ok(k) => self.nodes[k as usize]
                             .children

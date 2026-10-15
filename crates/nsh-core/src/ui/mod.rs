@@ -42,7 +42,7 @@ pub use self::{
     element::{
         Accessible, AnyElement, Attrs, Child, Children, ComponentElement, ElNode, Element, EventCx,
         FluentBuilder, Image, Interactive, IntoElement, Items, ListElement, Listener,
-        ParentElement, RenderCx, Slot, SlotElement, Text, View, image, text, view,
+        ParentElement, Position, RenderCx, Slot, SlotElement, Text, View, image, text, view,
     },
     style::{AdaptiveColor, FontWeight, Length, StyleRefinement, Styled, px, relative, rgb, rgba},
     theme::{Theme, ThemeColors, ThemeError},
@@ -58,8 +58,8 @@ pub mod prelude {
         AccessibilityRole, AccessibilityState, Accessible, AdaptiveColor, Child, Children, Color,
         Component, ComponentElement, Element, Event, EventCx, EventKind, EventPayload,
         FluentBuilder, FontWeight, Interactive, IntoElement, Items, Length, Listener, NoEvent,
-        ParentElement, PointerEvents, PropEnum, Props, RenderCx, SharedString, Slot, Styled, Theme,
-        image, px, relative, rgb, rgba, text, view,
+        ParentElement, PointerEvents, Position, PropEnum, Props, RenderCx, SharedString, Slot,
+        Styled, Theme, image, px, relative, rgb, rgba, text, view,
     };
 }
 

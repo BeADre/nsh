@@ -4,6 +4,8 @@
 import { createSignal } from "solid-js";
 import { Button, Group, ListView } from "nsh/ui/mobile";
 
+const [inset, setInset] = createSignal(false);
+
 const stocks = Array.from({ length: 300 }, (_, i) => ({
   id: i,
   symbol: `SYM${String(i).padStart(3, "0")}`,
@@ -24,6 +26,7 @@ function Header() {
         </view>
       </Group>
       <Button title="Tap" variant="secondary" onPress={() => setTaps(taps() + 1)} />
+      <Button title={inset() ? "Plain rows" : "Inset rows"} variant="plain" onPress={() => setInset(!inset())} />
       <text style={{ fontSize: 13, color: "#57606a" }}>ListView below: 300 rows the app renders, recycled natively.</text>
     </view>
   );
@@ -31,7 +34,12 @@ function Header() {
 
 export function MobileUi() {
   return (
-    <ListView each={stocks} keyExtractor={(s) => String(s.id)} ListHeaderComponent={Header}>
+    <ListView
+      variant={inset() ? "inset" : "plain"}
+      each={stocks}
+      keyExtractor={(s) => String(s.id)}
+      ListHeaderComponent={Header}
+    >
       {(stock) => (
         <view style={{ flexDirection: "row", alignItems: "center" }}>
           <text style={{ flex: 1, fontWeight: "600" }}>{stock().symbol}</text>

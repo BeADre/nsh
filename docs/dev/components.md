@@ -67,12 +67,13 @@ impl Component for Button {
   - `header: Option<Slot>` is `Some` while the app passes non-empty JSX for it: `.slot(props.header, |h| h.px_4())`
     places it (the closure styles the slot's own node).
   - `children: Children`: `.child(props.children)` puts them all at one place among the render's own children;
-    `.children_each(props.children, |child, index| view().py_3().child(child))` wraps each one (it runs again when
-    the children change).
+    `.children_each(props.children, |child, at| view().py_3().child(child))` wraps each one (it runs again when
+    the children change; `at` is a `Position`: `index`, `count`, `is_first()`, `is_last()`, what a Solid row knows
+    from its index and the data).
   - `items: Items`: virtualized rows. In JS the component takes `List`'s data props (`each`, the row renderer as
     children, `keyExtractor`, `onEndReached`, `ListHeaderComponent`, ... : `ListItemsProps<T>`, so the component is
-    generic over the row type). `.list(props.items, |l| l.flex_1().estimated_item_size(48.0), |row, index|
-    view().px_4().child(row))` places the list, lays it out (size, columns, padding, gaps, direction) and wraps each
+    generic over the row type). `.list(props.items, |l| l.flex_1().estimated_item_size(48.0), |row, at|
+    view().px_4().when(at.is_last(), |v| v.rounded_b(px(16.0))).child(row))` places the list, lays it out (size, columns, padding, gaps, direction) and wraps each
     row; only rows near the viewport exist and cells are recycled as with `List`.
 - **Elements** are `view()`, `text(..)`, `image(..)`, strings (as texts) and other components (`Button::element(props)`,
   whose `.on_event(cx.listener(..))` handles their typed events instead of the app). Their abilities are traits:
@@ -140,8 +141,8 @@ never sees the expanded nodes; their events are the component's (below).
   `Items` prop. The render places it like a slot and sends its layout (`ListConfig`: estimated size, columns,
   direction, padding, gaps). Each item cell of that list becomes a small instance whose render is the component's row
   function (`Inner::Row`): the wrapper goes into the cell, the row the app rendered into the wrapper. When the list
-  rebinds a cell to another row (`cellIndex`), its wrapper renders again with the new index; a new render of the
-  component re-wraps every live cell. Binding, recycling, measuring and positioning stay the list's: a rebinding frame
+  rebinds a cell to another row (`cellIndex`), its wrapper renders again with the new position; so do all live cells
+  when the number of rows changes (the last row moves), and when the component renders again. Binding, recycling, measuring and positioning stay the list's: a rebinding frame
   of `ListView` costs what one of `List` does (5 ops / 4 mount items in the gallery's Mobile UI demo).
 - Named slots: the glue creates one holder view per slot **the app passes** (`componentSlot`), filled with that prop's
   JSX. The render's `Slot` element *is* that holder: its styles and handlers apply to it, the core places it but never

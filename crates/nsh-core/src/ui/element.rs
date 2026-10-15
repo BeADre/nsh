@@ -208,7 +208,29 @@ impl Clone for ComponentEl {
 }
 
 /// Places one piece of the app's content: a JSX child, or a list row.
-pub(crate) type PlaceFn = Rc<dyn Fn(Child, usize) -> AnyElement>;
+pub(crate) type PlaceFn = Rc<dyn Fn(Child, Position) -> AnyElement>;
+
+/// Where a JSX child or a list row is among its siblings (what a Solid row
+/// knows from its index and the data's length).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Position {
+    /// Its index.
+    pub index: usize,
+    /// How many there are.
+    pub count: usize,
+}
+
+impl Position {
+    /// The first one.
+    pub fn is_first(&self) -> bool {
+        self.index == 0
+    }
+
+    /// The last one.
+    pub fn is_last(&self) -> bool {
+        self.index + 1 == self.count
+    }
+}
 
 /// How a list slot is laid out (each set field is sent to the list).
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -409,37 +431,36 @@ pub trait ParentElement: Element {
         self
     }
 
-    /// Places the app's JSX children here one by one: `place(child, index)`
+    /// Places the app's JSX children here one by one: `place(child, at)`
     /// wraps each (runs again when the children change).
     fn children_each<R: IntoElement>(
         mut self,
         children: Children,
-        place: impl Fn(Child, usize) -> R + 'static,
+        place: impl Fn(Child, Position) -> R + 'static,
     ) -> Self {
         let _ = children;
         let mut node = ElNode::new(Tag::View);
-        node.kind = ElKind::EachChild(Rc::new(move |child, index| {
-            place(child, index).into_element()
-        }));
+        node.kind = ElKind::EachChild(Rc::new(move |child, at| place(child, at).into_element()));
         self.node().children.push(node);
         self
     }
 
     /// Places the app's virtualized list of `items` here: `config` lays
-    /// the list out (size, columns, padding), `row(content, index)` wraps
-    /// each row the app renders (runs again when a cell shows another
-    /// row). Only rows near the viewport exist; the core recycles them.
+    /// the list out (size, columns, padding), `row(content, at)` wraps
+    /// each row the app renders (runs again when a cell shows another row
+    /// or the number of rows changes). Only rows near the viewport exist;
+    /// the core recycles them.
     fn list<R: IntoElement>(
         mut self,
         items: Items,
         config: impl FnOnce(ListElement) -> ListElement,
-        row: impl Fn(Child, usize) -> R + 'static,
+        row: impl Fn(Child, Position) -> R + 'static,
     ) -> Self {
         let mut node = ElNode::new(Tag::List);
         node.kind = ElKind::List(Box::new(ListEl {
             name: items.name,
             config: ListConfig::default(),
-            row: Rc::new(move |content, index| row(content, index).into_element()),
+            row: Rc::new(move |content, at| row(content, at).into_element()),
         }));
         self.node().children.push(config(ListElement(node)).0);
         self

@@ -36,13 +36,13 @@ impl Component for Group {
                     .bg(theme.group_box)
                     .text_color(theme.group_box_foreground)
                     .overflow_hidden()
-                    .children_each(props.children, move |row, index| {
+                    .children_each(props.children, move |row, at| {
                         view()
                             .px_4()
                             .py_3()
                             .min_h(px(44.0))
                             .justify_center()
-                            .when(index > 0, |v| v.border_t_1().border_color(border))
+                            .when(!at.is_first(), |v| v.border_t_1().border_color(border))
                             .child(row)
                     }),
             )

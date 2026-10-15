@@ -3438,8 +3438,12 @@ mod components {
         type Event = NoEvent;
 
         fn render(&self, props: &RowsProps, _cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-            view().children_each(props.children, |child, index| {
-                view().p_1().when(index > 0, |v| v.mt_2()).child(child)
+            view().children_each(props.children, |child, at| {
+                view()
+                    .p_1()
+                    .when(!at.is_first(), |v| v.mt_2())
+                    .when(at.is_last(), |v| v.pb_2())
+                    .child(child)
             })
         }
     }
@@ -3503,7 +3507,11 @@ mod components {
             frame_of(&batch, w4).map(|f| (f.y, f.height)),
             Some((0.0, 18.0))
         );
-        assert_eq!(frame_of(&batch, w6).map(|f| f.y), Some(26.0));
+        // The last has 8pt below.
+        assert_eq!(
+            frame_of(&batch, w6).map(|f| (f.y, f.height)),
+            Some((26.0, 22.0))
+        );
 
         // A child inserted first gets its own wrapper; the others keep theirs
         // and move down (the second row now has the margin).

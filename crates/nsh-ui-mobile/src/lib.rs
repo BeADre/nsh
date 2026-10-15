@@ -20,7 +20,7 @@ pub use crate::{
     button::{Button, ButtonEvent, ButtonProps, ButtonVariant},
     card::{Card, CardProps, CardVariant},
     group::{Group, GroupProps},
-    list_view::{ListView, ListViewProps},
+    list_view::{ListView, ListViewProps, ListViewVariant},
 };
 
 /// Every component of the mobile set, for an engine to render.

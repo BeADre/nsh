@@ -22,8 +22,9 @@ stays native. JS only gets the events the component emits.
   Interaction states that change without a render are variants: `.active(..)`, `.hover(..)`, `.focus(..)`.
 - **The app's content is props, placed by closures**; the component lays it out, never creates or changes it:
   `header: Option<Slot>` (`.slot(props.header, |h| h.px_4())`), `children: Children` (`.child(props.children)`, or
-  `.children_each(props.children, |child, i| ..)` to wrap each), `items: Items` for virtualized rows
-  (`.list(props.items, |l| l.estimated_item_size(48.0), |row, i| ..)`; in JS `each` and a row renderer, like `List`).
+  `.children_each(props.children, |child, at| ..)` to wrap each), `items: Items` for virtualized rows
+  (`.list(props.items, |l| l.estimated_item_size(48.0), |row, at| ..)`; in JS `each` and a row renderer, like `List`).
+  `at` tells the index, the count, first and last.
   `Group` and `ListView` are the examples.
 - **State** lives in the component's fields; listeners (`cx.listener(|this, event, cx| ..)`) get `&mut Self` and emit
   with `cx.emit(ButtonEvent::Press)`.

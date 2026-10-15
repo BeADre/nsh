@@ -193,3 +193,63 @@ fn components_place_the_apps_children_and_rows() {
         "only rows near the viewport exist"
     );
 }
+
+const INSET: &str = r#"import { createSignal } from "solid-js";
+import { render, root } from "nsh";
+import { ListView } from "nsh/ui/mobile";
+
+const [rows, setRows] = createSignal(["A", "B", "C"]);
+setTimeout(() => setRows([...rows(), "D"]), 0);
+
+render(() => <ListView variant="inset" each={rows()}>{(row) => <text>{row()}</text>}</ListView>, root);
+"#;
+
+#[test]
+fn rows_know_whether_they_are_last() {
+    let (_engine, rx) = start(INSET);
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    let parent_of = |batch: &MountBatch, id| {
+        batch.items.iter().find_map(|i| match i {
+            MountItem::Insert { parent, child, .. } if *child == id => Some(*parent),
+            _ => None,
+        })
+    };
+    let corners = |batch: &MountBatch, id| {
+        batch.items.iter().find_map(|i| match i {
+            MountItem::ViewStyle { id: v, style } if *v == id => Some(style.corner_radius),
+            _ => None,
+        })
+    };
+    let rounded = |c: [Option<f32>; 4]| c.iter().map(|r| r.is_some()).collect::<Vec<_>>();
+    let wrapper = |name| parent_of(&first, text_ids(&first, name).unwrap()).unwrap();
+    let (a, b, c) = (wrapper("A"), wrapper("B"), wrapper("C"));
+    // The first row rounds its top corners, the last its bottom ones.
+    assert_eq!(
+        corners(&first, a).map(rounded),
+        Some(vec![true, true, false, false])
+    );
+    assert_eq!(
+        corners(&first, b).map(rounded),
+        Some(vec![false, false, false, false])
+    );
+    assert_eq!(
+        corners(&first, c).map(rounded),
+        Some(vec![false, false, true, true])
+    );
+
+    // A row appended: C is no longer the last, D is.
+    let next = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("the new row");
+    let d = parent_of(&next, text_ids(&next, "D").expect("D")).unwrap();
+    assert_eq!(
+        corners(&next, c).map(rounded),
+        Some(vec![false, false, false, false])
+    );
+    assert_eq!(
+        corners(&next, d).map(rounded),
+        Some(vec![false, false, true, true])
+    );
+}
