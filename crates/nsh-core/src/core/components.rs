@@ -18,7 +18,9 @@ use super::{Core, NO_KEY};
 use crate::{
     ApplyError, Command, EventKind, EventMask, EventPayload, JsonValue, NodeId, Op, Prop, Tag,
     TextEngine,
-    component::{AnyComponent, Attrs, ElNode, EventCx, Handler, Props, Registry, RenderCx},
+    component::{
+        AnyComponent, Attrs, ClassStr, ElNode, EventCx, Handler, Props, Registry, RenderCx,
+    },
 };
 
 /// Renders of one component per commit, at most (a component whose render
@@ -42,7 +44,9 @@ pub(super) struct Instance {
     children_parent: Option<NodeId>,
     /// The glue's node of each named slot (it holds the slot's JSX).
     slots: FxHashMap<Arc<str>, NodeId>,
-    handlers: FxHashMap<(NodeId, u8), Handler>,
+    /// The last render's handlers, by node and event (a handful: a list
+    /// beats a map).
+    handlers: Vec<(NodeId, EventKind, Handler)>,
     dirty: bool,
     renders: u32,
 }
@@ -66,7 +70,8 @@ struct Expanded {
 /// The core's component state.
 pub(super) struct Components {
     registry: Registry,
-    pub(super) instances: FxHashMap<NodeId, Instance>,
+    /// Boxed: a render takes its instance out of the map and back.
+    pub(super) instances: FxHashMap<NodeId, Box<Instance>>,
     /// Expanded node -> the host of the component that rendered it.
     owners: FxHashMap<NodeId, NodeId>,
     /// Slot nodes (`componentSlot`) -> their slot's name.
@@ -75,6 +80,9 @@ pub(super) struct Components {
     slot_hosts: FxHashMap<NodeId, NodeId>,
     next_id: NodeId,
     dirty: Vec<NodeId>,
+    /// Reused buffers.
+    rendered: Vec<NodeId>,
+    props: Vec<Prop>,
 }
 
 impl Default for Components {
@@ -88,6 +96,8 @@ impl Default for Components {
             // Odd: JS allocates the even ids (1 is the root).
             next_id: 3,
             dirty: Vec::new(),
+            rendered: Vec::new(),
+            props: Vec::new(),
         }
     }
 }
@@ -129,6 +139,10 @@ impl<M: TextEngine> Core<M> {
     /// Ops from JS on a component's host take its place; others pass
     /// (`Some`).
     pub(super) fn intercept(&mut self, op: Op) -> Result<Option<Op>, ApplyError> {
+        // Apps without components pay one check per op.
+        if self.components.instances.is_empty() && self.components.slot_names.is_empty() {
+            return Ok(Some(op));
+        }
         match op {
             // A slot's node joins its host: the render places it.
             Op::Insert { parent, child, .. }
@@ -288,30 +302,30 @@ impl<M: TextEngine> Core<M> {
         if self.is_host(host) {
             return;
         }
-        let (spec, component) = match self.components.registry.make(&name) {
-            Some((spec, c)) => (Some(spec), Some(c)),
+        let (props, component) = match self.components.registry.make(&name) {
+            Some((props, c)) => (props, Some(c)),
             None => {
                 self.deny(format!(
                     "no component is registered as `{name}`: it renders nothing"
                 ));
-                (None, None)
+                (Props::new(None, Default::default()), None)
             }
         };
         self.components.instances.insert(
             host,
-            Instance {
+            Box::new(Instance {
                 component,
-                props: Props::new(spec),
+                props,
                 user_class: None,
                 js_events: EventMask::default(),
                 root: None,
                 js_children: Vec::new(),
                 children_parent: None,
                 slots: FxHashMap::default(),
-                handlers: FxHashMap::default(),
+                handlers: Vec::new(),
                 dirty: false,
                 renders: 0,
-            },
+            }),
         );
         self.components.mark(host);
     }
@@ -326,7 +340,7 @@ impl<M: TextEngine> Core<M> {
         let Some(inst) = self.components.instances.get_mut(&host) else {
             return false;
         };
-        if inst.props.set(name, value) {
+        if inst.props.set(&name, value) {
             self.components.mark(host);
         }
         true
@@ -334,7 +348,10 @@ impl<M: TextEngine> Core<M> {
 
     /// Renders the components whose props or state changed.
     pub(super) fn render_components(&mut self) {
-        let mut rendered = Vec::new();
+        if self.components.dirty.is_empty() {
+            return;
+        }
+        let mut rendered = std::mem::take(&mut self.components.rendered);
         while let Some(host) = self.components.dirty.pop() {
             let Some(mut inst) = self.components.instances.remove(&host) else {
                 continue;
@@ -350,11 +367,12 @@ impl<M: TextEngine> Core<M> {
             self.components.instances.insert(host, inst);
             rendered.push(host);
         }
-        for host in rendered {
+        for host in rendered.drain(..) {
             if let Some(inst) = self.components.instances.get_mut(&host) {
                 inst.renders = 0;
             }
         }
+        self.components.rendered = rendered;
     }
 
     fn render(&mut self, host: NodeId, inst: &mut Instance) {
@@ -382,10 +400,7 @@ impl<M: TextEngine> Core<M> {
             el.text = None;
         }
         if let Some(user) = &inst.user_class {
-            el.attrs.class = Some(match el.attrs.class.take() {
-                Some(own) => format!("{own} {user}").into(),
-                None => user.clone(),
-            });
+            el.attrs.class.push(ClassStr::Shared(user.clone()));
         }
         inst.handlers.clear();
         let old = inst.root.take();
@@ -460,11 +475,12 @@ impl<M: TextEngine> Core<M> {
     }
 
     fn apply_attrs(&mut self, id: NodeId, new: &Attrs, old: &Attrs) {
-        let mut props = Vec::new();
+        let mut props = std::mem::take(&mut self.components.props);
         new.changes(old, &mut props);
-        for prop in props {
+        for prop in props.drain(..) {
             let _ = self.apply_op(Op::SetProp { id, prop });
         }
+        self.components.props = props;
     }
 
     /// Registers `el`'s handlers for node `id` and listens to their events
@@ -480,16 +496,18 @@ impl<M: TextEngine> Core<M> {
         let mut mask = extra;
         for (kind, handler) in &el.handlers {
             mask.set(*kind, true);
-            inst.handlers.insert((id, *kind as u8), handler.clone());
+            inst.handlers.push((id, *kind, handler.clone()));
         }
-        for &kind in EventKind::ALL {
-            if mask.contains(kind) != old.contains(kind) {
-                let _ = self.apply_op(Op::Listen {
-                    id,
-                    event: kind,
-                    enabled: mask.contains(kind),
-                });
-            }
+        // Only the events that changed.
+        let mut changed = mask.bits() ^ old.bits();
+        while changed != 0 {
+            let kind = EventKind::ALL[changed.trailing_zeros() as usize];
+            changed &= changed - 1;
+            let _ = self.apply_op(Op::Listen {
+                id,
+                event: kind,
+                enabled: mask.contains(kind),
+            });
         }
         mask
     }
@@ -538,21 +556,19 @@ impl<M: TextEngine> Core<M> {
             self.release_expanded(o);
         }
         // Order the native children as rendered (moves only when it changed).
-        let mut want: Vec<NodeId> = Vec::with_capacity(out.len() + 1);
-        want.extend(out.iter().map(|e| e.id));
-        let have: Vec<NodeId> = match self.key(parent) {
-            Ok(k) => self.nodes[k as usize]
-                .children
-                .iter()
-                .map(|&c| self.nodes[c as usize].id)
-                .collect(),
-            Err(_) => Vec::new(),
-        };
-        if have != want {
-            for &child in &want {
+        let in_order = self.key(parent).is_ok_and(|k| {
+            let have = &self.nodes[k as usize].children;
+            have.len() == out.len()
+                && have
+                    .iter()
+                    .zip(&out)
+                    .all(|(&c, e)| self.nodes[c as usize].id == e.id)
+        });
+        if !in_order {
+            for e in &out {
                 let _ = self.apply_op(Op::Insert {
                     parent,
-                    child,
+                    child: e.id,
                     before: None,
                 });
             }
@@ -620,7 +636,8 @@ impl<M: TextEngine> Core<M> {
             for (name, value) in props {
                 self.set_component_prop(id, name, Some(value));
             }
-            self.set_user_class(id, el.attrs.class.clone());
+            let class = (!el.attrs.class.is_empty()).then(|| el.attrs.class.joined().into());
+            self.set_user_class(id, class);
         } else {
             self.apply_attrs(id, &el.attrs, &old_attrs);
         }
@@ -755,7 +772,12 @@ impl<M: TextEngine> Core<M> {
         let Some(inst) = self.components.instances.get_mut(&host) else {
             return false;
         };
-        let Some(handler) = inst.handlers.get(&(id, kind as u8)).cloned() else {
+        let Some(handler) = inst
+            .handlers
+            .iter()
+            .find(|(n, k, _)| *n == id && *k == kind)
+            .map(|(_, _, h)| h.clone())
+        else {
             return false;
         };
         let mut cx = EventCx::default();

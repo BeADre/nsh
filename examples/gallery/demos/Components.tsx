@@ -3,7 +3,7 @@ import { AccessibilityInfo, reduceMotion, screenReaderEnabled } from "nsh/access
 import { LayoutAnimation } from "nsh/animated";
 import { PixelRatio, Platform } from "nsh/device";
 import { InputAccessoryView } from "nsh/ios";
-import { Button, KeyboardAvoidingView, Modal, SafeAreaView, Screen } from "nsh/ui/mobile";
+import { Button, Card, KeyboardAvoidingView, Modal, SafeAreaView, Screen } from "nsh/ui/mobile";
 import { nav } from "../nav";
 import { Button as UiButton, colors, Section } from "../ui";
 
@@ -233,6 +233,15 @@ function MobileComponents() {
       <Button title="Secondary" variant="secondary" onPress={() => setPresses(presses() + 1)} />
       <Button title="Plain" variant="plain" onPress={() => setPresses(presses() + 1)} />
       <Button title="Disabled" disabled onPress={() => setPresses(presses() + 1)} />
+      <Card
+        header={<text>Card with slots</text>}
+        footer={<Button title="Reset" variant="plain" onPress={() => setPresses(0)} />}
+      >
+        <text>The header, this body and the footer are JSX in a Rust component's slots and children.</text>
+      </Card>
+      <Card variant="outlined">
+        <text>An outlined card, children only.</text>
+      </Card>
     </Section>
   );
 }

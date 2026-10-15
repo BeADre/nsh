@@ -120,70 +120,140 @@ pub trait Component: Any + Default {
     }
 }
 
-/// A component's props as JS set them, with the spec's defaults.
+/// A prop value, stored for cheap reads: strings are shared, so a render
+/// reading one only bumps a reference count.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum PropValue {
+    Null,
+    Bool(bool),
+    Number(f64),
+    Str(Arc<str>),
+    Json(JsonValue),
+}
+
+impl From<JsonValue> for PropValue {
+    fn from(v: JsonValue) -> Self {
+        match v {
+            JsonValue::Null => PropValue::Null,
+            JsonValue::Bool(b) => PropValue::Bool(b),
+            JsonValue::Number(n) => PropValue::Number(n.as_f64().unwrap_or(0.0)),
+            JsonValue::String(s) => PropValue::Str(s.into()),
+            v => PropValue::Json(v),
+        }
+    }
+}
+
+impl PropValue {
+    fn to_json(&self) -> JsonValue {
+        match self {
+            PropValue::Null => JsonValue::Null,
+            PropValue::Bool(b) => JsonValue::Bool(*b),
+            PropValue::Number(n) => {
+                serde_json::Number::from_f64(*n).map_or(JsonValue::Null, JsonValue::Number)
+            }
+            PropValue::Str(s) => JsonValue::String(s.to_string()),
+            PropValue::Json(v) => v.clone(),
+        }
+    }
+}
+
+/// The empty string, shared.
+fn empty() -> Arc<str> {
+    static EMPTY: std::sync::LazyLock<Arc<str>> = std::sync::LazyLock::new(|| Arc::from(""));
+    EMPTY.clone()
+}
+
+/// A spec's props' defaults, parsed once per registered component.
+pub(crate) type Defaults = Arc<[Option<PropValue>]>;
+
+fn defaults(spec: &Spec) -> Defaults {
+    spec.props
+        .iter()
+        .map(|p| {
+            p.default
+                .and_then(|d| serde_json::from_str::<JsonValue>(d).ok())
+                .map(PropValue::from)
+        })
+        .collect()
+}
+
+/// A component's props as JS set them, with the spec's defaults. Props are
+/// stored by their index in the spec (components have a handful).
 pub struct Props {
-    values: FxHashMap<Arc<str>, JsonValue>,
+    values: Vec<Option<PropValue>>,
     spec: Option<&'static Spec>,
+    defaults: Defaults,
 }
 
 impl fmt::Debug for Props {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_map().entries(self.values.iter()).finish()
+        let names = self.spec.map_or(&[][..], |s| s.props);
+        f.debug_map()
+            .entries(
+                names
+                    .iter()
+                    .zip(&self.values)
+                    .filter_map(|(p, v)| Some((p.name, v.as_ref()?))),
+            )
+            .finish()
     }
 }
 
 impl Props {
-    pub(crate) fn new(spec: Option<&'static Spec>) -> Self {
+    pub(crate) fn new(spec: Option<&'static Spec>, defaults: Defaults) -> Self {
         Self {
-            values: FxHashMap::default(),
+            values: vec![None; spec.map_or(0, |s| s.props.len())],
             spec,
+            defaults,
         }
     }
 
-    /// Sets prop `name`; `None` removes it. Returns whether it changed.
-    pub(crate) fn set(&mut self, name: Arc<str>, value: Option<JsonValue>) -> bool {
-        match value {
-            Some(v) => self.values.insert(name, v.clone()).as_ref() != Some(&v),
-            None => self.values.remove(&name).is_some(),
+    fn index(&self, name: &str) -> Option<usize> {
+        self.spec?.props.iter().position(|p| p.name == name)
+    }
+
+    /// Sets prop `name`; `None` removes it. Returns whether it changed (a
+    /// name the spec does not have is ignored).
+    pub(crate) fn set(&mut self, name: &str, value: Option<JsonValue>) -> bool {
+        let Some(i) = self.index(name) else {
+            return false;
+        };
+        let value = value.map(PropValue::from);
+        if self.values[i] == value {
+            return false;
         }
+        self.values[i] = value;
+        true
+    }
+
+    fn value(&self, name: &str) -> Option<&PropValue> {
+        let i = self.index(name)?;
+        self.values[i].as_ref().or(self.defaults.get(i)?.as_ref())
     }
 
     /// Prop `name` as JS set it, else its default.
     pub fn get(&self, name: &str) -> Option<JsonValue> {
-        if let Some(v) = self.values.get(name) {
-            return Some(v.clone());
-        }
-        let default = self.spec?.props.iter().find(|p| p.name == name)?.default?;
-        serde_json::from_str(default).ok()
+        self.value(name).map(PropValue::to_json)
     }
 
     /// A string prop (`""` when unset).
     pub fn str(&self, name: &str) -> Arc<str> {
-        match self.values.get(name) {
-            Some(JsonValue::String(s)) => s.as_str().into(),
-            Some(_) => Arc::from(""),
-            None => match self.get(name) {
-                Some(JsonValue::String(s)) => s.as_str().into(),
-                _ => Arc::from(""),
-            },
+        match self.value(name) {
+            Some(PropValue::Str(s)) => s.clone(),
+            _ => empty(),
         }
     }
 
     /// A boolean prop (`false` when unset).
     pub fn bool(&self, name: &str) -> bool {
-        match self.values.get(name) {
-            Some(JsonValue::Bool(b)) => *b,
-            Some(_) => false,
-            None => matches!(self.get(name), Some(JsonValue::Bool(true))),
-        }
+        matches!(self.value(name), Some(PropValue::Bool(true)))
     }
 
     /// A number prop (0 when unset).
     pub fn number(&self, name: &str) -> f64 {
-        match self.values.get(name) {
-            Some(JsonValue::Number(n)) => n.as_f64().unwrap_or(0.0),
-            Some(_) => 0.0,
-            None => self.get(name).and_then(|v| v.as_f64()).unwrap_or(0.0),
+        match self.value(name) {
+            Some(PropValue::Number(n)) => *n,
+            _ => 0.0,
         }
     }
 }
@@ -233,10 +303,92 @@ pub(crate) type Nested = (Arc<str>, Vec<(Arc<str>, JsonValue)>);
 /// An event handler of a part, with the component erased.
 pub(crate) type Handler = Rc<dyn Fn(&mut dyn Any, &EventPayload, &mut EventCx)>;
 
+/// A run of Tailwind classes ([`El::class`]): static strings cost nothing,
+/// dynamic ones are shared.
+#[derive(Debug, Clone)]
+pub enum ClassStr {
+    /// Classes written in the component's code.
+    Static(&'static str),
+    /// Classes computed at render time.
+    Shared(Arc<str>),
+}
+
+impl ClassStr {
+    fn as_str(&self) -> &str {
+        match self {
+            ClassStr::Static(s) => s,
+            ClassStr::Shared(s) => s,
+        }
+    }
+}
+
+impl PartialEq for ClassStr {
+    fn eq(&self, other: &Self) -> bool {
+        let (a, b) = (self.as_str(), other.as_str());
+        std::ptr::eq(a, b) || a == b
+    }
+}
+
+impl From<&'static str> for ClassStr {
+    fn from(s: &'static str) -> Self {
+        ClassStr::Static(s)
+    }
+}
+
+impl From<String> for ClassStr {
+    fn from(s: String) -> Self {
+        ClassStr::Shared(s.into())
+    }
+}
+
+impl From<Arc<str>> for ClassStr {
+    fn from(s: Arc<str>) -> Self {
+        ClassStr::Shared(s)
+    }
+}
+
+/// An element's classes, in order; joined only when they changed.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct Classes(pub(crate) Vec<ClassStr>);
+
+impl Classes {
+    pub(crate) fn push(&mut self, classes: ClassStr) {
+        let empty = match &classes {
+            ClassStr::Static(s) => s.is_empty(),
+            ClassStr::Shared(s) => s.trim().is_empty(),
+        };
+        if !empty {
+            self.0.push(classes);
+        }
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub(crate) fn joined(&self) -> Box<str> {
+        match &self.0[..] {
+            [] => "".into(),
+            [one] => one.as_str().into(),
+            parts => {
+                let mut out =
+                    String::with_capacity(parts.iter().map(|p| p.as_str().len() + 1).sum());
+                for (i, p) in parts.iter().enumerate() {
+                    if i > 0 {
+                        out.push(' ');
+                    }
+                    out.push_str(p.as_str());
+                }
+                out.into()
+            }
+        }
+    }
+}
+
 /// The props of an element the core diffs field by field.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Attrs {
-    pub(crate) class: Option<Arc<str>>,
+    pub(crate) class: Classes,
     pub(crate) disabled: bool,
     pub(crate) accessible: Option<bool>,
     pub(crate) label: Option<Arc<str>>,
@@ -333,15 +485,11 @@ pub fn component<C>(
 }
 
 impl<C: 'static> El<C> {
-    /// Tailwind classes; several calls append.
-    pub fn class(mut self, classes: &str) -> Self {
-        let classes = classes.trim();
-        if !classes.is_empty() {
-            self.node.attrs.class = Some(match self.node.attrs.class.take() {
-                Some(c) => format!("{c} {classes}").into(),
-                None => classes.into(),
-            });
-        }
+    /// Tailwind classes; several calls append. Pass static strings where
+    /// possible (`"px-4 py-3"`): they are neither copied nor joined until
+    /// they change.
+    pub fn class(mut self, classes: impl Into<ClassStr>) -> Self {
+        self.node.attrs.class.push(classes.into());
         self
     }
 
@@ -468,7 +616,7 @@ impl Attrs {
     pub(crate) fn changes(&self, old: &Attrs, out: &mut Vec<Prop>) {
         use crate::{AccessibilityProp as A, NativeProp};
         if self.class != old.class {
-            out.push(Prop::Class(self.class.as_deref().unwrap_or("").into()));
+            out.push(Prop::Class(self.class.joined()));
         }
         if self.disabled != old.disabled {
             out.push(Prop::Native(NativeProp::Disabled(self.disabled)));
@@ -532,9 +680,10 @@ impl<C: Component> AnyComponent for C {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct ComponentType {
     spec: &'static Spec,
+    defaults: Defaults,
     make: fn() -> Box<dyn AnyComponent>,
 }
 
@@ -565,6 +714,7 @@ impl Registry {
             C::spec().name,
             ComponentType {
                 spec: C::spec(),
+                defaults: defaults(C::spec()),
                 make: make::<C>,
             },
         );
@@ -578,8 +728,11 @@ impl Registry {
         specs
     }
 
-    pub(crate) fn make(&self, name: &str) -> Option<(&'static Spec, Box<dyn AnyComponent>)> {
-        self.types.get(name).map(|t| (t.spec, (t.make)()))
+    /// A new instance of component `name`, with its props.
+    pub(crate) fn make(&self, name: &str) -> Option<(Props, Box<dyn AnyComponent>)> {
+        self.types
+            .get(name)
+            .map(|t| (Props::new(Some(t.spec), t.defaults.clone()), (t.make)()))
     }
 }
 

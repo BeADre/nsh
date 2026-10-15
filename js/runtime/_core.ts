@@ -15,8 +15,6 @@ import {
   createRenderEffect,
   createRoot,
   createSignal,
-  mergeProps as mergeSolidProps,
-  splitProps,
   untrack,
 } from "solid-js";
 import { createRenderer } from "solid-js/universal";
@@ -380,13 +378,21 @@ export type ComponentHostProps = Pick<ViewProps, "class" | "classList" | "style"
 /** `press` -> `onPress`. */
 const eventHandler = (event: string): string => "on" + event.charAt(0).toUpperCase() + event.slice(1);
 
+/** The host props JS sets on a component's host node as on a view (`ref` is
+ * called once instead). */
+const hostProps = ["class", "classList", "style", "testID", "onLayout"];
+
 /**
  * The JS face of Rust component `name` (generated from its spec,
  * `nsh_core::component::typescript`): a host node naming the component, its
  * own `props` sent as `$name` when they change, its `events` delivered to
  * the `on<Event>` handlers, its JSX children inserted when it takes some, and
- * one node per named slot holding the JSX passed in that prop (the
- * component's render decides where it goes).
+ * one node per named slot the app fills (the component's render decides
+ * where it goes).
+ *
+ * Built for speed, as it runs for every instance: one effect reads every
+ * prop and sends those that changed (no prop splitting or merging proxies),
+ * and absent children, slots and handlers cost nothing.
  */
 export function component<P>(
   name: string,
@@ -395,32 +401,45 @@ export function component<P>(
   children: boolean,
   slots: readonly string[],
 ): (p: P) => any {
-  const own: string[] = [...props];
-  const handlers: string[] = events.map(eventHandler);
-  const split: string[] = children ? ["children", ...slots] : [...slots];
+  const keys: string[] = [...props, ...hostProps];
+  const wire: string[] = [...props.map((k) => "$" + k), ...hostProps];
+  const handlers: Record<string, string> = {};
+  for (const e of events) handlers[e] = eventHandler(e);
+  const handlerNames = Object.values(handlers);
   return (p: P) => {
+    const q = p as any;
     const node = createElement("view");
-    setProp(node, "component", name);
-    const [mine, on, kids, host] = splitProps(p as any, own, handlers, split);
+    renderer.setProp(node, "component", name);
     let anchor: YNode | undefined;
     for (const slot of slots) {
+      // Props are fixed per JSX site: a slot the app does not pass never
+      // gets a node.
+      if (!(slot in q)) continue;
       const holder = createElement("view");
-      setProp(holder, "componentSlot", slot);
-      insert(holder, () => kids[slot]);
+      renderer.setProp(holder, "componentSlot", slot);
+      insert(holder, () => q[slot]);
       insertNode(node, holder);
       anchor ??= holder;
     }
-    const values: Record<string, unknown> = {};
-    for (const key of own) {
-      Object.defineProperty(values, "$" + key, { enumerable: true, get: () => mine[key] });
+    if (handlerNames.some((h) => h in q)) {
+      renderer.setProp(node, "onNativeEvent", (e: { name: string; data: unknown }) => {
+        const h = handlers[e.name];
+        if (h !== undefined) q[h]?.(e.data);
+      });
     }
-    const listener =
-      handlers.length > 0
-        ? { onNativeEvent: (e: { name: string; data: unknown }) => on[eventHandler(e.name)]?.(e.data) }
-        : {};
-    spread(node, mergeSolidProps(host, values, listener), true);
+    const prev: unknown[] = new Array(keys.length);
+    renderer.effect(() => {
+      for (let i = 0; i < keys.length; i++) {
+        const value = q[keys[i]];
+        if (value !== prev[i]) {
+          renderer.setProp(node, wire[i], value, prev[i]);
+          prev[i] = value;
+        }
+      }
+    });
+    if (typeof q.ref === "function") q.ref(node);
     // Before the slots' nodes: clearing the children must not remove them.
-    if (children) insert(node, () => kids.children, anchor);
+    if (children && "children" in q) insert(node, () => q.children, anchor);
     return node;
   };
 }
