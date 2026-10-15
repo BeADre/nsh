@@ -528,6 +528,7 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                     }
                     // Turned into a mount item / `ScrollTo` by the core.
                     Command::LayoutAnimation(_)
+                    | Command::SetStatusBar(_)
                     | Command::ScrollToIndex { .. }
                     | Command::ScrollToEnd { .. } => e.int(-1),
                 }

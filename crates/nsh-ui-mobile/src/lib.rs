@@ -10,8 +10,12 @@
 mod button;
 mod card;
 mod group;
+mod keyboard;
 mod list_view;
+mod safe_area;
+mod status_bar;
 mod stepper;
+mod system;
 
 use std::sync::Arc;
 
@@ -21,8 +25,12 @@ pub use crate::{
     button::{Button, ButtonEvent, ButtonProps, ButtonVariant},
     card::{Card, CardProps, CardVariant},
     group::{Group, GroupProps},
+    keyboard::{AvoidBehavior, Keyboard, KeyboardAvoidingView, KeyboardAvoidingViewProps},
     list_view::{ListView, ListViewProps, ListViewVariant},
+    safe_area::{Edge, SafeAreaView, SafeAreaViewProps},
+    status_bar::{BarAnimation, BarStyle, StatusBar, StatusBarProps},
     stepper::{Stepper, StepperEvent, StepperProps},
+    system::{ActionSheet, ActionSheetOptions, Alert, AlertButton, AlertButtonStyle, AlertOptions},
 };
 
 /// Every component of the mobile set, for an engine to render.
@@ -33,7 +41,16 @@ pub fn registry() -> Registry {
         .register::<Card>()
         .register::<Group>()
         .register::<ListView>()
-        .register::<Stepper>();
+        .register::<Stepper>()
+        .register::<SafeAreaView>()
+        .register::<KeyboardAvoidingView>()
+        .register::<StatusBar>()
+        .module::<Alert>()
+        .module::<ActionSheet>()
+        .module::<Keyboard>()
+        .module::<StatusBar>()
+        // The runtime's accessors and hooks of the mobile UI, as they are.
+        .reexport(&["safeArea", "keyboard", "useSafeAreaInsets"], &["Insets"]);
     registry
 }
 

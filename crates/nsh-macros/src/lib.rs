@@ -38,7 +38,8 @@ fn docs(attrs: &[Attribute]) -> String {
             lines.push(s.value().trim().to_owned());
         }
     }
-    lines.join(" ").trim().to_owned()
+    // Rustdoc links (`[`Button`]`) read as code spans in TypeScript.
+    lines.join(" ").trim().replace("[`", "`").replace("`]", "`")
 }
 
 /// `accessibility_label` / `AccessibilityLabel` -> `accessibilityLabel`.
@@ -187,7 +188,7 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
                 specs.push(quote! {
                     #ui::PropSpec {
                         name: #js,
-                        ts: <#ty as #ui::JsValue>::ts_type(),
+                        ts: <#ty as #ui::JsValue>::ts_type(types),
                         optional: #optional,
                         doc: #field_doc,
                         kind: #ui::PropKind::Value,
@@ -283,7 +284,8 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
                 #doc
             }
 
-            fn spec() -> ::std::vec::Vec<#ui::PropSpec> {
+            fn spec(types: &mut #ui::TsTypes) -> ::std::vec::Vec<#ui::PropSpec> {
+                let _ = &types;
                 ::std::vec![#(#specs),*]
             }
 
@@ -361,10 +363,17 @@ fn prop_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
         .collect::<Vec<_>>()
         .join(" | ");
     let expected = format!("one of {ts}");
+    let type_name = name.to_string();
+    let doc = docs(&input.attrs);
+    let declaration = if doc.is_empty() {
+        format!("export type {type_name} = {ts};")
+    } else {
+        format!("/** {doc} */\nexport type {type_name} = {ts};")
+    };
     Ok(quote! {
         impl #ui::JsValue for #name {
-            fn ts_type() -> ::std::string::String {
-                ::std::string::String::from(#ts)
+            fn ts_type(types: &mut #ui::TsTypes) -> ::std::string::String {
+                types.declare(#type_name, |_| ::std::string::String::from(#declaration))
             }
 
             fn from_json(value: ::nsh_core::JsonValue) -> ::core::result::Result<Self, #ui::PropError> {
@@ -423,7 +432,7 @@ fn event(input: DeriveInput) -> syn::Result<TokenStream2> {
             Fields::Unnamed(f) if f.unnamed.len() == 1 => {
                 let ty = &f.unnamed[0].ty;
                 specs.push(quote! {
-                    #ui::EventSpec { name: #js, data: <#ty as #ui::JsValue>::ts_type(), doc: #doc }
+                    #ui::EventSpec { name: #js, data: <#ty as #ui::JsValue>::ts_type(types), doc: #doc }
                 });
                 name_arms.push(quote!(Self::#ident(..) => #js));
                 data_arms.push(quote!(Self::#ident(v) => #ui::JsValue::to_json(v)));
@@ -441,7 +450,7 @@ fn event(input: DeriveInput) -> syn::Result<TokenStream2> {
                         name: #js,
                         data: {
                             let fields: ::std::vec::Vec<::std::string::String> = ::std::vec![
-                                #(::std::format!("{}: {}", #keys, <#tys as #ui::JsValue>::ts_type())),*
+                                #(::std::format!("{}: {}", #keys, <#tys as #ui::JsValue>::ts_type(types))),*
                             ];
                             ::std::format!("{{ {} }}", fields.join("; "))
                         },
@@ -468,7 +477,8 @@ fn event(input: DeriveInput) -> syn::Result<TokenStream2> {
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     Ok(quote! {
         impl #impl_generics #ui::Event for #name #ty_generics #where_clause {
-            fn spec() -> ::std::vec::Vec<#ui::EventSpec> {
+            fn spec(types: &mut #ui::TsTypes) -> ::std::vec::Vec<#ui::EventSpec> {
+                let _ = &types;
                 ::std::vec![#(#specs),*]
             }
 
@@ -723,6 +733,268 @@ fn methods_impl(item: ItemImpl) -> syn::Result<TokenStream2> {
             /// The methods JS calls on the component's ref (`#[methods]`).
             #[doc(hidden)]
             pub const JS_METHODS: &'static [#ui::Method<Self>] = &[#(#entries),*];
+        }
+    })
+}
+
+/// `#[derive(JsObject)]` on a struct with named fields: a plain object in
+/// JS (fields in camel case). A field is optional in TypeScript when it is
+/// an `Option` or has `#[prop(default)]` / `#[prop(default = expr)]`;
+/// missing, it takes its default. Doc comments document the fields.
+#[proc_macro_derive(JsObject, attributes(prop))]
+pub fn derive_js_object(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    js_object(input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+fn js_object(input: DeriveInput) -> syn::Result<TokenStream2> {
+    let name = &input.ident;
+    let Data::Struct(data) = &input.data else {
+        return Err(syn::Error::new(
+            input.span(),
+            "`JsObject` is derived for structs",
+        ));
+    };
+    let Fields::Named(fields) = &data.fields else {
+        return Err(syn::Error::new(
+            input.span(),
+            "`JsObject` needs named fields",
+        ));
+    };
+    let ui = quote!(::nsh_core::ui);
+    let mut ts = Vec::new();
+    let mut from = Vec::new();
+    let mut to = Vec::new();
+    for field in &fields.named {
+        let ident = field.ident.as_ref().expect("named");
+        let ty = &field.ty;
+        let attr = prop_attr(&field.attrs)?;
+        let js = attr
+            .rename
+            .clone()
+            .unwrap_or_else(|| camel(&ident.to_string()));
+        let doc = docs(&field.attrs);
+        let is_option = matches!(last_segment(ty), Some((id, _)) if id == "Option");
+        let optional = is_option || attr.default.is_some();
+        let mark = if optional { "?" } else { "" };
+        let doc_ts = if doc.is_empty() {
+            String::new()
+        } else {
+            format!("/** {doc} */\n  ")
+        };
+        ts.push(quote!(
+            ::std::format!("  {}{}{}: {};", #doc_ts, #js, #mark, <#ty as #ui::JsValue>::ts_type(types))
+        ));
+        let missing = match (&attr.default, is_option) {
+            (Some(Some(expr)), _) => quote!(#expr),
+            (Some(None), _) | (None, true) => quote!(::core::default::Default::default()),
+            (None, false) => quote! {
+                return ::core::result::Result::Err(#ui::PropError(::std::format!("`{}` is missing", #js)))
+            },
+        };
+        from.push(quote! {
+            #ident: match object.remove(#js) {
+                ::core::option::Option::Some(v) if !v.is_null() || #is_option => <#ty as #ui::JsValue>::from_json(v)
+                    .map_err(|e| #ui::PropError(::std::format!("`{}`: {}", #js, e)))?,
+                _ => { #missing }
+            }
+        });
+        to.push(quote! {
+            object.insert(::std::string::String::from(#js), #ui::JsValue::to_json(&self.#ident));
+        });
+    }
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    let type_name = name.to_string();
+    let doc = docs(&input.attrs);
+    let head = if doc.is_empty() {
+        format!("export interface {type_name} {{")
+    } else {
+        format!("/** {doc} */\nexport interface {type_name} {{")
+    };
+    Ok(quote! {
+        impl #impl_generics #ui::JsValue for #name #ty_generics #where_clause {
+            fn ts_type(types: &mut #ui::TsTypes) -> ::std::string::String {
+                types.declare(#type_name, |types| {
+                    let fields: ::std::vec::Vec<::std::string::String> = ::std::vec![#(#ts),*];
+                    ::std::format!("{}\n{}\n}}", #head, fields.join("\n"))
+                })
+            }
+
+            fn from_json(value: ::nsh_core::JsonValue) -> ::core::result::Result<Self, #ui::PropError> {
+                let ::nsh_core::JsonValue::Object(mut object) = value else {
+                    return ::core::result::Result::Err(#ui::PropError::expected("an object", &value));
+                };
+                ::core::result::Result::Ok(Self { #(#from),* })
+            }
+
+            fn to_json(&self) -> ::nsh_core::JsonValue {
+                let mut object = ::nsh_core::ui::__private::JsonMap::new();
+                #(#to)*
+                ::nsh_core::JsonValue::Object(object)
+            }
+        }
+    })
+}
+
+/// Whether `ty` is `AsyncCx` / `&mut ModuleCx`: a module function's
+/// context.
+fn module_cx(ty: &Type) -> Option<bool> {
+    match ty {
+        Type::Reference(r) if matches!(last_segment(&r.elem), Some((id, _)) if id == "ModuleCx") => {
+            Some(false)
+        }
+        t if matches!(last_segment(t), Some((id, _)) if id == "AsyncCx") => Some(true),
+        _ => None,
+    }
+}
+
+/// `#[module]` on an `impl` block of a unit struct: its functions (no
+/// receiver) become functions of a JS object named after the struct
+/// (`Alert.alert(...)`), documented by their doc comments (the block's doc
+/// comment documents the object). A function takes [`JsValue`] parameters
+/// (an `Option` one is optional), then optionally `cx: &mut ModuleCx`, or
+/// for an `async fn` `cx: AsyncCx`; it returns nothing (JS calls it and
+/// moves on) or a [`JsValue`] (JS gets a `Promise`). A UI set registers
+/// the module (`Registry::module::<Alert>()`); a component exported under
+/// the same name gets the functions too (`StatusBar.setHidden(...)`).
+#[proc_macro_attribute]
+pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
+    if !attr.is_empty() {
+        return syn::Error::new(Span::call_site(), "`#[module]` takes no arguments")
+            .into_compile_error()
+            .into();
+    }
+    let item = parse_macro_input!(item as ItemImpl);
+    module_impl(item)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+fn module_impl(item: ItemImpl) -> syn::Result<TokenStream2> {
+    let ui = quote!(::nsh_core::ui);
+    let self_ty = &item.self_ty;
+    let Some((type_name, _)) = last_segment(self_ty) else {
+        return Err(syn::Error::new(
+            self_ty.span(),
+            "`#[module]` is for a named type",
+        ));
+    };
+    let module_name = type_name.to_string();
+    let module_doc = docs(&item.attrs);
+    let mut entries = Vec::new();
+    for member in &item.items {
+        let ImplItem::Fn(f) = member else { continue };
+        let ident = &f.sig.ident;
+        let js = camel(&ident.to_string());
+        let doc = docs(&f.attrs);
+        let is_async = f.sig.asyncness.is_some();
+        let typed: Vec<_> = f
+            .sig
+            .inputs
+            .iter()
+            .map(|arg| match arg {
+                FnArg::Typed(t) => Ok(t),
+                FnArg::Receiver(r) => Err(syn::Error::new(
+                    r.span(),
+                    "a module function has no receiver (its state is a global)",
+                )),
+            })
+            .collect::<syn::Result<_>>()?;
+        let mut params = Vec::new();
+        let mut decode = Vec::new();
+        let mut call_args = Vec::new();
+        for (i, arg) in typed.iter().enumerate() {
+            let ty = &arg.ty;
+            if let Some(async_cx) = module_cx(ty) {
+                if i + 1 != typed.len() || async_cx != is_async {
+                    return Err(syn::Error::new(
+                        arg.span(),
+                        "the last parameter: `cx: &mut ModuleCx`, or `cx: AsyncCx` for an `async fn`",
+                    ));
+                }
+                call_args.push(quote!(cx));
+                continue;
+            }
+            let Pat::Ident(name) = &*arg.pat else {
+                return Err(syn::Error::new(
+                    arg.pat.span(),
+                    "a module function's parameters are named",
+                ));
+            };
+            let name = camel(&name.ident.to_string());
+            let local = format_ident!("__arg{}", i);
+            let optional = matches!(last_segment(ty), Some((id, _)) if id == "Option");
+            params.push(quote!((#name, <#ty as #ui::JsValue>::ts_type, #optional)));
+            decode.push(quote! {
+                let #local: #ty = <#ty as #ui::JsValue>::from_json(
+                    args.next().unwrap_or(::nsh_core::JsonValue::Null),
+                )
+                .map_err(|e| #ui::PropError(::std::format!("`{}`: {}", #name, e)))?;
+            });
+            call_args.push(quote!(#local));
+        }
+        let takes_cx = call_args.len() > decode.len();
+        let unused_cx = (!takes_cx).then(|| quote!(let _ = cx;));
+        let args_iter = if decode.is_empty() {
+            quote!(let _ = args;)
+        } else {
+            quote!(let mut args = args.into_iter();)
+        };
+        let (returns, to_json) = match &f.sig.output {
+            ReturnType::Default => (
+                quote!(::core::option::Option::None),
+                quote!({
+                    let _ = value;
+                    ::nsh_core::JsonValue::Null
+                }),
+            ),
+            ReturnType::Type(_, ty) => (
+                quote!(::core::option::Option::Some(<#ty as #ui::JsValue>::ts_type)),
+                quote!(#ui::JsValue::to_json(&value)),
+            ),
+        };
+        let call = if is_async {
+            quote! {
+                #ui::FunctionCall::Async(|args, cx| {
+                    #unused_cx
+                    #args_iter
+                    #(#decode)*
+                    ::core::result::Result::Ok(::std::boxed::Box::pin(async move {
+                        let value = #self_ty::#ident(#(#call_args),*).await;
+                        #to_json
+                    }))
+                })
+            }
+        } else {
+            quote! {
+                #ui::FunctionCall::Sync(|args, cx| {
+                    #unused_cx
+                    #args_iter
+                    #(#decode)*
+                    let value = #self_ty::#ident(#(#call_args),*);
+                    ::core::result::Result::Ok(#to_json)
+                })
+            }
+        };
+        entries.push(quote! {
+            #ui::Function {
+                name: #js,
+                doc: #doc,
+                params: &[#(#params),*],
+                returns: #returns,
+                call: #call,
+            }
+        });
+    }
+    Ok(quote! {
+        #item
+
+        impl #ui::Module for #self_ty {
+            const NAME: &'static str = #module_name;
+            const DOC: &'static str = #module_doc;
+            const FUNCTIONS: &'static [#ui::Function] = &[#(#entries),*];
         }
     })
 }

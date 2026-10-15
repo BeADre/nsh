@@ -51,7 +51,7 @@ of that kind: with a listener the press is taken, and JS exits the app when no l
 
 - **Press feedback primitives** (native, no JS round trip): `activeOpacity`; `underlayColor` + `underlayOpacity` (default 0.85)
   on any view — the core shows the underlay as the background and fades the children while the platform reports the view
-  pressed; `active:` classes. `KeyboardAvoidingView` (`behavior`: `padding` → `insetPadding`, `height` → `insetMargin`,
+  pressed; `active:` classes. `KeyboardAvoidingView` (Rust; `behavior`: `padding` → inset padding, `height` → inset margin,
   `position` → an inner view moved up; `keyboardVerticalOffset`).
 - **Platform modules**: `Platform` (`OS`: `ios` / `android` / `macos` / `windows` / `linux`, from the platform's
   `Environment::os` (`nsh_engine::Os`; the default is the build's mobile OS, so `nsh trace` is iOS); `isDesktop`,
@@ -85,9 +85,10 @@ of that kind: with a listener the press is taken, and JS exits the app when no l
 - **Frames**: `requestAnimationFrame` / `cancelAnimationFrame` follow the display (CADisplayLink / Choreographer).
 - **Back button** (`nsh/android`): `BackHandler.addEventListener("hardwareBackPress", ...)`, after modals and stacks; the app exits
   when nothing handles it.
-- **System UI**: `StatusBar` (component and static methods; the last mounted wins, prop by prop), `Alert.alert`,
-  `ActionSheet.show` (a list dialog on Android), `Toast` (`nsh/android`). Answers come back as the root's
-  `onDialog` event. Embedding apps forward their controller's status bar to `nsh_status_bar_style()` / `_hidden()` / `_animation()`.
+- **System UI**: `StatusBar` (component and static functions; the last mounted wins, prop by prop, over what the
+  functions set: the core layers them, `docs/dev/components.md`), `Alert.alert` and `ActionSheet.show` (promises of
+  the index chosen, -1 when dismissed; a list dialog on Android), `Toast` (`nsh/android`). Answers come back as the
+  root's `Dialog` event, which the core resolves. Embedding apps forward their controller's status bar to `nsh_status_bar_style()` / `_hidden()` / `_animation()`.
 - **Right to left**: `I18nManager` (`isRTL`, reactive; `allowRTL`, `forceRTL`, applied at once) sets the root's direction;
   `direction` (`inherit` / `ltr` / `rtl`) overrides it per view. The core resolves each node's direction (inherited, also for
   subtrees built detached), sets taffy's `direction` (rows run from the right) and, right to left, swaps the left and right

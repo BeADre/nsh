@@ -110,10 +110,7 @@ const RUNTIME: &[EmbeddedFile] = embedded! { "runtime":
 /// (`nsh-ui-mobile`), their JS face is [`generated`].
 const UI_MOBILE: &[EmbeddedFile] = embedded! { "ui/mobile":
     "index.ts" => Some("nsh/ui/mobile"),
-    "keyboard.ts" => None,
     "navigation.ts" => None,
-    "safe-area.ts" => None,
-    "system.ts" => None,
 };
 
 /// The JS glue and declarations of the Rust components
@@ -122,7 +119,7 @@ const UI_MOBILE: &[EmbeddedFile] = embedded! { "ui/mobile":
 fn generated() -> &'static [EmbeddedFile] {
     static FILES: std::sync::OnceLock<[EmbeddedFile; 1]> = std::sync::OnceLock::new();
     FILES.get_or_init(|| {
-        let source = nsh_core::ui::typescript(&nsh_ui_mobile::specs());
+        let source = nsh_core::ui::typescript(&nsh_ui_mobile::registry());
         [EmbeddedFile {
             root: "ui/mobile",
             path: "components.gen.ts",

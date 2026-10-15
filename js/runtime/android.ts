@@ -1,7 +1,7 @@
 // `nsh/android`: what only Android has. Importable everywhere (one bundle
 // runs on both platforms); elsewhere it does nothing.
 
-import { command, os, root, setProp, setStatusBar } from "./_core";
+import { command, os, root, setProp } from "./_core";
 
 /** True on Android. */
 export const isAvailable: boolean = os === "android";
@@ -26,10 +26,10 @@ function onBackPress() {
   BackHandler.exitApp();
 }
 
-/** The status bar's color (before edge-to-edge, API 35); `<StatusBar
- * android={{ backgroundColor }}>` is the declarative form. */
+/** The status bar's color (before edge-to-edge, API 35), under the
+ * rendered `<StatusBar android={{ backgroundColor }}>`s. */
 export function setStatusBarBackgroundColor(backgroundColor: string, animated?: boolean): void {
-  setStatusBar({ backgroundColor, animated });
+  command(1, "statusBar", { backgroundColor, animated });
 }
 
 /** The back button, after modals and stacks had their turn. */

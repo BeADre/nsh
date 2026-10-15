@@ -819,8 +819,12 @@ pub enum Command {
         /// Animate the change.
         animated: bool,
     },
-    /// Set the status bar (on the root).
+    /// Set the status bar (on the root): what the platform shows.
     StatusBar(StatusBarConfig),
+    /// Change what functions set for the status bar (on the root): the
+    /// core merges it under the settings components render and sends
+    /// [`Command::StatusBar`] when the result changes.
+    SetStatusBar(StatusBarSetting),
     /// Show an alert or action sheet (on the root); the answer comes back
     /// as [`EventKind::Dialog`].
     Dialog(Box<Dialog>),
@@ -894,6 +898,32 @@ pub struct StatusBarConfig {
     pub animated: bool,
     /// Background (Android before edge-to-edge only).
     pub background: Option<Color>,
+}
+
+/// A status bar setting: what it sets; the fields it leaves out keep the
+/// settings below it.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct StatusBarSetting {
+    /// Content color.
+    pub style: Option<StatusBarStyle>,
+    /// Hidden.
+    pub hidden: Option<bool>,
+    /// Animate the change.
+    pub animated: Option<bool>,
+    /// Background (Android before edge-to-edge only).
+    pub background: Option<Color>,
+}
+
+impl StatusBarSetting {
+    /// This setting over `below`.
+    pub fn over(self, below: Self) -> Self {
+        Self {
+            style: self.style.or(below.style),
+            hidden: self.hidden.or(below.hidden),
+            animated: self.animated.or(below.animated),
+            background: self.background.or(below.background),
+        }
+    }
 }
 
 /// How a dialog button looks.
@@ -1048,10 +1078,12 @@ pub enum Prop {
     /// `I18nManager`).
     LayoutDirection(bool),
     /// Padding added to the style's own (safe areas, the keyboard), in
-    /// points on the physical edges.
+    /// points on the physical edges; set by components
+    /// (`Element::inset_padding`), never by JS.
     InsetPadding(EdgeInsets),
     /// Margin added to the style's own (`KeyboardAvoidingView`'s
-    /// `height` behavior), in points on the physical edges.
+    /// `height` behavior), in points on the physical edges; set by
+    /// components.
     InsetMargin(EdgeInsets),
     /// `class`: Tailwind classes.
     Class(Box<str>),

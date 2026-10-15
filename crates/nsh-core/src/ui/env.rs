@@ -12,6 +12,8 @@ pub struct Environment {
     pub safe_area: EdgeInsets,
     /// The software keyboard's height, 0 when hidden.
     pub keyboard_height: f32,
+    /// How long the keyboard's show / hide animation takes, in seconds.
+    pub keyboard_duration: f32,
     /// Dark appearance.
     pub dark: bool,
     /// The user's text size relative to the default.
@@ -30,6 +32,7 @@ impl Default for Environment {
             window: Size::new(0.0, 0.0),
             safe_area: EdgeInsets::default(),
             keyboard_height: 0.0,
+            keyboard_duration: 0.0,
             dark: false,
             font_scale: 1.0,
             reduce_motion: false,
@@ -48,6 +51,8 @@ pub(crate) const FONT_SCALE: u16 = 16;
 pub(crate) const MOTION: u16 = 32;
 pub(crate) const SCREEN_READER: u16 = 64;
 pub(crate) const RTL: u16 = 128;
+/// The insets of the screen or modal a component renders in.
+pub(crate) const INSETS: u16 = 256;
 
 impl Environment {
     /// The parts that differ from `old`.

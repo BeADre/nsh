@@ -1,11 +1,16 @@
 //! Rust components through the generated JS glue: props, events, children,
-//! named slots, children placed one by one, and a list of the app's rows.
+//! named slots, children placed one by one, and a list of the app's rows;
+//! modules (`Alert`, `StatusBar`) and the environment (`SafeAreaView`,
+//! `KeyboardAvoidingView`).
 
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender};
-use nsh_core::{ApproxTextEngine, EventKind, EventPayload, MountBatch, MountItem, Size};
-use nsh_engine::{Bundle, Engine, EngineConfig, MountSink};
+use nsh_core::{
+    ApproxTextEngine, Command, DialogButtonStyle, EventKind, EventPayload, MountBatch, MountItem,
+    PayloadValue, ROOT_ID, Size, StatusBarStyle,
+};
+use nsh_engine::{Bundle, Engine, EngineConfig, Environment, Insets, MountSink};
 
 struct ChannelSink(Sender<MountBatch>);
 
@@ -35,10 +40,15 @@ render(() => <App />, root);
 "#;
 
 fn start(app: &str) -> (Engine, Receiver<MountBatch>) {
+    start_in(app, Environment::default())
+}
+
+fn start_in(app: &str, environment: Environment) -> (Engine, Receiver<MountBatch>) {
+    static APPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let dir = std::env::temp_dir().join(format!(
         "nsh-components-{}-{}",
         std::process::id(),
-        app.len()
+        APPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&dir).unwrap();
     let entry = dir.join("App.tsx");
@@ -55,7 +65,7 @@ fn start(app: &str) -> (Engine, Receiver<MountBatch>) {
         trace: false,
         network: None,
         assets: None,
-        environment: Default::default(),
+        environment,
         header_heights: (44.0, 96.0),
         limits: nsh_engine::Limits::default(),
         components: nsh_ui_mobile::registry(),
@@ -359,4 +369,201 @@ fn js_calls_a_components_methods() {
     // resolves with the component's answer.
     assert!(shown.contains(&"42".to_owned()), "{shown:?}");
     assert!(shown.contains(&"got 42".to_owned()), "{shown:?}");
+}
+
+/// The batches until `done` holds for one (or nothing came for 500ms).
+fn until(rx: &Receiver<MountBatch>, mut done: impl FnMut(&MountBatch) -> bool) -> Vec<MountBatch> {
+    let mut batches = Vec::new();
+    while let Ok(batch) = rx.recv_timeout(Duration::from_millis(500)) {
+        let stop = done(&batch);
+        batches.push(batch);
+        if stop {
+            break;
+        }
+    }
+    batches
+}
+
+fn shows(batch: &MountBatch, wanted: &str) -> bool {
+    text_ids(batch, wanted).is_some()
+}
+
+const ALERT: &str = r#"import { createSignal } from "solid-js";
+import { render, root } from "nsh";
+import { Alert } from "nsh/ui/mobile";
+
+const [shown, setShown] = createSignal("waiting");
+setTimeout(async () => {
+  const i = await Alert.alert("Delete the photo?", "It is gone then.", [
+    { text: "Cancel", style: "cancel" },
+    { text: "Delete", style: "destructive" },
+  ], { cancelable: true });
+  setShown(`answer ${i}`);
+}, 0);
+
+render(() => <text>{shown()}</text>, root);
+"#;
+
+#[test]
+fn an_alert_resolves_with_the_button_pressed() {
+    let (engine, rx) = start(ALERT);
+    let mut dialog = None;
+    until(&rx, |batch| {
+        dialog = dialog.take().or_else(|| {
+            batch.items.iter().find_map(|i| match i {
+                MountItem::Command {
+                    id: ROOT_ID,
+                    command: Command::Dialog(d),
+                } => Some(d.clone()),
+                _ => None,
+            })
+        });
+        dialog.is_some()
+    });
+    let dialog = dialog.expect("the alert");
+    assert_eq!(dialog.title.as_deref(), Some("Delete the photo?"));
+    assert_eq!(dialog.message.as_deref(), Some("It is gone then."));
+    assert!(dialog.cancelable && !dialog.sheet);
+    let looks: Vec<_> = dialog
+        .buttons
+        .iter()
+        .map(|b| (b.text.as_str(), b.style))
+        .collect();
+    assert_eq!(
+        looks,
+        [
+            ("Cancel", DialogButtonStyle::Cancel),
+            ("Delete", DialogButtonStyle::Destructive)
+        ]
+    );
+    engine.control().dispatch_event(
+        ROOT_ID,
+        EventKind::Dialog,
+        EventPayload::Map(vec![
+            ("id", PayloadValue::Number(dialog.id as f64)),
+            ("index", PayloadValue::Number(1.0)),
+        ]),
+    );
+    let batches = until(&rx, |b| shows(b, "answer 1"));
+    assert!(batches.iter().any(|b| shows(b, "answer 1")));
+}
+
+const STATUS_BAR: &str = r##"import { createSignal, Show } from "solid-js";
+import { render, root } from "nsh";
+import { setStatusBarBackgroundColor } from "nsh/android";
+import { StatusBar } from "nsh/ui/mobile";
+
+const [rendered, setRendered] = createSignal(true);
+setStatusBarBackgroundColor("#ff0000");
+StatusBar.setBarStyle("dark-content");
+setTimeout(() => StatusBar.setHidden(true), 50);
+setTimeout(() => setRendered(false), 100);
+
+render(
+  () => (
+    <Show when={rendered()}>
+      <StatusBar barStyle="light-content" android={{ backgroundColor: "#00ff00" }} />
+    </Show>
+  ),
+  root,
+);
+"##;
+
+#[test]
+fn rendered_status_bars_win_over_what_functions_set() {
+    let (_engine, rx) = start(STATUS_BAR);
+    let mut configs = Vec::new();
+    until(&rx, |batch| {
+        for item in &batch.items {
+            if let MountItem::Command {
+                id: ROOT_ID,
+                command: Command::StatusBar(c),
+            } = item
+            {
+                configs.push(*c);
+            }
+        }
+        configs.len() >= 3
+    });
+    let red = nsh_core::Color::parse("#ff0000");
+    let green = nsh_core::Color::parse("#00ff00");
+    let seen: Vec<_> = configs
+        .iter()
+        .map(|c| (c.style, c.hidden, c.background))
+        .collect();
+    // One per turn: the functions' and the rendered setting merged, then
+    // the hidden bar, then the functions' alone.
+    assert_eq!(
+        seen,
+        [
+            (StatusBarStyle::Light, false, green),
+            (StatusBarStyle::Light, true, green),
+            (StatusBarStyle::Dark, true, red),
+        ]
+    );
+}
+
+const SAFE_AREA: &str = r#"import { render, root } from "nsh";
+import { KeyboardAvoidingView, SafeAreaView } from "nsh/ui/mobile";
+
+render(
+  () => (
+    <KeyboardAvoidingView style={{ flex: 1 }}>
+      <SafeAreaView style={{ flex: 1, padding: 4 }} edges={["top", "bottom"]}>
+        <text>inside</text>
+      </SafeAreaView>
+    </KeyboardAvoidingView>
+  ),
+  root,
+);
+"#;
+
+fn frame_of(batches: &[MountBatch], id: u32) -> Option<nsh_core::Rect> {
+    batches.iter().rev().find_map(|b| {
+        b.items.iter().rev().find_map(|i| match i {
+            MountItem::Frame { id: f, frame } if *f == id => Some(*frame),
+            _ => None,
+        })
+    })
+}
+
+#[test]
+fn safe_area_and_keyboard_avoiding_views_pad_by_the_environment() {
+    let environment = Environment {
+        window: (390.0, 844.0),
+        safe_area: Insets {
+            top: 47.0,
+            right: 10.0,
+            bottom: 34.0,
+            left: 10.0,
+        },
+        ..Default::default()
+    };
+    let (engine, rx) = start_in(SAFE_AREA, environment);
+    let first = until(&rx, |b| shows(b, "inside"));
+    let text = first
+        .iter()
+        .find_map(|b| text_ids(b, "inside"))
+        .expect("the text");
+    // Its own padding, plus the edges it pads (not left and right).
+    let frame = frame_of(&first, text).expect("laid out");
+    assert_eq!((frame.x, frame.y), (4.0, 51.0));
+    // The keyboard: the avoiding view pads its bottom, the safe area view
+    // shrinks, the text stays.
+    engine.control().set_environment(Environment {
+        keyboard_height: 300.0,
+        ..environment
+    });
+    let after = until(&rx, |b| {
+        b.items
+            .iter()
+            .any(|i| matches!(i, MountItem::Frame { frame, .. } if frame.height == 844.0 - 300.0))
+    });
+    assert!(
+        after
+            .iter()
+            .flat_map(|b| &b.items)
+            .any(|i| matches!(i, MountItem::Frame { frame, .. } if frame.height == 844.0 - 300.0)),
+        "the safe area view above the keyboard"
+    );
 }

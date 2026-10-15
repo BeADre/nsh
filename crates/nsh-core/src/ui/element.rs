@@ -3,23 +3,27 @@
 //! handlers.
 
 use std::{
-    any::Any,
-    cell::Cell,
+    any::{Any, TypeId},
+    cell::{Cell, RefCell},
     future::Future,
     marker::PhantomData,
     rc::Rc,
     time::{Duration, Instant},
 };
 
+use rustc_hash::FxHashMap;
+
 use super::{
-    Component, Event, SharedString, Theme,
+    Component, Event, JsValue, PropError, SharedString, Theme,
     env::{self, Environment},
+    status_bar::{StatusBarEntry, StatusBars},
     style::{StyleRefinement, Styled, Variant},
-    task::{self, AsyncCx, Executor, Task, WeakComponent},
+    task::{self, Action, AsyncCx, DialogAnswer, Executor, Task, WeakComponent},
 };
 use crate::{
-    AccessibilityProp, AccessibilityRole, AccessibilityState, EdgeInsets, EventKind, EventPayload,
-    ImageSource, JsonValue, ListContentStyle, NativeProp, NodeId, PointerEvents, Prop, Size, Tag,
+    AccessibilityProp, AccessibilityRole, AccessibilityState, Command, Dialog, EdgeInsets,
+    EventKind, EventPayload, ImageSource, JsonValue, LayoutAnimation, ListContentStyle, NativeProp,
+    NodeId, PointerEvents, Prop, Size, StatusBarSetting, Tag,
 };
 
 /// A handler of `E` on an element, made by [`RenderCx::listener`]: it runs
@@ -57,6 +61,10 @@ impl<E: Event> AnyEvent for E {
     }
 }
 
+/// State shared by the components of a surface, by type
+/// ([`Context::update_global`]).
+pub(crate) type Globals = Rc<RefCell<FxHashMap<TypeId, Box<dyn Any>>>>;
+
 /// What setup, listeners, timers and tasks did, for the core.
 pub(crate) struct ErasedCx {
     pub(crate) emits: Vec<Box<dyn AnyEvent>>,
@@ -65,16 +73,25 @@ pub(crate) struct ErasedCx {
     /// The component's host and the core's executor, for its tasks.
     pub(crate) host: NodeId,
     pub(crate) executor: Rc<Executor>,
+    pub(crate) globals: Globals,
+    pub(crate) actions: Vec<Action>,
 }
 
 impl ErasedCx {
-    pub(crate) fn new(environment: Environment, host: NodeId, executor: Rc<Executor>) -> Self {
+    pub(crate) fn new(
+        environment: Environment,
+        host: NodeId,
+        executor: Rc<Executor>,
+        globals: Globals,
+    ) -> Self {
         Self {
             emits: Vec::new(),
             notify: false,
             environment,
             host,
             executor,
+            globals,
+            actions: Vec::new(),
         }
     }
 }
@@ -85,15 +102,17 @@ impl ErasedCx {
 pub struct RenderCx<'a, C> {
     theme: &'a Theme,
     environment: &'a Environment,
+    insets: EdgeInsets,
     pub(crate) reads: Cell<u16>,
     _component: PhantomData<fn(&mut C)>,
 }
 
 impl<'a, C: Component> RenderCx<'a, C> {
-    pub(crate) fn new(theme: &'a Theme, environment: &'a Environment) -> Self {
+    pub(crate) fn new(theme: &'a Theme, environment: &'a Environment, insets: EdgeInsets) -> Self {
         Self {
             theme,
             environment,
+            insets,
             reads: Cell::new(0),
             _component: PhantomData,
         }
@@ -118,6 +137,14 @@ impl<'a, C: Component> RenderCx<'a, C> {
     /// `safeArea()`).
     pub fn safe_area(&self) -> EdgeInsets {
         self.read(env::SAFE_AREA).safe_area
+    }
+
+    /// The edges system UI or a header covers where the component renders:
+    /// its screen's (below the header) or modal's, else the safe area
+    /// (Solid: `useSafeAreaInsets()`).
+    pub fn insets(&self) -> EdgeInsets {
+        self.reads.set(self.reads.get() | env::INSETS);
+        self.insets
     }
 
     /// The software keyboard's height over the surface, 0 when hidden
@@ -203,6 +230,64 @@ impl<'a, C: Component> Context<'a, C> {
         &self.inner.environment
     }
 
+    /// Runs `f` on the surface's `G` (made with `Default` the first time):
+    /// state components share, like a Solid store at module level.
+    pub fn update_global<G: Default + 'static, R>(
+        &mut self,
+        f: impl FnOnce(&mut G, &mut Self) -> R,
+    ) -> R {
+        let id = TypeId::of::<G>();
+        // Out of the map while `f` runs: it may use other globals.
+        let taken = self.inner.globals.borrow_mut().remove(&id);
+        let mut global = taken
+            .and_then(|g| g.downcast::<G>().ok())
+            .unwrap_or_default();
+        let result = f(&mut global, self);
+        self.inner.globals.borrow_mut().insert(id, global);
+        result
+    }
+
+    /// Shows `dialog` (an alert, or with `sheet` an action sheet); await the
+    /// answer in a task.
+    pub fn dialog(&mut self, dialog: Dialog) -> DialogAnswer {
+        let (answer, slot) = DialogAnswer::new();
+        self.inner.actions.push(Action::Dialog(dialog, slot));
+        answer
+    }
+
+    /// Unfocuses the focused input, hiding the software keyboard.
+    pub fn dismiss_keyboard(&mut self) {
+        self.inner
+            .actions
+            .push(Action::Command(crate::ROOT_ID, Command::Blur));
+    }
+
+    /// Adds `setting` over the status bar's other settings (and what
+    /// functions set) until [`Self::remove_status_bar`]: the most recently
+    /// added wins, field by field.
+    pub fn add_status_bar(&mut self, setting: StatusBarSetting) -> StatusBarEntry {
+        StatusBars::update(&self.inner.globals, |bars| bars.add(setting))
+    }
+
+    /// Changes a setting [`Self::add_status_bar`] added.
+    pub fn update_status_bar(&mut self, entry: StatusBarEntry, setting: StatusBarSetting) {
+        StatusBars::update(&self.inner.globals, |bars| bars.set(entry, setting));
+    }
+
+    /// Removes a setting [`Self::add_status_bar`] added.
+    pub fn remove_status_bar(&mut self, entry: StatusBarEntry) {
+        StatusBars::update(&self.inner.globals, |bars| bars.remove(entry));
+    }
+
+    /// Animates the layout changes of the next commit (React Native's
+    /// `LayoutAnimation.configureNext`).
+    pub fn animate_layout(&mut self, animation: LayoutAnimation) {
+        self.inner.actions.push(Action::Command(
+            crate::ROOT_ID,
+            Command::LayoutAnimation(animation),
+        ));
+    }
+
     /// Starts a task: `f(this, cx)` builds a future run on the engine
     /// thread, which changes the component with `this.update(..)` and waits
     /// with `cx.timer(..)` or for any other future. Dropping the [`Task`]
@@ -270,6 +355,10 @@ pub struct Attrs {
     pub(crate) active_opacity: Option<f32>,
     pub(crate) number_of_lines: u32,
     pub(crate) src: Option<SharedString>,
+    pub(crate) inset_padding: Option<EdgeInsets>,
+    pub(crate) inset_margin: Option<EdgeInsets>,
+    /// An inline style from JS (a `StyleProp` prop), over the styles.
+    pub(crate) inline: Option<JsonValue>,
 }
 
 impl Attrs {
@@ -312,6 +401,12 @@ impl Attrs {
                 uri: uri.to_arc(),
                 size: None,
             })));
+        }
+        if self.inset_padding != old.inset_padding {
+            out.push(Prop::InsetPadding(self.inset_padding.unwrap_or_default()));
+        }
+        if self.inset_margin != old.inset_margin {
+            out.push(Prop::InsetMargin(self.inset_margin.unwrap_or_default()));
         }
     }
 }
@@ -538,6 +633,46 @@ pub trait Element: IntoElement + Sized {
     fn key(mut self, key: impl Into<SharedString>) -> Self {
         self.node().key = Some(key.into());
         self
+    }
+
+    /// Padding added to the element's own (from styles): insets of system
+    /// UI, a keyboard.
+    fn inset_padding(mut self, insets: EdgeInsets) -> Self {
+        self.node().attrs.inset_padding = Some(insets);
+        self
+    }
+
+    /// Margin added to the element's own.
+    fn inset_margin(mut self, insets: EdgeInsets) -> Self {
+        self.node().attrs.inset_margin = Some(insets);
+        self
+    }
+
+    /// An inline style the app passed (a prop of type `Style`, React
+    /// Native's names), over the element's styles.
+    fn inline_style(mut self, style: &Style) -> Self {
+        self.node().attrs.inline = style.0.clone();
+        self
+    }
+}
+
+/// An inline style from JS: a prop typed `StyleProp<ViewStyle>` in
+/// TypeScript (an object, an array of them, or nothing), applied with
+/// [`Element::inline_style`].
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Style(pub(crate) Option<JsonValue>);
+
+impl JsValue for Style {
+    fn ts_type(_types: &mut super::TsTypes) -> String {
+        "StyleProp<ViewStyle>".into()
+    }
+
+    fn from_json(value: JsonValue) -> Result<Self, PropError> {
+        Ok(Self((!value.is_null()).then_some(value)))
+    }
+
+    fn to_json(&self) -> JsonValue {
+        self.0.clone().unwrap_or(JsonValue::Null)
     }
 }
 

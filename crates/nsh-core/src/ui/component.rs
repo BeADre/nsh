@@ -7,10 +7,11 @@ use std::{any::Any, fmt, sync::Arc};
 use rustc_hash::FxHashMap;
 
 use super::{
-    Children, Context, Environment, IntoElement, PropError, Slot, Theme,
+    Children, Context, Environment, IntoElement, PropError, Slot, Theme, TsType, TsTypes,
     element::{ComponentElement, ElNode, ErasedCx, RenderCx},
+    module::{Function, Module, ModuleSpec},
 };
-use crate::JsonValue;
+use crate::{EdgeInsets, JsonValue};
 
 /// A component written in Rust. Its state is `Self` (`Default` makes a new
 /// one, [`Component::setup`] sets it up from the first props); its props
@@ -58,6 +59,26 @@ pub trait Component: Default + 'static {
         let _ = (old, new, cx);
     }
 
+    /// What the last render read of the environment changed (Solid: an
+    /// effect on an accessor): side effects of the change, before the
+    /// render it causes (animating with the keyboard, say).
+    fn environment_changed(
+        &mut self,
+        props: &Self::Props,
+        old: &Environment,
+        new: &Environment,
+        cx: &mut Context<'_, Self>,
+    ) {
+        let _ = (props, old, new, cx);
+    }
+
+    /// Runs once when the component goes away (Solid: `onCleanup`), with a
+    /// context to undo what it did outside itself. Its tasks end after it;
+    /// its own resources are freed by `Drop`.
+    fn cleanup(&mut self, props: &Self::Props, cx: &mut Context<'_, Self>) {
+        let _ = (props, cx);
+    }
+
     /// Its element tree. Runs again when a prop changes, a listener or a
     /// timer calls [`Context::notify`], or what it read of the environment
     /// changes; keep it cheap and free of side effects.
@@ -79,14 +100,14 @@ pub struct Method<C: Component> {
     pub params: &'static [Param],
     /// The TypeScript type of its result (`None`: it returns nothing, and
     /// JS does not wait for it).
-    pub returns: Option<fn() -> String>,
+    pub returns: Option<TsType>,
     /// Calls it with JS's arguments.
     #[allow(clippy::type_complexity)]
     pub call: fn(&mut C, Vec<JsonValue>, &mut Context<'_, C>) -> Result<JsonValue, PropError>,
 }
 
 /// A method's parameter: its JS name, and its TypeScript type.
-pub type Param = (&'static str, fn() -> String);
+pub type Param = (&'static str, TsType);
 
 /// One method, for the glue and its declarations.
 #[derive(Debug, Clone)]
@@ -146,8 +167,8 @@ pub trait Props: Clone + PartialEq + 'static {
     /// The component's documentation (the struct's doc comment).
     fn doc() -> &'static str;
 
-    /// The props.
-    fn spec() -> Vec<PropSpec>;
+    /// The props (their named types declared in `types`).
+    fn spec(types: &mut TsTypes) -> Vec<PropSpec>;
 
     /// Every prop at its default.
     fn initial() -> Self;
@@ -165,8 +186,8 @@ pub trait Props: Clone + PartialEq + 'static {
 
 /// A component's events. Derive it: `#[derive(Event)]`.
 pub trait Event: 'static {
-    /// The events.
-    fn spec() -> Vec<EventSpec>;
+    /// The events (their named types declared in `types`).
+    fn spec(types: &mut TsTypes) -> Vec<EventSpec>;
 
     /// This event's name.
     fn name(&self) -> &'static str;
@@ -180,7 +201,7 @@ pub trait Event: 'static {
 pub enum NoEvent {}
 
 impl Event for NoEvent {
-    fn spec() -> Vec<EventSpec> {
+    fn spec(_types: &mut TsTypes) -> Vec<EventSpec> {
         Vec::new()
     }
 
@@ -209,25 +230,36 @@ pub struct ComponentSpec {
     pub events: Vec<EventSpec>,
     /// The methods of its ref.
     pub methods: Vec<MethodSpec>,
+    /// The named TypeScript types they use.
+    pub types: TsTypes,
 }
 
 impl ComponentSpec {
     fn of<C: Component>() -> Self {
+        let mut types = TsTypes::default();
+        let props = C::Props::spec(&mut types);
+        let events = C::Event::spec(&mut types);
+        let methods = C::METHODS
+            .iter()
+            .map(|m| MethodSpec {
+                name: m.name,
+                doc: m.doc,
+                params: m
+                    .params
+                    .iter()
+                    .map(|(n, ts)| (*n, ts(&mut types)))
+                    .collect(),
+                returns: m.returns.map(|ts| ts(&mut types)),
+            })
+            .collect();
         Self {
             name: C::NAME,
             export: export_name(C::NAME),
             doc: C::Props::doc(),
-            props: C::Props::spec(),
-            events: C::Event::spec(),
-            methods: C::METHODS
-                .iter()
-                .map(|m| MethodSpec {
-                    name: m.name,
-                    doc: m.doc,
-                    params: m.params.iter().map(|(n, ts)| (*n, ts())).collect(),
-                    returns: m.returns.map(|ts| ts()),
-                })
-                .collect(),
+            props,
+            events,
+            methods,
+            types,
         }
     }
 
@@ -289,8 +321,17 @@ pub(crate) trait AnyInstance {
     fn set_children(&mut self, present: bool) -> bool;
     /// Before a render: the setup the first time, else what changed.
     fn update(&mut self, cx: &mut ErasedCx);
+    /// The component goes away.
+    fn cleanup(&mut self, cx: &mut ErasedCx);
+    /// What the last render read of the environment changed.
+    fn environment_changed(&mut self, old: &Environment, new: &Environment, cx: &mut ErasedCx);
     /// The tree, and what it read of the environment.
-    fn render(&mut self, theme: &Theme, environment: &Environment) -> (ElNode, u16);
+    fn render(
+        &mut self,
+        theme: &Theme,
+        environment: &Environment,
+        insets: EdgeInsets,
+    ) -> (ElNode, u16);
     /// The state, and the props.
     fn parts(&mut self) -> (&mut dyn Any, &dyn Any);
     /// Method `name` of the ref; `None` when it has none of that name.
@@ -346,8 +387,31 @@ impl<C: Component> AnyInstance for Instance<C> {
         }
     }
 
-    fn render(&mut self, theme: &Theme, environment: &Environment) -> (ElNode, u16) {
-        let mut cx = RenderCx::new(theme, environment);
+    fn environment_changed(&mut self, old: &Environment, new: &Environment, cx: &mut ErasedCx) {
+        if self.set_up {
+            self.state.environment_changed(
+                &self.props,
+                old,
+                new,
+                &mut Context::new(cx, &self.props),
+            );
+        }
+    }
+
+    fn cleanup(&mut self, cx: &mut ErasedCx) {
+        if self.set_up {
+            self.state
+                .cleanup(&self.props, &mut Context::new(cx, &self.props));
+        }
+    }
+
+    fn render(
+        &mut self,
+        theme: &Theme,
+        environment: &Environment,
+        insets: EdgeInsets,
+    ) -> (ElNode, u16) {
+        let mut cx = RenderCx::new(theme, environment, insets);
         let node = self.state.render(&self.props, &mut cx).into_element().0;
         match &mut self.rendered {
             Some(old) if *old == self.props => {}
@@ -381,10 +445,20 @@ struct ComponentType {
     make: fn() -> Box<dyn AnyInstance>,
 }
 
-/// The components a surface can render, by name. Cheap to clone.
+#[derive(Clone)]
+struct ModuleType {
+    spec: Arc<ModuleSpec>,
+    functions: &'static [Function],
+}
+
+/// What a UI set exports to JS: its components and modules, and what it
+/// passes on from the runtime. Cheap to clone.
 #[derive(Clone, Default)]
 pub struct Registry {
     types: Arc<FxHashMap<&'static str, ComponentType>>,
+    modules: Arc<FxHashMap<&'static str, ModuleType>>,
+    /// Values and types of `nsh/_core` exported as they are.
+    reexports: Arc<(Vec<&'static str>, Vec<&'static str>)>,
 }
 
 impl fmt::Debug for Registry {
@@ -419,6 +493,45 @@ impl Registry {
         self
     }
 
+    /// Registers module `M`: its functions on a JS object named
+    /// [`Module::NAME`].
+    pub fn module<M: Module>(&mut self) -> &mut Self {
+        Arc::make_mut(&mut self.modules).insert(
+            M::NAME,
+            ModuleType {
+                spec: Arc::new(ModuleSpec::of::<M>()),
+                functions: M::FUNCTIONS,
+            },
+        );
+        self
+    }
+
+    /// Exports `values` and `types` of the runtime as they are (accessors
+    /// such as `safeArea`, hooks, types such as `Insets`).
+    pub fn reexport(&mut self, values: &[&'static str], types: &[&'static str]) -> &mut Self {
+        let r = Arc::make_mut(&mut self.reexports);
+        r.0.extend_from_slice(values);
+        r.1.extend_from_slice(types);
+        self
+    }
+
+    /// Function `name` of a module (`Alert.alert`).
+    pub(crate) fn function(&self, name: &str) -> Option<&'static Function> {
+        let (module, function) = name.split_once('.')?;
+        self.modules
+            .get(module)?
+            .functions
+            .iter()
+            .find(|f| f.name == function)
+    }
+
+    /// The registered modules, by name.
+    pub fn module_specs(&self) -> Vec<Arc<ModuleSpec>> {
+        let mut specs: Vec<_> = self.modules.values().map(|m| m.spec.clone()).collect();
+        specs.sort_by_key(|s| s.name);
+        specs
+    }
+
     /// The registered components, by name.
     pub fn specs(&self) -> Vec<Arc<ComponentSpec>> {
         let mut specs: Vec<_> = self.types.values().map(|t| t.spec.clone()).collect();
@@ -432,15 +545,19 @@ impl Registry {
     }
 }
 
-/// The JS glue and TypeScript declarations of `specs`: one component per
-/// spec, exported by its [`ComponentSpec::export`] name, built on
-/// `nsh/_core`'s `component` helper.
-pub fn typescript(specs: &[Arc<ComponentSpec>]) -> String {
+/// The JS glue and TypeScript declarations of what `registry` exports: one
+/// component per spec (exported by its [`ComponentSpec::export`] name,
+/// built on `nsh/_core`'s `component` helper), one object per module
+/// (`module`; merged into a component of the same name), and the runtime's
+/// re-exports.
+pub fn typescript(registry: &Registry) -> String {
+    let specs = registry.specs();
+    let modules = registry.module_specs();
     use std::fmt::Write as _;
     let mut out = String::from(
         "// Generated from the Rust components (nsh_core::ui::typescript).\n\n\
-         import type { JSX, YNode } from \"nsh\";\n\
-         import { component, type ComponentHostProps } from \"nsh/_core\";\n",
+         import type { JSX, StyleProp, ViewStyle, YNode } from \"nsh\";\n\
+         import { component, module, type ComponentHostProps } from \"nsh/_core\";\n",
     );
     if specs.iter().any(|s| s.items().is_some()) {
         out.push_str("import { List, type ListItemsProps } from \"nsh/list\";\n");
@@ -457,7 +574,45 @@ pub fn typescript(specs: &[Arc<ComponentSpec>]) -> String {
             .collect::<Vec<_>>()
             .join(", ")
     };
-    for spec in specs {
+    // The named types, once each.
+    let mut types = TsTypes::default();
+    for spec in &specs {
+        types.merge(&spec.types);
+    }
+    for m in &modules {
+        types.merge(&m.types);
+    }
+    for declaration in types.declarations() {
+        let _ = write!(out, "\n{declaration}\n");
+    }
+    let module_of = |name: &str| modules.iter().find(|m| m.name == name);
+    // A module's object: its declaration and the glue call.
+    let module_object = |out: &mut String, m: &ModuleSpec| -> String {
+        out.push_str("{\n");
+        for f in &m.functions {
+            doc(out, "  ", f.doc);
+            let params = f
+                .params
+                .iter()
+                .map(|(n, ts, optional)| format!("{n}{}: {ts}", if *optional { "?" } else { "" }))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let returns = match &f.returns {
+                Some(ts) => format!("Promise<{ts}>"),
+                None => "void".to_owned(),
+            };
+            let _ = writeln!(out, "  {}({params}): {returns};", f.name);
+        }
+        out.push('}');
+        let functions = m
+            .functions
+            .iter()
+            .map(|f| format!("[{:?}, {}]", f.name, f.returns.is_some()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("module({:?}, [{functions}])", m.name)
+    };
+    for spec in &specs {
         // A component with rows is generic over their type, like `List`.
         let (generic, extends) = match spec.items() {
             Some(_) => ("<T>", ", ListItemsProps<T>"),
@@ -469,7 +624,7 @@ pub fn typescript(specs: &[Arc<ComponentSpec>]) -> String {
         } else {
             let _ = write!(
                 out,
-                "\n/** The ref of [`{0}`]: its methods. */\nexport interface {0}Ref {{\n  /** The component's host node. */\n  readonly node: YNode;\n",
+                "\n/** The ref of `{0}`: its methods. */\nexport interface {0}Ref {{\n  /** The component's host node. */\n  readonly node: YNode;\n",
                 spec.export
             );
             for m in &spec.methods {
@@ -529,12 +684,26 @@ pub fn typescript(specs: &[Arc<ComponentSpec>]) -> String {
             (None, true) => String::new(),
             (None, false) => format!(", undefined, undefined, [{}]", methods.join(", ")),
         };
+        // A module of the same name: its functions on the component.
+        let (with, glue_end) = match module_of(&spec.export) {
+            Some(m) => {
+                let mut ty = String::from(" & ");
+                let call = module_object(&mut ty, m);
+                (ty, format!(", {call})"))
+            }
+            None => (String::new(), String::new()),
+        };
         let _ = writeln!(
             out,
-            "export const {}: {generic}(props: {}Props{generic}) => JSX.Element = \
-             component({:?}, [{}], [{}], {}, [{}]{items});",
+            "export const {}: ({generic}(props: {}Props{generic}) => JSX.Element){with} = {}\
+             component({:?}, [{}], [{}], {}, [{}]{items}){glue_end};",
             spec.export,
             spec.export,
+            if glue_end.is_empty() {
+                ""
+            } else {
+                "Object.assign("
+            },
             spec.name,
             list(
                 spec.props
@@ -546,6 +715,31 @@ pub fn typescript(specs: &[Arc<ComponentSpec>]) -> String {
             list(spec.events.iter().map(|e| e.name).collect()),
             spec.takes_children(),
             list(spec.slots().collect()),
+        );
+    }
+    for m in &modules {
+        if specs.iter().any(|s| s.export == m.name) {
+            continue;
+        }
+        out.push('\n');
+        doc(&mut out, "", m.doc);
+        let _ = write!(out, "export const {}: ", m.name);
+        let call = module_object(&mut out, m);
+        let _ = writeln!(out, " = {call};");
+    }
+    let (values, types) = &*registry.reexports;
+    if !values.is_empty() {
+        let _ = writeln!(
+            out,
+            "\nexport {{ {} }} from \"nsh/_core\";",
+            values.join(", ")
+        );
+    }
+    if !types.is_empty() {
+        let _ = writeln!(
+            out,
+            "export type {{ {} }} from \"nsh/_core\";",
+            types.join(", ")
         );
     }
     out
@@ -625,10 +819,11 @@ mod tests {
     fn the_glue_and_declarations_come_from_the_types() {
         let mut registry = Registry::new();
         registry.register::<Stepper>();
-        let ts = typescript(&registry.specs());
+        let ts = typescript(&registry);
         for line in [
             "  /** The value. */\n  value: number;",
-            "  size?: \"regular\" | \"extraLarge\";",
+            "export type StepperSize = \"regular\" | \"extraLarge\";",
+            "  size?: StepperSize;",
             "  maxValue?: number | null;",
             "  /** Above the control. */\n  label?: JSX.Element;",
             "  children?: JSX.Element;",
@@ -640,7 +835,7 @@ mod tests {
             "  /** Jumps to `value`. */\n  jumpTo(value: number): void;",
             "  value(): Promise<number>;",
             "export interface NumberStepperProps extends Omit<ComponentHostProps, \"ref\"> {\n  ref?: NumberStepperRef | ((ref: NumberStepperRef) => void);",
-            "export const NumberStepper: (props: NumberStepperProps) => JSX.Element = \
+            "export const NumberStepper: ((props: NumberStepperProps) => JSX.Element) = \
              component(\"test.number_stepper\", [\"value\", \"size\", \"maxValue\"], \
              [\"change\", \"limit\", \"reset\"], true, [\"label\"], undefined, undefined, \
              [[\"jumpTo\", false], [\"value\", true]]);",

@@ -151,12 +151,50 @@ impl fmt::Display for PropError {
 
 impl std::error::Error for PropError {}
 
+/// The named TypeScript types the declarations use (`AlertButton`,
+/// `BarStyle`), declared once each.
+#[derive(Debug, Clone, Default)]
+pub struct TsTypes(std::collections::BTreeMap<&'static str, String>);
+
+impl TsTypes {
+    /// Type `name`, declared by `declaration` (`interface ... {}` or
+    /// `type ... = ...;`, with its doc comment) the first time.
+    pub fn declare(
+        &mut self,
+        name: &'static str,
+        declaration: impl FnOnce(&mut TsTypes) -> String,
+    ) -> String {
+        if !self.0.contains_key(name) {
+            // Present while it is built: a type naming itself stops here.
+            self.0.insert(name, String::new());
+            let text = declaration(self);
+            self.0.insert(name, text);
+        }
+        name.to_owned()
+    }
+
+    /// Adds `other`'s types.
+    pub(crate) fn merge(&mut self, other: &TsTypes) {
+        for (name, text) in &other.0 {
+            self.0.entry(name).or_insert_with(|| text.clone());
+        }
+    }
+
+    pub(crate) fn declarations(&self) -> impl Iterator<Item = &str> {
+        self.0.values().map(String::as_str)
+    }
+}
+
+/// A function giving a TypeScript type (declaring the named types it uses).
+pub type TsType = fn(&mut TsTypes) -> String;
+
 /// A type props and event data can have: how it converts from and to JSON,
 /// and its TypeScript type. `#[derive(PropEnum)]` implements it for enums
-/// of unit variants.
+/// of unit variants, `#[derive(JsObject)]` for structs.
 pub trait JsValue: Sized {
-    /// Its TypeScript type (`string`, `"primary" | "plain"`).
-    fn ts_type() -> String;
+    /// Its TypeScript type (`string`, `AlertButton`), declaring the named
+    /// types it uses in `types`.
+    fn ts_type(types: &mut TsTypes) -> String;
 
     /// The value JS sent.
     fn from_json(value: JsonValue) -> Result<Self, PropError>;
@@ -166,7 +204,7 @@ pub trait JsValue: Sized {
 }
 
 impl JsValue for bool {
-    fn ts_type() -> String {
+    fn ts_type(_types: &mut TsTypes) -> String {
         "boolean".into()
     }
 
@@ -184,7 +222,7 @@ impl JsValue for bool {
 macro_rules! number {
     ($to_json:ident: $($ty:ty),*) => {$(
         impl JsValue for $ty {
-            fn ts_type() -> String {
+            fn ts_type(_types: &mut TsTypes) -> String {
                 "number".into()
             }
 
@@ -220,7 +258,7 @@ number!(int: i32, i64);
 number!(uint: u32, u64, usize);
 
 impl JsValue for SharedString {
-    fn ts_type() -> String {
+    fn ts_type(_types: &mut TsTypes) -> String {
         "string".into()
     }
 
@@ -237,7 +275,7 @@ impl JsValue for SharedString {
 }
 
 impl JsValue for String {
-    fn ts_type() -> String {
+    fn ts_type(_types: &mut TsTypes) -> String {
         "string".into()
     }
 
@@ -255,7 +293,7 @@ impl JsValue for String {
 
 /// A CSS color string from JS (`"#2563eb"`, `"rgb(0 0 0 / 0.5)"`).
 impl JsValue for Color {
-    fn ts_type() -> String {
+    fn ts_type(_types: &mut TsTypes) -> String {
         "string".into()
     }
 
@@ -272,7 +310,7 @@ impl JsValue for Color {
 }
 
 impl JsValue for JsonValue {
-    fn ts_type() -> String {
+    fn ts_type(_types: &mut TsTypes) -> String {
         "unknown".into()
     }
 
@@ -287,8 +325,8 @@ impl JsValue for JsonValue {
 
 /// `null` is `None`.
 impl<T: JsValue> JsValue for Option<T> {
-    fn ts_type() -> String {
-        format!("{} | null", T::ts_type())
+    fn ts_type(types: &mut TsTypes) -> String {
+        format!("{} | null", T::ts_type(types))
     }
 
     fn from_json(value: JsonValue) -> Result<Self, PropError> {
@@ -304,8 +342,8 @@ impl<T: JsValue> JsValue for Option<T> {
 }
 
 impl<T: JsValue> JsValue for Vec<T> {
-    fn ts_type() -> String {
-        format!("({})[]", T::ts_type())
+    fn ts_type(types: &mut TsTypes) -> String {
+        format!("({})[]", T::ts_type(types))
     }
 
     fn from_json(value: JsonValue) -> Result<Self, PropError> {

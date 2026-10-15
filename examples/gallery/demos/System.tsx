@@ -88,37 +88,50 @@ export function System() {
           </view>
         </Section>
         <Section title="Alerts">
-          <Button label="Alert with one button" onPress={() => Alert.alert("Saved", "Your changes were saved.", [{ text: "OK", onPress: () => setAnswer("OK") }])} />
+          <Button
+            label="Alert with one button"
+            onPress={async () => {
+              await Alert.alert("Saved", "Your changes were saved.");
+              setAnswer("OK");
+            }}
+          />
           <Button
             label="Confirm (cancel / destructive)"
             color="#cf222e"
-            onPress={() =>
-              Alert.alert("Delete the photo?", "This cannot be undone.", [
-                { text: "Cancel", style: "cancel", onPress: () => setAnswer("Cancel") },
-                { text: "Delete", style: "destructive", onPress: () => setAnswer("Delete") },
-              ], { onDismiss: () => setAnswer("dismissed"), android: { cancelable: true } })
-            }
+            onPress={async () => {
+              const i = await Alert.alert(
+                "Delete the photo?",
+                "This cannot be undone.",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Delete", style: "destructive" },
+                ],
+                { cancelable: true },
+              );
+              setAnswer(["Cancel", "Delete"][i] ?? "dismissed");
+            }}
           />
           <Button
             label="Three buttons"
             color="#8250df"
-            onPress={() =>
-              Alert.alert("Update available", "Install it now?", [
-                { text: "Later", onPress: () => setAnswer("Later") },
-                { text: "Never", style: "cancel", onPress: () => setAnswer("Never") },
-                { text: "Install", onPress: () => setAnswer("Install") },
-              ])
-            }
+            onPress={async () => {
+              const buttons = ["Later", "Never", "Install"];
+              const i = await Alert.alert("Update available", "Install it now?", [
+                { text: "Later" },
+                { text: "Never", style: "cancel" },
+                { text: "Install" },
+              ]);
+              setAnswer(buttons[i] ?? "dismissed");
+            }}
           />
           <Button
             label="Action sheet"
             color="#1a7f37"
-            onPress={() =>
-              ActionSheet.show(
-                { title: "Share the photo", options: ["Cancel", "Copy link", "Save", "Delete"], cancelButtonIndex: 0, destructiveButtonIndex: 3 },
-                (i) => setAnswer(["Cancel", "Copy link", "Save", "Delete"][i] ?? String(i)),
-              )
-            }
+            onPress={async () => {
+              const options = ["Cancel", "Copy link", "Save", "Delete"];
+              const i = await ActionSheet.show({ title: "Share the photo", options, cancelButtonIndex: 0, destructiveButtonIndexes: [3] });
+              setAnswer(options[i] ?? "dismissed");
+            }}
           />
           <Button label="Toast (Android)" color="#57606a" onPress={() => Toast.show("Hello from a toast", Toast.SHORT)} />
           <Row label="Answer" value={answer() || "–"} />

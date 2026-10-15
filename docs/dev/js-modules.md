@@ -29,7 +29,7 @@ is no catch-all module, and moved APIs get no compatibility re-exports.
 | `nsh/ios` | `isAvailable`, `InputAccessoryView` |
 | `nsh/android` | `isAvailable`, `Toast`, `BackHandler`, `setStatusBarBackgroundColor` |
 | `nsh/renderer` | what compiled JSX calls (`createElement`, `insert`, `spread`, ...; the Solid compiler's `moduleName`) |
-| `nsh/ui/mobile` | `Stack`, `Screen`, `createNavigator`, `Modal`; `SafeAreaView`, `useSafeAreaInsets`, `safeArea()`; `KeyboardAvoidingView`, `keyboard()`, `Keyboard.dismiss`; `StatusBar`, `Alert`, `ActionSheet` (a list dialog on Android); the components of `nsh-ui-mobile` (`Button`, `Card`, `Group`, `ListView`, `Stepper`) |
+| `nsh/ui/mobile` | `Stack`, `Screen`, `createNavigator`, `Modal` (Solid, `navigation.ts`); everything else is Rust in `nsh-ui-mobile`, its JS generated: `SafeAreaView`, `KeyboardAvoidingView`, `StatusBar` (and `StatusBar.setBarStyle` / `setHidden`), `Alert.alert` and `ActionSheet.show` (promises of the index chosen; a list dialog on Android), `Keyboard.dismiss`, `Button`, `Card`, `Group`, `ListView`, `Stepper`; re-exported from the runtime: `safeArea()`, `keyboard()`, `useSafeAreaInsets()` |
 
 - **Platform modules** are importable on both platforms (one bundle runs on both); on the other one their calls do
   nothing and their components render nothing. `isAvailable` tells which.
@@ -37,7 +37,8 @@ is no catch-all module, and moved APIs get no compatibility re-exports.
   elements and components (`IOSProps` / `AndroidProps` / `DesktopProps` in `types.ts`, extended per element). The
   renderer (`platformProps` in `_core.ts`) sends only the current platform's object, each key as a prop of its own (keys removed from the object are cleared); the core knows them by
   those names. Android: `ripple`, `elevation`, `accessibilityLiveRegion`, Modal `statusBarTranslucent`, StatusBar
-  `backgroundColor`, Alert `cancelable`. iOS: input `inputAccessoryViewID` / `textContentType`, Screen `headerLargeTitle` /
+  `backgroundColor` (a Rust component's `android` prop). Alert's `cancelable` is an option of both platforms (iOS
+  alerts are never dismissed by a tap outside). iOS: input `inputAccessoryViewID` / `textContentType`, Screen `headerLargeTitle` /
   `headerBackTitle`, Modal `presentationStyle` / `supportedOrientations`, WebView `allowsBackForwardNavigationGestures`.
 - Module-level code that must always run (the engine's hooks `__nsh_dispatch` / `__nsh_env`, the root's direction, the
   Tailwind theme) lives in `_core.ts`; feature modules only run when imported (production bundles tree-shake the rest).

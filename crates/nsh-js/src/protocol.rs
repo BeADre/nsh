@@ -15,7 +15,7 @@ use nsh_core::{
     ImageSource, KeyboardDismissMode, KeyboardTaps, KeyboardType, LayoutAnimation, LayoutCurve,
     LayoutProperty, LayoutTransition, ListContentStyle, LiveRegion, ModalAnimation, ModalConfig,
     ModalPresentation, ModalProp, NativeProp, NodeId, Op, PointerEvents, Prop, ResizeMode,
-    ReturnKeyType, ScreenAnimation, ScreenProp, ScrollProp, SnapAlignment, StatusBarConfig,
+    ReturnKeyType, ScreenAnimation, ScreenProp, ScrollProp, SnapAlignment, StatusBarSetting,
     StatusBarStyle, Style, StyleDecl, StyleError, StylePatch, StyleValue, Tag, TransformKind,
     Viewability, WebSource,
 };
@@ -239,21 +239,22 @@ pub(crate) fn decode<'js>(
                             args,
                         }
                     }
+                    // What a function sets; the fields it leaves out keep
+                    // their values.
                     "statusBar" => {
                         let o = arg.as_object();
                         let flag = |key: &str| {
                             o.and_then(|o| o.get::<_, Option<bool>>(key).ok().flatten())
-                                .unwrap_or(false)
                         };
                         let text = |key: &str| {
                             o.and_then(|o| o.get::<_, Option<String>>(key).ok().flatten())
                         };
-                        Command::StatusBar(StatusBarConfig {
-                            style: match text("barStyle").as_deref() {
-                                Some("light-content") => StatusBarStyle::Light,
-                                Some("dark-content") => StatusBarStyle::Dark,
+                        Command::SetStatusBar(StatusBarSetting {
+                            style: text("barStyle").map(|s| match s.as_str() {
+                                "light-content" => StatusBarStyle::Light,
+                                "dark-content" => StatusBarStyle::Dark,
                                 _ => StatusBarStyle::Default,
-                            },
+                            }),
                             hidden: flag("hidden"),
                             animated: flag("animated"),
                             background: text("backgroundColor").and_then(|c| Color::parse(&c)),
@@ -853,8 +854,6 @@ fn decode_prop<'js>(
         "underlayOpacity" => Prop::UnderlayOpacity(
             number(&value).map_or(nsh_core::UNDERLAY_OPACITY, |n| n.clamp(0.0, 1.0)),
         ),
-        "insetPadding" => Prop::InsetPadding(insets(&value)?),
-        "insetMargin" => Prop::InsetMargin(insets(&value)?),
         "layoutDirectionRtl" => Prop::LayoutDirection(value.as_bool().unwrap_or(false)),
         "class" => Prop::Class(match value.as_string() {
             Some(s) => s.to_string()?.into(),

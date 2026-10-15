@@ -16,6 +16,7 @@ import {
   createRoot,
   createSignal,
   untrack,
+  useContext,
 } from "solid-js";
 import { createRenderer } from "solid-js/universal";
 // The app's Tailwind theme (`nsh.json`), JSON or null.
@@ -384,6 +385,41 @@ export type ComponentHostProps = Pick<ViewProps, "class" | "classList" | "style"
 /** Calls of components' methods JS waits for, numbered. */
 let calls = 0;
 
+/** Calls of modules' functions JS waits for (answered on the root). */
+const moduleCalls = new Map<number, [(v: unknown) => void, (e: Error) => void]>();
+
+/**
+ * The JS object of a UI set's Rust module `name` (generated from its spec):
+ * each function sends a call to the core, in order with the ops before it;
+ * one with a result returns a `Promise` of it.
+ */
+export function module(name: string, functions: readonly (readonly [string, boolean])[]): any {
+  const object: Record<string, unknown> = {};
+  for (const [f, returns] of functions) {
+    const full = `${name}.${f}`;
+    object[f] = returns
+      ? (...a: unknown[]) =>
+          new Promise((resolve, reject) => {
+            if (moduleCalls.size === 0) setProp(root, "onNativeEvent", onModuleReturn);
+            const c = ++calls;
+            moduleCalls.set(c, [resolve, reject]);
+            command(1, "native", { name: full, args: { c, a } });
+          })
+      : (...a: unknown[]) => command(1, "native", { name: full, args: { c: 0, a } });
+  }
+  return object;
+}
+
+function onModuleReturn(e: { name: string; data: any }) {
+  if (e.name !== "$return") return;
+  const settle = moduleCalls.get(e.data.c);
+  if (settle === undefined) return;
+  moduleCalls.delete(e.data.c);
+  if (moduleCalls.size === 0) setProp(root, "onNativeEvent", undefined);
+  if ("e" in e.data) settle[1](new Error(e.data.e));
+  else settle[0](e.data.v);
+}
+
 /** `press` -> `onPress`. */
 const eventHandler = (event: string): string => "on" + event.charAt(0).toUpperCase() + event.slice(1);
 
@@ -647,6 +683,12 @@ export const InsetsContext: ReturnType<typeof createContext<Accessor<Insets>>> =
   safeArea(),
 );
 
+/** Insets not covered by system UI or headers where this component renders:
+ * the surface's safe area, a modal's, or a screen's (below its header). */
+export function useSafeAreaInsets(): Accessor<Insets> {
+  return useContext(InsetsContext);
+}
+
 /** Keeps the insets a screen or modal reports (`onInsets`). */
 export function nativeInsets(initial: () => Insets): { insets: Accessor<Insets>; onInsets: (e: Insets) => void } {
   const [insets, setInsets] = createSignal<Insets | null>(null, {
@@ -657,55 +699,6 @@ export function nativeInsets(initial: () => Insets): { insets: Accessor<Insets>;
     onInsets: (e: Insets) => setInsets({ top: e.top, right: e.right, bottom: e.bottom, left: e.left }),
   };
 }
-
-// --- Status bar -------------------------------------------------------------
-
-/** What the status bar shows (the command's payload). */
-export interface StatusBarState {
-  barStyle?: "default" | "light-content" | "dark-content";
-  hidden?: boolean;
-  animated?: boolean;
-  backgroundColor?: string;
-}
-
-/** Status bar settings by owner: rendered `<StatusBar>`s (the last mounted
- * wins, prop by prop) over the imperative ones. */
-export const statusBarStack: (() => StatusBarState)[] = [];
-const [statusBarBase, setStatusBarBase] = createSignal<StatusBarState>({});
-const [statusBarVersion, setStatusBarVersionSignal] = createSignal(0);
-/** A rendered `<StatusBar>` changed: merge again. */
-export const bumpStatusBar = (): void => {
-  setStatusBarVersionSignal((v) => v + 1);
-};
-let statusBarStarted = false;
-
-export function startStatusBar(): void {
-  if (statusBarStarted) return;
-  statusBarStarted = true;
-  createRoot(() => {
-    let last = "";
-    effect(() => {
-      statusBarVersion();
-      const merged: StatusBarState = { ...statusBarBase() };
-      for (const entry of statusBarStack) {
-        const p = entry();
-        for (const key of Object.keys(p) as (keyof StatusBarState)[]) {
-          if (p[key] !== undefined) (merged as any)[key] = p[key];
-        }
-      }
-      const key = JSON.stringify(merged);
-      if (key !== last) {
-        last = key;
-        command(1, "statusBar", merged);
-      }
-    });
-  });
-}
-
-export const setStatusBar = (patch: StatusBarState): void => {
-  startStatusBar();
-  setStatusBarBase((b) => ({ ...b, ...patch }));
-};
 
 // --- Touches and the gesture responder system ------------------------------
 //

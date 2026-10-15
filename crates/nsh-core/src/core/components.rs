@@ -9,19 +9,20 @@
 //! its children are placed where the render's `Children` is. Renders run at
 //! the start of a commit, so props set in one JS turn render once.
 
-use std::{any::Any, rc::Rc, sync::Arc};
+use std::{any::Any, cell::RefCell, rc::Rc, sync::Arc};
 
 use rustc_hash::FxHashMap;
 
-use super::{Core, NO_KEY};
+use super::{Core, Kind, NO_KEY};
 use crate::{
-    ApplyError, Command, EventKind, EventMask, EventPayload, JsonValue, NodeId, Op, Prop, Tag,
-    TextEngine,
+    ApplyError, Command, EdgeInsets, EventKind, EventMask, EventPayload, JsonValue, NodeId, Op,
+    Prop, Tag, TextEngine,
     tailwind::ClassList,
     ui::{
-        AnyInstance, Attrs, Child, ComponentSpec, ElKind, ElNode, Environment, ErasedCx, Executor,
-        IntoElement, ListConfig, Listener, ParentElement, PlaceFn, Position, PropError, Registry,
-        SharedString, StyleRefinement, Theme, view,
+        Action, AnyInstance, AsyncCx, Attrs, Child, ComponentSpec, ElKind, ElNode, Environment,
+        ErasedCx, Executor, FunctionCall, Globals, IntoElement, ListConfig, Listener, ModuleCx,
+        Output, ParentElement, PlaceFn, Position, PropError, Registry, SharedString,
+        StyleRefinement, Theme, view,
     },
 };
 
@@ -163,6 +164,14 @@ pub(super) struct Components {
     environment: Environment,
     /// Runs the components' async tasks and timers.
     pub(super) executor: Rc<Executor>,
+    /// State the components, modules and tasks share, by type (also the
+    /// status bar's settings).
+    pub(super) globals: Globals,
+    /// Dialogs components show, by id: their answers.
+    dialogs: FxHashMap<u32, Rc<RefCell<Output<i32>>>>,
+    next_dialog: u32,
+    /// The insets screens and modals reported (`onInsets`).
+    insets: FxHashMap<NodeId, EdgeInsets>,
     next_id: NodeId,
     dirty: Vec<NodeId>,
     /// Reused buffers.
@@ -183,6 +192,11 @@ impl Default for Components {
             lists: FxHashMap::default(),
             environment: Environment::default(),
             executor: Rc::new(Executor::default()),
+            globals: Globals::default(),
+            dialogs: FxHashMap::default(),
+            // Above the ids JS gives its own dialogs.
+            next_dialog: 1 << 30,
+            insets: FxHashMap::default(),
             // Odd: JS allocates the even ids (1 is the root).
             next_id: 3,
             dirty: Vec::new(),
@@ -228,6 +242,42 @@ impl Components {
     }
 }
 
+/// The inline style of `id` from a JS style (an object or an array of
+/// them; keys and values as in React Native). Values that are objects or
+/// arrays (transforms, offsets) are not taken.
+fn inline_style(id: NodeId, value: Option<&JsonValue>) -> Op {
+    fn walk(value: &JsonValue, style: &mut crate::Style, patch: &mut crate::StylePatch) {
+        use crate::StyleValue as V;
+        match value {
+            JsonValue::Object(entries) => {
+                for (key, value) in entries {
+                    let v = match value {
+                        JsonValue::Number(n) => V::Number(n.as_f64().unwrap_or(0.0) as f32),
+                        JsonValue::String(s) => V::Str(s),
+                        JsonValue::Null => V::Null,
+                        _ => continue,
+                    };
+                    if patch.set(style, key, v).is_err() {
+                        log::warn!(target: "js", "style `{key}`: not taken");
+                    }
+                }
+            }
+            JsonValue::Array(items) => {
+                for item in items {
+                    walk(item, style, patch);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut style = Box::<crate::Style>::default();
+    let mut patch = crate::StylePatch::default();
+    if let Some(value) = value {
+        walk(value, &mut style, &mut patch);
+    }
+    Op::SetStyle { id, style, patch }
+}
+
 fn same(a: &Option<Arc<ClassList>>, b: &Option<Arc<ClassList>>) -> bool {
     match (a, b) {
         (Some(a), Some(b)) => Arc::ptr_eq(a, b),
@@ -261,7 +311,8 @@ impl<M: TextEngine> Core<M> {
     /// The environment components read ([`crate::ui::RenderCx::window`]
     /// and the like): the components that read what changed render again.
     pub fn set_environment(&mut self, environment: Environment) {
-        let changed = environment.changes(&self.components.environment);
+        let old = self.components.environment;
+        let changed = environment.changes(&old);
         self.components.environment = environment;
         if changed == 0 {
             return;
@@ -274,6 +325,13 @@ impl<M: TextEngine> Core<M> {
             .map(|(&h, _)| h)
             .collect();
         for host in hosts {
+            let mut cx = self.erased_cx(host);
+            if let Some(inst) = self.components.instances.get_mut(&host)
+                && let Inner::Component(inner) = &mut inst.inner
+            {
+                inner.environment_changed(&old, &environment, &mut cx);
+            }
+            self.finish_event(host, cx);
             self.components.mark(host);
         }
     }
@@ -307,8 +365,12 @@ impl<M: TextEngine> Core<M> {
         for _ in 0..MAX_TASK_ROUNDS {
             let polled = executor.poll_ready();
             let updates = executor.take_updates();
-            if !polled && updates.is_empty() {
+            let actions = executor.take_actions();
+            if !polled && updates.is_empty() && actions.is_empty() {
                 return;
+            }
+            for action in actions {
+                self.apply_action(action);
             }
             for update in updates {
                 let mut cx = self.erased_cx(update.host);
@@ -336,6 +398,7 @@ impl<M: TextEngine> Core<M> {
             self.components.environment,
             host,
             self.components.executor.clone(),
+            self.components.globals.clone(),
         )
     }
 
@@ -521,6 +584,14 @@ impl<M: TextEngine> Core<M> {
                     enabled: enabled || own,
                 }))
             }
+            // A function of a module, on the root.
+            Op::Command {
+                id: crate::ROOT_ID,
+                command: Command::Native { name, args },
+            } if self.components.registry.function(&name).is_some() => {
+                self.call_function(&name, args);
+                Ok(None)
+            }
             // A method of the component's ref: `{ c, a }`, the call (0: no
             // reply) and the arguments.
             Op::Command {
@@ -606,6 +677,59 @@ impl<M: TextEngine> Core<M> {
         self.components.mark(cell);
     }
 
+    /// Calls module function `name` (`Alert.alert`); a call JS waits for
+    /// gets its result as a `$return` event on the root.
+    fn call_function(&mut self, name: &str, args: JsonValue) {
+        let Some(function) = self.components.registry.function(name) else {
+            return;
+        };
+        let call = args.get("c").and_then(JsonValue::as_u64).unwrap_or(0);
+        let args = match args.get("a") {
+            Some(JsonValue::Array(a)) => a.clone(),
+            _ => Vec::new(),
+        };
+        let root = crate::ROOT_ID;
+        match &function.call {
+            FunctionCall::Sync(run) => {
+                let mut cx = self.erased_cx(root);
+                let result = run(args, &mut ModuleCx::new(&mut cx));
+                self.finish_event(root, cx);
+                if let Err(e) = &result {
+                    log::warn!(target: "js", "{name}(): {e}");
+                }
+                if call != 0 {
+                    self.reply(root, call, result.map_err(|e| e.0));
+                }
+            }
+            FunctionCall::Async(start) => {
+                let executor = Rc::downgrade(&self.components.executor);
+                match start(args, AsyncCx::new(executor.clone())) {
+                    Ok(future) => {
+                        // A task of the root: it never goes away.
+                        crate::ui::task::spawn_raw(
+                            &self.components.executor,
+                            root,
+                            Box::pin(async move {
+                                let value = future.await;
+                                if call != 0
+                                    && let Some(executor) = executor.upgrade()
+                                {
+                                    executor.act(Action::Return(call, Ok(value)));
+                                }
+                            }),
+                        );
+                    }
+                    Err(e) => {
+                        log::warn!(target: "js", "{name}(): {e}");
+                        if call != 0 {
+                            self.reply(root, call, Err(e.0));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Calls method `name` of `host`'s component; a call JS waits for gets
     /// its result (or error) as a `$return` event.
     fn call_method(&mut self, host: NodeId, name: &str, args: JsonValue) {
@@ -631,20 +755,7 @@ impl<M: TextEngine> Core<M> {
             log::warn!(target: "js", "{name}(): {e}");
         }
         if call != 0 {
-            let mut reply = serde_json::Map::new();
-            reply.insert("c".into(), call.into());
-            match result {
-                Ok(value) => reply.insert("v".into(), value),
-                Err(e) => reply.insert("e".into(), JsonValue::String(e.0)),
-            };
-            self.events.push((
-                host,
-                EventKind::NativeEvent,
-                EventPayload::Native {
-                    name: "$return".into(),
-                    data: JsonValue::Object(reply),
-                },
-            ));
+            self.reply(host, call, result.map_err(|e| e.0));
         }
     }
 
@@ -794,8 +905,9 @@ impl<M: TextEngine> Core<M> {
                 // The setup the first time, else what changed in the props.
                 let mut cx = self.erased_cx(host);
                 inner.update(&mut cx);
+                let insets = self.insets_of(host);
                 let (el, reads) =
-                    inner.render(&self.components.theme, &self.components.environment);
+                    inner.render(&self.components.theme, &self.components.environment, insets);
                 inst.reads = reads;
                 self.finish_event(host, cx);
                 el
@@ -879,6 +991,9 @@ impl<M: TextEngine> Core<M> {
             let _ = self.apply_op(Op::SetProp { id, prop });
         }
         self.components.props = props;
+        if new.inline != old.inline {
+            let _ = self.apply_op(inline_style(id, new.inline.as_ref()));
+        }
     }
 
     /// Sets node `id`'s classes: `style` lowered, then `user` (a host's).
@@ -1316,9 +1431,14 @@ impl<M: TextEngine> Core<M> {
 
     /// Frees what a component rendered (not its host nor its JS children).
     fn release_instance(&mut self, host: NodeId) {
-        let Some(inst) = self.components.instances.remove(&host) else {
+        let Some(mut inst) = self.components.instances.remove(&host) else {
             return;
         };
+        if let Inner::Component(inner) = &mut inst.inner {
+            let mut cx = self.erased_cx(host);
+            inner.cleanup(&mut cx);
+            self.finish_event(host, cx);
+        }
         // Its tasks and timers end with it.
         self.components.executor.cancel_host(host);
         for &child in &inst.js_children {
@@ -1339,6 +1459,9 @@ impl<M: TextEngine> Core<M> {
     /// A native event on node `id`: true when a component handled it (its
     /// own parts' events never reach JS, which does not know them).
     pub fn component_event(&mut self, id: NodeId, kind: EventKind, payload: &EventPayload) -> bool {
+        if self.platform_event(id, kind, payload) {
+            return true;
+        }
         let host = if self.is_host(id) {
             id
         } else if let Some(&h) = self.components.owners.get(&id) {
@@ -1380,9 +1503,124 @@ impl<M: TextEngine> Core<M> {
 
     /// Applies what a handler did: a new render, events for JS (or for the
     /// component that rendered this one).
+    /// What a component or a task asked of the platform.
+    fn apply_action(&mut self, action: Action) {
+        match action {
+            Action::Command(id, command) => {
+                let _ = self.apply_op(Op::Command { id, command });
+            }
+            Action::Dialog(mut dialog, answer) => {
+                dialog.id = self.components.next_dialog;
+                self.components.next_dialog += 1;
+                self.components.dialogs.insert(dialog.id, answer);
+                let _ = self.apply_op(Op::Command {
+                    id: crate::ROOT_ID,
+                    command: Command::Dialog(Box::new(dialog)),
+                });
+            }
+            Action::Return(call, result) => self.reply(crate::ROOT_ID, call, result),
+        }
+    }
+
+    /// The answer to a call JS waits for, as a `$return` event on `host`.
+    fn reply(&mut self, host: NodeId, call: u64, result: Result<JsonValue, String>) {
+        let mut reply = serde_json::Map::new();
+        reply.insert("c".into(), call.into());
+        match result {
+            Ok(value) => reply.insert("v".into(), value),
+            Err(e) => reply.insert("e".into(), JsonValue::String(e)),
+        };
+        self.events.push((
+            host,
+            EventKind::NativeEvent,
+            EventPayload::Native {
+                name: "$return".into(),
+                data: JsonValue::Object(reply),
+            },
+        ));
+    }
+
+    /// Events the components handle before anything else: dialog answers
+    /// (theirs never reach JS), insets of screens and modals.
+    fn platform_event(&mut self, id: NodeId, kind: EventKind, payload: &EventPayload) -> bool {
+        let number = |key: &str| match payload {
+            EventPayload::Map(entries) => entries.iter().find_map(|(k, v)| match v {
+                crate::PayloadValue::Number(n) if *k == key => Some(*n),
+                _ => None,
+            }),
+            _ => None,
+        };
+        match kind {
+            EventKind::Dialog => {
+                let Some(dialog) = number("id") else {
+                    return false;
+                };
+                let Some(answer) = self.components.dialogs.remove(&(dialog as u32)) else {
+                    return false;
+                };
+                answer
+                    .borrow_mut()
+                    .deliver(number("index").unwrap_or(-1.0) as i32);
+                true
+            }
+            EventKind::Insets => {
+                let insets = EdgeInsets {
+                    top: number("top").unwrap_or(0.0) as f32,
+                    right: number("right").unwrap_or(0.0) as f32,
+                    bottom: number("bottom").unwrap_or(0.0) as f32,
+                    left: number("left").unwrap_or(0.0) as f32,
+                };
+                if self.components.insets.insert(id, insets) != Some(insets) {
+                    self.mark_readers(crate::ui::env::INSETS);
+                }
+                // JS's screens keep them too.
+                false
+            }
+            _ => false,
+        }
+    }
+
+    /// Renders again the components that read `what` of the environment.
+    fn mark_readers(&mut self, what: u16) {
+        let hosts: Vec<NodeId> = self
+            .components
+            .instances
+            .iter()
+            .filter(|(_, i)| i.reads & what != 0)
+            .map(|(&h, _)| h)
+            .collect();
+        for host in hosts {
+            self.components.mark(host);
+        }
+    }
+
+    /// The insets where `host` renders: its screen's or modal's, else the
+    /// surface's safe area.
+    fn insets_of(&self, host: NodeId) -> EdgeInsets {
+        let safe = self.components.environment.safe_area;
+        let mut key = self.key(host).ok();
+        while let Some(k) = key {
+            let node = &self.nodes[k as usize];
+            if let Some(insets) = self.components.insets.get(&node.id) {
+                return *insets;
+            }
+            match node.kind {
+                // Not reported yet: a screen's header covers the top.
+                Kind::Screen => return EdgeInsets { top: 0.0, ..safe },
+                Kind::Modal => return safe,
+                _ => {}
+            }
+            key = (node.parent != NO_KEY).then_some(node.parent);
+        }
+        safe
+    }
+
     fn finish_event(&mut self, host: NodeId, cx: ErasedCx) {
         if cx.notify {
             self.components.mark(host);
+        }
+        for action in cx.actions {
+            self.apply_action(action);
         }
         for event in cx.emits {
             match self.components.owners.get(&host).copied() {

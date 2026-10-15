@@ -1015,6 +1015,7 @@ fn ui_environment(env: &Environment, window: Size) -> nsh_core::ui::Environment 
         window,
         safe_area: insets(env),
         keyboard_height: env.keyboard_height,
+        keyboard_duration: env.keyboard_duration,
         dark: env.color_scheme == nsh_js::ColorScheme::Dark,
         font_scale: env.font_scale,
         reduce_motion: env.reduce_motion,

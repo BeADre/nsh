@@ -27,18 +27,20 @@
 
 mod component;
 mod element;
-mod env;
+pub(crate) mod env;
+mod module;
+pub(crate) mod status_bar;
 mod style;
-mod task;
+pub(crate) mod task;
 mod theme;
 mod value;
 
-pub use nsh_macros::{Event, PropEnum, Props, methods};
+pub use nsh_macros::{Event, JsObject, PropEnum, Props, methods, module};
 
 pub(crate) use self::{
     component::AnyInstance,
-    element::{ElKind, ErasedCx, ListConfig, PlaceFn},
-    task::Executor,
+    element::{ElKind, ErasedCx, Globals, ListConfig, PlaceFn},
+    task::{Action, Executor, Output},
 };
 pub use self::{
     component::{
@@ -48,26 +50,34 @@ pub use self::{
     element::{
         Accessible, AnyElement, Attrs, Child, Children, ComponentElement, Context, ElNode, Element,
         FluentBuilder, Image, Interactive, IntoElement, Items, ListElement, Listener,
-        ParentElement, Position, RenderCx, Slot, SlotElement, Text, View, image, text, view,
+        ParentElement, Position, RenderCx, Slot, SlotElement, Style, Text, View, image, text, view,
     },
     env::Environment,
+    module::{
+        Function, FunctionCall, FunctionSpec, Module, ModuleCx, ModuleFuture, ModuleParam,
+        ModuleSpec,
+    },
+    status_bar::StatusBarEntry,
     style::{AdaptiveColor, FontWeight, Length, StyleRefinement, Styled, px, relative, rgb, rgba},
-    task::{AsyncCx, Task, Updated, WeakComponent},
+    task::{AsyncCx, DialogAnswer, Task, Updated, WeakComponent},
     theme::{Theme, ThemeColors, ThemeError},
-    value::{JsValue, PropError, SharedString},
+    value::{JsValue, PropError, SharedString, TsType, TsTypes},
 };
 pub use crate::{
-    AccessibilityRole, AccessibilityState, EventKind, EventPayload, PointerEvents, style::Color,
+    AccessibilityRole, AccessibilityState, Dialog, DialogButton, DialogButtonStyle, EdgeInsets,
+    EventKind, EventPayload, LayoutAnimation, LayoutCurve, LayoutProperty, LayoutTransition,
+    PointerEvents, StatusBarConfig, StatusBarSetting, StatusBarStyle, style::Color,
 };
 
 /// Everything a component's module needs: `use nsh_core::ui::prelude::*;`.
 pub mod prelude {
     pub use super::{
-        AccessibilityRole, AccessibilityState, Accessible, AdaptiveColor, Child, Children, Color,
-        Component, ComponentElement, Context, Element, Environment, Event, EventKind, EventPayload,
-        FluentBuilder, FontWeight, Interactive, IntoElement, Items, Length, Listener, Method,
-        NoEvent, ParentElement, PointerEvents, Position, PropEnum, Props, RenderCx, SharedString,
-        Slot, Styled, Task, Theme, WeakComponent, image, methods, px, relative, rgb, rgba, text,
+        AccessibilityRole, AccessibilityState, Accessible, AdaptiveColor, AsyncCx, Child, Children,
+        Color, Component, ComponentElement, Context, DialogAnswer, EdgeInsets, Element,
+        Environment, Event, EventKind, EventPayload, FluentBuilder, FontWeight, Interactive,
+        IntoElement, Items, JsObject, JsValue, Length, Listener, Method, ModuleCx, NoEvent,
+        ParentElement, PointerEvents, Position, PropEnum, Props, RenderCx, SharedString, Slot,
+        Styled, Task, Theme, WeakComponent, image, methods, module, px, relative, rgb, rgba, text,
         view,
     };
 }

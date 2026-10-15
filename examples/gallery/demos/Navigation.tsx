@@ -106,11 +106,13 @@ function Locked() {
 /** `preventBack`: leaving with unsaved text asks first. */
 function Unsaved() {
   const [text, setText] = createSignal("");
-  const confirm = () =>
-    Alert.alert("Discard your changes?", undefined, [
+  const confirm = async () => {
+    const i = await Alert.alert("Discard your changes?", undefined, [
       { text: "Keep editing", style: "cancel" },
-      { text: "Discard", style: "destructive", onPress: () => nav.pop() },
+      { text: "Discard", style: "destructive" },
     ]);
+    if (i === 1) nav.pop();
+  };
   return (
     <Screen title="Unsaved changes" preventBack={text().length > 0} onBackRequest={confirm}>
       <Page>

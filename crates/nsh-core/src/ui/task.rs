@@ -26,7 +26,7 @@ use rustc_hash::FxHashMap;
 use tokio::runtime::Handle;
 
 use super::{Component, Context, element::ErasedCx};
-use crate::NodeId;
+use crate::{Command, Dialog, JsonValue, NodeId, ROOT_ID, StatusBarSetting};
 
 type LocalFuture = Pin<Box<dyn Future<Output = ()>>>;
 
@@ -69,6 +69,21 @@ pub(crate) struct Update {
     pub(crate) run: UpdateFn,
 }
 
+/// What a component or a task asks of the platform, applied by the core.
+pub(crate) enum Action {
+    Command(NodeId, Command),
+    /// A dialog; its answer resolves the slot.
+    Dialog(Dialog, Rc<RefCell<Output<i32>>>),
+    /// The result of a module function JS waits for.
+    Return(u64, Result<JsonValue, String>),
+}
+
+/// The platform services components and tasks use ([`super::Context`],
+/// [`AsyncCx`]): commands for the surface's root.
+pub(crate) fn status_bar(patch: StatusBarSetting) -> Action {
+    Action::Command(ROOT_ID, Command::SetStatusBar(patch))
+}
+
 struct Entry {
     host: NodeId,
     /// Out while it is polled.
@@ -80,6 +95,7 @@ struct Inner {
     tasks: FxHashMap<u64, Entry>,
     next_task: u64,
     updates: VecDeque<Update>,
+    actions: VecDeque<Action>,
 }
 
 /// The executor of one core's component tasks.
@@ -188,6 +204,19 @@ impl Executor {
     pub(crate) fn take_updates(&self) -> VecDeque<Update> {
         std::mem::take(&mut self.inner.borrow_mut().updates)
     }
+
+    /// What tasks asked of the platform.
+    pub(crate) fn take_actions(&self) -> VecDeque<Action> {
+        std::mem::take(&mut self.inner.borrow_mut().actions)
+    }
+
+    pub(crate) fn act(&self, action: Action) {
+        self.inner.borrow_mut().actions.push_back(action);
+        let notify = self.ready.notify.lock().expect("notify lock").clone();
+        if let Some(notify) = notify {
+            notify();
+        }
+    }
 }
 
 /// A running task ([`super::Context::spawn`]). Dropping it cancels the
@@ -201,9 +230,64 @@ pub struct Task<T> {
     detached: bool,
 }
 
-struct Output<T> {
-    value: Option<T>,
-    waker: Option<Waker>,
+/// A value a future waits for, and the waker to call when it comes.
+pub(crate) struct Output<T> {
+    pub(crate) value: Option<T>,
+    pub(crate) waker: Option<Waker>,
+}
+
+impl<T> Default for Output<T> {
+    fn default() -> Self {
+        Self {
+            value: None,
+            waker: None,
+        }
+    }
+}
+
+impl<T> Output<T> {
+    /// Delivers `value`, waking the future waiting for it.
+    pub(crate) fn deliver(&mut self, value: T) {
+        self.value = Some(value);
+        if let Some(waker) = self.waker.take() {
+            waker.wake();
+        }
+    }
+}
+
+/// The answer to a dialog ([`super::Context::dialog`]): the index of the
+/// button pressed, -1 when it was dismissed.
+#[must_use = "a dialog's answer does nothing unless awaited"]
+pub struct DialogAnswer {
+    slot: Rc<RefCell<Output<i32>>>,
+}
+
+impl DialogAnswer {
+    pub(crate) fn new() -> (Self, Rc<RefCell<Output<i32>>>) {
+        let slot = Rc::new(RefCell::new(Output::default()));
+        (Self { slot: slot.clone() }, slot)
+    }
+}
+
+impl std::fmt::Debug for DialogAnswer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DialogAnswer").finish_non_exhaustive()
+    }
+}
+
+impl Future for DialogAnswer {
+    type Output = i32;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<i32> {
+        let mut slot = self.slot.borrow_mut();
+        match slot.value.take() {
+            Some(index) => Poll::Ready(index),
+            None => {
+                slot.waker = Some(cx.waker().clone());
+                Poll::Pending
+            }
+        }
+    }
 }
 
 impl<T> std::fmt::Debug for Task<T> {
@@ -248,13 +332,42 @@ impl<T> Future for Task<T> {
 }
 
 /// What a task's code gets besides its component: timers and background
-/// work, on tokio (any tokio API works in a task as well).
-#[derive(Clone, Copy, Debug, Default)]
+/// work on tokio (any tokio API works in a task as well), and the
+/// platform's services.
+#[derive(Clone, Debug)]
 pub struct AsyncCx {
-    _private: (),
+    executor: Weak<Executor>,
 }
 
 impl AsyncCx {
+    pub(crate) fn new(executor: Weak<Executor>) -> Self {
+        Self { executor }
+    }
+
+    fn act(&self, action: Action) {
+        if let Some(executor) = self.executor.upgrade() {
+            executor.act(action);
+        }
+    }
+
+    /// Shows `dialog` (an alert, or with `sheet` an action sheet).
+    pub fn dialog(&self, dialog: Dialog) -> DialogAnswer {
+        let (answer, slot) = DialogAnswer::new();
+        self.act(Action::Dialog(dialog, slot));
+        answer
+    }
+
+    /// Unfocuses the focused input, hiding the software keyboard.
+    pub fn dismiss_keyboard(&self) {
+        self.act(Action::Command(ROOT_ID, Command::Blur));
+    }
+
+    /// Changes what functions set for the status bar (the fields `patch`
+    /// sets), under the settings components render.
+    pub fn set_status_bar(&self, patch: StatusBarSetting) {
+        self.act(status_bar(patch));
+    }
+
     /// Completes after `delay` (Solid: what `setTimeout` waits for):
     /// `tokio::time::sleep`.
     pub fn timer(&self, delay: Duration) -> tokio::time::Sleep {
@@ -376,6 +489,11 @@ impl<R> Future for Updated<R> {
     }
 }
 
+/// Starts `future` as a task of `host`, to run to its end.
+pub(crate) fn spawn_raw(executor: &Rc<Executor>, host: NodeId, future: LocalFuture) -> u64 {
+    executor.spawn(host, future)
+}
+
 /// Starts `f(this, cx)` as a task of component `host`.
 pub(crate) fn spawn<C, R, Fut>(
     executor: &Rc<Executor>,
@@ -393,7 +511,7 @@ where
         executor: weak.clone(),
         _component: PhantomData,
     };
-    let future = f(this, AsyncCx::default());
+    let future = f(this, AsyncCx::new(weak.clone()));
     let output = Rc::new(RefCell::new(Output {
         value: None,
         waker: None,

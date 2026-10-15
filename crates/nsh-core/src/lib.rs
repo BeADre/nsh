@@ -53,8 +53,8 @@ pub use crate::{
         KeyboardDismissMode, KeyboardTaps, KeyboardType, ListContentStyle, ModalAnimation,
         ModalPresentation, ModalProp, NativeProp, NodeId, Op, PayloadValue, Prop, ROOT_ID,
         ResizeMode, ReturnKeyType, ScreenAnimation, ScreenProp, ScrollProp, SnapAlignment,
-        StatusBarConfig, StatusBarStyle, Tag, TouchEvent, TouchPhase, TouchPoint, UNDERLAY_OPACITY,
-        Viewability, WebSource,
+        StatusBarConfig, StatusBarSetting, StatusBarStyle, Tag, TouchEvent, TouchPhase, TouchPoint,
+        UNDERLAY_OPACITY, Viewability, WebSource,
     },
     props::{
         Accessibility, AccessibilityActionDef, AccessibilityProp, AccessibilityRole,

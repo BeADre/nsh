@@ -1,6 +1,7 @@
 # nsh-ui-mobile
 
-The components of `nsh/ui/mobile`: buttons, cards, switches, sliders, sheets, tab bars and the like, written in Rust.
+The components and modules of `nsh/ui/mobile`: buttons, cards, lists, safe areas, the keyboard, the status bar,
+system dialogs and the like, written in Rust.
 One implementation draws the same on iOS and Android: a component renders nsh's elements with typed styles and theme
 colors, the core lays it out in the same pass as everything else, and its interaction (press feedback, drags, state)
 stays native. JS only gets the events the component emits.
@@ -32,7 +33,17 @@ stays native. JS only gets the events the component emits.
   stop. Read the environment in the render (`cx.safe_area()`): it renders again when that changes. `Stepper` is the
   example, also of methods: `#[methods] impl Stepper { pub fn set_value(..), pub fn value(&self) -> f64 }` are
   `ref.setValue(5)` and `await ref.value()` in JS.
-- **Primitives only**, never a platform widget: the look is ours and identical on both platforms.
+- **Modules are functions without a component**: `#[module] impl Alert { pub async fn alert(title: String, ..,
+  cx: AsyncCx) -> i32 }` is `await Alert.alert(title)` in JS (`system.rs`); a sync function takes `cx: &mut ModuleCx`.
+  Option parameters at the end may be left out; options objects are `#[derive(JsObject)]` structs. A module named like
+  a component adds static functions to it (`StatusBar.setHidden`, `status_bar.rs`). Register both in `registry()`.
+- **System UI goes through the context**: `cx.dialog(..)` (await the index chosen), `cx.dismiss_keyboard()`,
+  `cx.add_status_bar(..)` / `update_status_bar` / `remove_status_bar` for a rendered setting, `set_status_bar(patch)`
+  for a function's; insets with `cx.insets()` in the render and `.inset_padding(..)` / `.inset_margin(..)` on the
+  element (`SafeAreaView`, `KeyboardAvoidingView`).
+- **Platform-only props** are an `android` / `ios` prop of a `JsObject` struct (`StatusBarAndroid`).
+- **Primitives only**, never a platform widget: the look is ours and identical on both platforms (system dialogs are
+  the platform's, for now).
 - Changing a component needs a rebuild of the runtime (the dev hosts, `nsh-ios-app`, the Android runtime); apps using
   it reload as usual.
 

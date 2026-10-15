@@ -7,12 +7,12 @@ back. One implementation draws the same on iOS and Android, is laid out in the s
 
 | Where | What |
 |---|---|
-| `crates/nsh-core/src/ui/` | The API (`nsh_core::ui`, `prelude`): `Component`, elements, `Styled`, `Theme`, `Registry`, the glue generator `typescript` |
-| `crates/nsh-macros` | `#[derive(Props)]`, `#[derive(PropEnum)]`, `#[derive(Event)]`; `style_helpers!` (the spacing methods of `Styled`) |
+| `crates/nsh-core/src/ui/` | The API (`nsh_core::ui`, `prelude`): `Component`, `Module`, elements, `Styled`, `Theme`, `Registry`, the status bar's layers (`status_bar.rs`), the glue generator `typescript` |
+| `crates/nsh-macros` | `#[derive(Props)]`, `#[derive(PropEnum)]`, `#[derive(Event)]`, `#[derive(JsObject)]`; `#[methods]`, `#[module]`; `style_helpers!` (the spacing methods of `Styled`) |
 | `crates/nsh-core/src/core/components.rs` | The core side: instances, expansion, diffing, children and slots, events |
 | `crates/nsh-ui-mobile` | The mobile set's components, one file each (`README.md`: how to write one) |
-| `crates/nsh-bundler/src/embedded.rs` | `ui/mobile/components.gen.ts`, generated from `nsh_ui_mobile::specs()`, re-exported by `nsh/ui/mobile` |
-| `js/runtime/_core.ts` | `component(name, props, events, children, slots)`: what the generated glue calls |
+| `crates/nsh-bundler/src/embedded.rs` | `ui/mobile/components.gen.ts`, generated from `nsh_ui_mobile::registry()`, re-exported by `nsh/ui/mobile` |
+| `js/runtime/_core.ts` | `component(...)` and `module(name, functions)`: what the generated glue calls |
 | `nsh_engine::EngineConfig::components` | The registry a surface renders from (the platforms and `nsh trace` pass `nsh_ui_mobile::registry()`) |
 
 A desktop set will be a crate of its own (`nsh-ui-desktop`, on GPUI), not an abstraction over both.
@@ -60,8 +60,10 @@ impl Component for Button {
 
 - **Props** are a struct, **events** an enum; the derives produce the decoding of `$name` values from JS, defaults,
   and the TypeScript types (doc comments included). Field and variant names become camel case in JS. Value types
-  implement `JsValue` (numbers, `bool`, strings, `Color`, `Option`, `Vec`, `JsonValue`, `PropEnum`s). A prop JS sends
-  with the wrong type is refused with a warning and nothing renders; clearing a prop restores its default.
+  implement `JsValue` (numbers, `bool`, strings, `Color`, `Option`, `Vec`, `JsonValue`, `ui::Style` (an inline
+  `StyleProp<ViewStyle>`), `PropEnum`s, `JsObject` structs). A prop JS sends with the wrong type is refused with a
+  warning and nothing renders; clearing a prop restores its default. Platform-only props are an `android` / `ios`
+  prop of a `JsObject` struct (`StatusBar`'s `android={{ backgroundColor }}`), as for host elements.
 - **The app's content is props too, placed by closures**: the component never creates or touches the app's elements,
   it only lays them out.
   - `header: Option<Slot>` is `Some` while the app passes non-empty JSX for it: `.slot(props.header, |h| h.px_4())`
@@ -87,10 +89,21 @@ impl Component for Button {
   | an effect `on` a prop | `fn props_changed(&mut self, old, new, cx)` (before the next render) |
   | event handlers | `cx.listener(|this, event, cx| ..)`: `&mut Self`, `cx.emit(..)`, `cx.notify()` renders again |
   | `setTimeout` / `setInterval`, `clear*` | `cx.set_timeout(d, ..)` / `cx.set_interval(d, ..)` return a `Task`; dropping it clears it |
-  | async work, `onCleanup` | `cx.spawn(|this, cx| async move { .. this.update(..).await })`; `Drop`, and the component's tasks end with it |
+  | async work | `cx.spawn(|this, cx| async move { .. this.update(..).await })`; the component's tasks end with it |
+  | `onCleanup` | `fn cleanup(&mut self, props, cx)` (with a `Context`: it can still use the platform's services), and `Drop` |
   | `windowSize()`, `safeArea()`, `keyboard()`, `colorScheme()`, ... | `cx.window()`, `cx.safe_area()`, `cx.keyboard_height()`, `cx.dark()`, ... in the render: reading subscribes |
+  | an effect on the environment | `fn environment_changed(&mut self, props, old, new, cx)` |
+  | `useSafeAreaInsets()` | `cx.insets()` in the render: the insets where the component renders (the nearest screen's or modal's, else the surface's safe area) |
 
   `render(&self)` cannot change state. Timers are tasks: a `tokio::time` sleep, then an update.
+- **Platform services** are on `Context` (setup, listeners, updates, methods), `ModuleCx` and `AsyncCx`:
+  `cx.dialog(Dialog)` shows an alert or action sheet and returns a future of the index chosen (-1: dismissed; the
+  answer is the root's `Dialog` event, matched by an id from 2^30 up, so it never reaches JS's dialogs);
+  `dismiss_keyboard()`, `animate_layout(..)`, and the status bar (below). `cx.update_global::<G, _>(|g, cx| ..)` is
+  state the surface's components and modules share.
+- **Element attributes for system UI**: `.inset_padding(insets)` / `.inset_margin(insets)` add to the padding /
+  margin the styles resolve to (what `SafeAreaView` and `KeyboardAvoidingView` use, so the app's own padding stays),
+  `.inline_style(&style)` applies a `ui::Style` prop (`KeyboardAvoidingView`'s `contentContainerStyle`).
 
 ## Methods
 
@@ -101,6 +114,28 @@ so it runs in order with the props JS set before it. A method returning nothing 
 returning a `JsValue` gives JS a `Promise`, answered by a `$return` event (`{ c, v }` or `{ c, e }` for a refused
 argument) in the same frame's commit rounds. Methods (like listeners, timers and tasks' updates) read the current props
 with `cx.props()`.
+
+## Modules
+
+Functions a UI set exports without a component (`Alert.alert`, `Keyboard.dismiss`, `StatusBar.setHidden`) are a
+`#[module]` `impl` block of a unit struct: `pub fn`s are the functions, typed from their signatures (`Option`
+parameters at the end may be left out), with an optional last `cx: &mut ModuleCx` parameter. One returning a
+`JsValue` returns a `Promise` in JS; an `async fn` runs as a root task with an `AsyncCx` (`Alert.alert` awaits
+`cx.dialog(..)`). `Registry::module::<M>()` registers it. A call is a root `Command::Native { name: "Alert.alert", args:
+{ c, a } }` op (in order with the ops before it), answered like methods by a root `$return` event; `_core.ts`'s
+`module(name, functions)` builds the object. A module with a component's name is merged into it (`StatusBar` is a
+component with static functions). `Registry::reexport` re-exports runtime values (`safeArea`, `keyboard`,
+`useSafeAreaInsets` from `nsh/_core`) under the set's module, so no hand-written TS file is left in `js/ui/mobile`
+besides the navigation's Solid parts.
+
+## The status bar
+
+`ui/status_bar.rs` layers the surface's settings (`StatusBarSetting`: style, hidden, animated, background, each
+optional). At the bottom is what functions set: `ModuleCx::set_status_bar(patch)`, `AsyncCx::set_status_bar`, and JS's
+root `statusBar` command (`nsh/android`'s `setStatusBarBackgroundColor`) all become `Command::SetStatusBar(patch)`.
+Over it, the settings components add (`cx.add_status_bar(setting)` → `StatusBarEntry`, `update_status_bar`,
+`remove_status_bar`); the most recently added wins, field by field. Each change only marks the layers; `commit` sends
+one `Command::StatusBar` with the merged result when it differs from the last one sent.
 
 ## Tasks
 
@@ -196,8 +231,10 @@ never sees the expanded nodes; their events are the component's (below).
 
 ## The glue
 
-`nsh_core::ui::typescript(specs)` writes `components.gen.ts`: the props interfaces and one `component(...)` call per
-component. That helper runs for every instance, so it is kept minimal: **one render effect reading every prop
+`nsh_core::ui::typescript(registry)` writes `components.gen.ts`: the named types the props, events, methods and
+functions use (`export type BarStyle = ...` for a `PropEnum`, `export interface AlertButton` for a `JsObject`, each
+once, with its doc comment; `JsValue::ts_type(&mut TsTypes)` declares them), the props interfaces, one
+`component(...)` call per component, one `module(...)` object per module and the re-exports. That helper runs for every instance, so it is kept minimal: **one render effect reading every prop
 directly** and sending the ones that changed, no `splitProps` / `mergeProps` / `spread` (their proxies made the first
 version cost more JS than the TSX component it replaced), no node for an absent slot, no event listener when no handler
 is passed. Benchmarks against the same Button in TSX: `docs/dev/performance.md` (`examples/bench`, `component_bench`).

@@ -26,6 +26,7 @@ use crate::{
     style::{EllipsizeMode, Style, StylePatch, TextAlign, TextStyle, ViewStyle},
     tailwind::{ClassEnvironment, ClassList, ClassProps, Tailwind},
     text::{AttributedText, MeasureCache, ResolvedTextStyle, TextEngine, TextLayout},
+    ui::status_bar::StatusBars,
 };
 
 /// Slab index of a node. Internal links use keys, never ids, to avoid the
@@ -316,7 +317,7 @@ struct Node {
     underlay: Option<Box<(crate::Color, f32)>>,
     /// A child's classes read their position among siblings.
     positional_children: bool,
-    /// `insetPadding` and `insetMargin`: added to the style's.
+    /// The inset padding and margin components set: added to the style's.
     insets: Option<Box<[EdgeInsets; 2]>>,
     events: EventMask,
     /// `zIndex`: native views are ordered by it (stable) among siblings.
@@ -841,8 +842,17 @@ impl<M: TextEngine> Core<M> {
 
     /// Applies one op from JS.
     pub fn apply(&mut self, op: Op) -> Result<(), ApplyError> {
-        // Ops on a component's host go to its component.
-        if self.components.instances.is_empty() {
+        // Ops on a component's host go to its component, calls of a UI
+        // set's modules to the module.
+        if self.components.instances.is_empty()
+            && !matches!(
+                op,
+                Op::Command {
+                    command: Command::Native { .. },
+                    ..
+                }
+            )
+        {
             return self.apply_op(op);
         }
         match self.intercept(op)? {
@@ -964,6 +974,13 @@ impl<M: TextEngine> Core<M> {
                 self.layout_animation = Some(animation);
                 Ok(())
             }
+            Op::Command {
+                id: crate::ROOT_ID,
+                command: Command::SetStatusBar(patch),
+            } => {
+                StatusBars::update(&self.components.globals, |bars| bars.set_base(patch));
+                Ok(())
+            }
             Op::Command { id, command } => {
                 self.key(id)?;
                 self.commands.push((id, command));
@@ -1004,6 +1021,11 @@ impl<M: TextEngine> Core<M> {
         }
         self.update_lists(relayout);
         self.flush_text();
+        // What this turn's status bar settings add up to, once.
+        if let Some(config) = StatusBars::take_changed(&self.components.globals) {
+            self.commands
+                .push((crate::ROOT_ID, Command::StatusBar(config)));
+        }
         // On laid out views; dropped for views that were never shown.
         for (id, mut command) in std::mem::take(&mut self.commands) {
             let Ok(key) = self.key(id) else { continue };
