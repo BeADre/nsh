@@ -2,15 +2,16 @@
 
 Two layers. `nsh` and `nsh/<module>` (`js/runtime`) are the primitives and the environment that every UI set builds
 on. `nsh/ui/<set>` (`js/ui/<set>`) is a whole UI for one form factor: `nsh/ui/mobile` has everything that is mobile UI or
-interaction, natively backed (navigation stacks, modals, the status bar, system dialogs) or JS (the components, one
-look on iOS and Android); a desktop set will be a separate one (`nsh/ui/desktop`), not an abstraction over both.
+interaction (navigation stacks, modals, the status bar, system dialogs, and its components, one look on iOS and
+Android, written in Rust in `crates/nsh-ui-mobile`); a desktop set will be a separate one (`nsh/ui/desktop`), not an abstraction over both.
 Shared vs one form factor decides the layer, not JS vs native.
 
 `nsh-bundler/src/embedded.rs` lists the embedded files per root (`runtime`, `ui/mobile`) with the specifiers apps import;
 files import their own root's files relatively (`./navigation`) and the runtime's internals as `nsh/_core` (embedded
 files only; apps cannot). `.nsh/types` has one declaration file per embedded file (`nsh/list.d.ts`,
 `nsh/ui/mobile/navigation.d.ts`) and `nsh/ui/mobile.d.ts` re-exporting its set, found through the `nsh/*` path of the
-app's `tsconfig.json`; files nsh no longer generates are removed. `nsh` itself only has rendering and the types; there
+app's `tsconfig.json`; files nsh no longer generates are removed. `ui/mobile/components.gen.ts` is generated at build
+time from the Rust components' specs (`docs/dev/components.md`). `nsh` itself only has rendering and the types; there
 is no catch-all module, and moved APIs get no compatibility re-exports.
 
 | Module | Exports |
@@ -28,7 +29,7 @@ is no catch-all module, and moved APIs get no compatibility re-exports.
 | `nsh/ios` | `isAvailable`, `InputAccessoryView` |
 | `nsh/android` | `isAvailable`, `Toast`, `BackHandler`, `setStatusBarBackgroundColor` |
 | `nsh/renderer` | what compiled JSX calls (`createElement`, `insert`, `spread`, ...; the Solid compiler's `moduleName`) |
-| `nsh/ui/mobile` | `Stack`, `Screen`, `createNavigator`, `Modal`; `SafeAreaView`, `useSafeAreaInsets`, `safeArea()`; `KeyboardAvoidingView`, `keyboard()`, `Keyboard.dismiss`; `StatusBar`, `Alert`, `ActionSheet` (a list dialog on Android) |
+| `nsh/ui/mobile` | `Stack`, `Screen`, `createNavigator`, `Modal`; `SafeAreaView`, `useSafeAreaInsets`, `safeArea()`; `KeyboardAvoidingView`, `keyboard()`, `Keyboard.dismiss`; `StatusBar`, `Alert`, `ActionSheet` (a list dialog on Android); the components of `nsh-ui-mobile` (`Button`, `Card`) |
 
 - **Platform modules** are importable on both platforms (one bundle runs on both); on the other one their calls do
   nothing and their components render nothing. `isAvailable` tells which.
@@ -46,8 +47,8 @@ is no catch-all module, and moved APIs get no compatibility re-exports.
 
 - A primitive or environment both UI sets need: a module of `js/runtime` (`nsh/<module>`), listed in
   `crates/nsh-bundler/src/embedded.rs`.
-- Mobile UI or interaction, natively backed or JS: `js/ui/mobile` (`nsh/ui/mobile`); components drawn with the
-  primitives go to `js/ui/mobile/components/` (see its README).
+- Mobile UI or interaction: `js/ui/mobile` (`nsh/ui/mobile`); its components are Rust, in `crates/nsh-ui-mobile`
+  (see its README), with generated glue.
 - Something only one platform has: `nsh/ios` / `nsh/android`, or a prop in `ios={{…}}` / `android={{…}}` /
   `desktop={{…}}`.
 - Never a compatibility re-export when something moves, never a React Native compatibility wrapper.

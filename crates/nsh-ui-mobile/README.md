@@ -16,6 +16,9 @@ interaction (press feedback, drags, state) stays native. JS only gets the events
   It runs again when a prop changes or a handler calls `cx.notify()`; keep it cheap and free of side effects. The
   root must be a `view()`: it is the component's host, so the app's `class` (appended last, it wins) and `style`
   apply to it.
+- **Slots**: JSX the app passes in a named prop (`<Card header={…}>`, `Spec::slots`) is placed where the render puts
+  `view().slot("header")`; render it only when `cx.has_slot("header")`, so an absent slot leaves no empty view.
+- **Classes**: pass string literals to `.class()` where possible; they are compared, not copied, on every render.
 - **State** lives in the component's fields; handlers get `&mut self`. `cx.emit("press", data)` reaches the app's
   `onPress`.
 - **Primitives only**, never a platform widget: the look is ours and identical on both platforms.

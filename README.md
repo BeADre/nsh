@@ -4,12 +4,17 @@ A React Native–like UI framework: apps are written in TSX with SolidJS, run in
 render with the system's native views (UIKit on iOS / Mac Catalyst, Android views). The toolchain is a single `nsh`
 binary written in Rust: no Node.js, and no Rust toolchain for app developers.
 
+The components of the mobile UI set (`import { Button, Card } from "nsh/ui/mobile"`) are written in Rust and run in
+the core, laid out with the rest of the app: one implementation, the same look on iOS and Android, and JS only
+describes the UI and handles the events.
+
 ## Running the examples
 
 | Example | What it shows |
 |---|---|
 | `examples/gallery/App.tsx` | A demo index covering what nsh supports: lists (recycling, columns, sticky sections, an inverted chat, horizontal lists), navigation (header options, modals, the back button), forms and the keyboard, controls, gestures, native animations, images, styles, text, web view and video, environment / timers / fetch |
 | `examples/counter/App.tsx` | The smallest app |
+| `examples/bench` | Rust components against the same component in TSX (see its README) |
 | `examples/embed-ios`, `examples/embed-android` | nsh inside existing native apps (see their READMEs), running `examples/embedded` with a native component the host app registers |
 
 Every `nsh run` starts a dev server, launches the app and updates it on every save (hot module replacement: only the

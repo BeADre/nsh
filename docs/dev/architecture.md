@@ -5,7 +5,7 @@
 ```
 JS (engine thread, QuickJS)  Solid components -> js/runtime pushes changes into one flat array -> __nsh_commit(ops) in a microtask
 nsh-js                        decodes the op buffer in Rust (tags, style objects and event names are parsed here) -> Vec<Op>
-nsh-core (engine thread)      apply(Op) maintains the shadow tree -> commit(): rebuild text, Taffy layout, diff frames -> MountBatch
+nsh-core (engine thread)      apply(Op) maintains the shadow tree -> commit(): render components, rebuild text, Taffy layout, diff frames -> MountBatch
 Platform (main thread)       one main-queue hop per commit, applying MountItems to native views in order
 Input                        native gestures -> EngineControl::dispatch_event -> engine thread -> JS handler
 ```
@@ -31,7 +31,7 @@ Input                        native gestures -> EngineControl::dispatch_event ->
 
 ## Crates
 
-Dependency direction: `nsh-core` ← `nsh-js` ← `nsh-engine` (also ← `nsh-package`) ← `nsh-platform-*` ← `nsh-ios-host` / `nsh-ios-app`; `nsh-cli` depends on `nsh-bundler`, `nsh-js` and `nsh-engine`. `nsh-core` must not depend on any platform or JS crate.
+Dependency direction: `nsh-core` ← `nsh-js` ← `nsh-engine` (also ← `nsh-package`) ← `nsh-platform-*` ← `nsh-ios-host` / `nsh-ios-app`; `nsh-cli` depends on `nsh-bundler`, `nsh-js` and `nsh-engine`; `nsh-ui-mobile` (the mobile components, `components.md`) depends on `nsh-core` only. `nsh-core` must not depend on any platform or JS crate.
 
 The CoreText and StaticLayout text engines are documented in `crates/nsh-platform-ios/src/text.rs` and
 `crates/nsh-platform-android/src/text.rs`, the measure cache in `crates/nsh-core/src/text.rs` (`MeasureCache`).

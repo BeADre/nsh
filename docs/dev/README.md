@@ -6,6 +6,7 @@ For people working on native-shell itself (`AGENTS.md` at the root is the short 
 |---|---|
 | [architecture.md](architecture.md) | Threads, the data flow from JS to native views, crates |
 | [js-modules.md](js-modules.md) | The JS layers (`nsh/*`, `nsh/ui/*`), the module table, platform modules and props, where new things go |
+| [components.md](components.md) | Rust components: the host node, renders and diffing, children and slots, events, the generated glue |
 | [elements.md](elements.md) | Host elements and runtime components, touch, accessibility, the environment, why the main thread never waits for JS |
 | [text.md](text.md) | Text blocks, spans, inline attachments |
 | [styles.md](styles.md) | Tailwind, effects, view styles, Android differences |
