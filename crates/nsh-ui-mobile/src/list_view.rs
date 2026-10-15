@@ -41,6 +41,9 @@ impl Component for ListView {
     fn render(&self, props: &ListViewProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
         let theme = cx.theme();
         let inset = props.variant == ListViewVariant::Inset;
+        // The last rows scroll clear of the home indicator (renders again
+        // when the safe area changes, as `safeArea()` in Solid).
+        let below = cx.safe_area().bottom;
         // Inset: rows on the background color over a muted page, as
         // grouped settings look.
         let (border, dividers, surface, radius) = (
@@ -59,6 +62,7 @@ impl Component for ListView {
                     list.flex_1()
                         .estimated_item_size(48.0)
                         .when(inset, |l| l.content_padding(16.0))
+                        .content_padding_bottom(below + if inset { 16.0 } else { 0.0 })
                 },
                 move |row, at| {
                     view()

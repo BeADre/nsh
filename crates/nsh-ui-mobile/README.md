@@ -26,8 +26,11 @@ stays native. JS only gets the events the component emits.
   (`.list(props.items, |l| l.estimated_item_size(48.0), |row, at| ..)`; in JS `each` and a row renderer, like `List`).
   `at` tells the index, the count, first and last.
   `Group` and `ListView` are the examples.
-- **State** lives in the component's fields; listeners (`cx.listener(|this, event, cx| ..)`) get `&mut Self` and emit
-  with `cx.emit(ButtonEvent::Press)`.
+- **State** lives in the component's fields, set up from the first props in `setup` and adjusted in `props_changed`;
+  listeners (`cx.listener(|this, event, cx| ..)`) get `&mut Self` and emit with `cx.emit(ButtonEvent::Press)`. Timers
+  and async work are tasks (`cx.set_interval`, `cx.spawn` with tokio inside); keep the `Task` in a field and drop it to
+  stop. Read the environment in the render (`cx.safe_area()`): it renders again when that changes. `Stepper` is the
+  example.
 - **Primitives only**, never a platform widget: the look is ours and identical on both platforms.
 - Changing a component needs a rebuild of the runtime (the dev hosts, `nsh-ios-app`, the Android runtime); apps using
   it reload as usual.

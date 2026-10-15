@@ -11,6 +11,7 @@ mod button;
 mod card;
 mod group;
 mod list_view;
+mod stepper;
 
 use std::sync::Arc;
 
@@ -21,6 +22,7 @@ pub use crate::{
     card::{Card, CardProps, CardVariant},
     group::{Group, GroupProps},
     list_view::{ListView, ListViewProps, ListViewVariant},
+    stepper::{Stepper, StepperEvent, StepperProps},
 };
 
 /// Every component of the mobile set, for an engine to render.
@@ -30,7 +32,8 @@ pub fn registry() -> Registry {
         .register::<Button>()
         .register::<Card>()
         .register::<Group>()
-        .register::<ListView>();
+        .register::<ListView>()
+        .register::<Stepper>();
     registry
 }
 

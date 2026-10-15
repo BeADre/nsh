@@ -384,6 +384,7 @@ impl RootView {
             header_heights: header_heights(mtm),
             limits: self.ivars().options.limits,
             components: nsh_ui_mobile::registry(),
+            runtime: None,
         };
         let sink = MainThreadSink {
             mounter: mounter.clone(),

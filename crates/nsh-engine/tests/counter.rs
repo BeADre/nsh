@@ -35,6 +35,7 @@ fn start() -> (Engine, Receiver<MountBatch>) {
         header_heights: (44.0, 96.0),
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
+        runtime: None,
     };
     (
         Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap(),

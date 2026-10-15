@@ -340,6 +340,27 @@ pub struct EngineConfig {
     /// The Rust components the app can render (`nsh_ui_mobile::registry()`
     /// on mobile).
     pub components: nsh_core::ui::Registry,
+    /// The tokio runtime the components' async tasks use (timers, IO,
+    /// background work); `None`: one shared by the engines of the process.
+    pub runtime: Option<tokio::runtime::Handle>,
+}
+
+/// The runtime of components' tasks when the embedder gives none: a few
+/// threads, made on first use, shared by every engine (like a thread pool,
+/// it holds no engine's state).
+fn shared_runtime() -> tokio::runtime::Handle {
+    static RUNTIME: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
+    RUNTIME
+        .get_or_init(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .thread_name("nsh-tasks")
+                .enable_all()
+                .build()
+                .expect("the tasks' runtime starts")
+        })
+        .handle()
+        .clone()
 }
 
 impl std::fmt::Debug for EngineConfig {
@@ -365,6 +386,8 @@ enum Message {
     ComponentSize(NodeId, Size),
     AnimationsFinished(Vec<nsh_anim::Finished>),
     Resize(Size),
+    /// A component's task was woken: it runs in the loop.
+    Wake,
     Environment(Environment),
     RootSize(NodeId, Size, EdgeInsets),
     Frame,
@@ -583,6 +606,13 @@ fn run<M: TextEngine + 'static, S: MountSink>(
     core.set_class_environment(class_environment(&config.environment));
     core.set_header_heights(config.header_heights.0, config.header_heights.1);
     core.set_safe_area(insets(&config.environment));
+    core.set_environment(ui_environment(&config.environment, config.viewport));
+    core.set_task_runtime(config.runtime.clone().unwrap_or_else(shared_runtime));
+    // A task woken on any thread wakes the loop.
+    let wake = tx.clone();
+    core.set_task_notify(Arc::new(move || {
+        let _ = wake.send(Message::Wake);
+    }));
     let mut state = State {
         core,
         frame_requested: false,
@@ -686,6 +716,7 @@ fn run<M: TextEngine + 'static, S: MountSink>(
             }
         }
         host.run_timers(Instant::now());
+        state.core.run_component_tasks();
         state.load_fonts(&host, config.assets.as_deref(), &report);
         if let Some(batch) = state.commit(&host) {
             sink.submit(batch);
@@ -978,7 +1009,20 @@ fn insets(env: &Environment) -> EdgeInsets {
     }
 }
 
-/// Returns false on shutdown.
+/// What Rust components read from the environment.
+fn ui_environment(env: &Environment, window: Size) -> nsh_core::ui::Environment {
+    nsh_core::ui::Environment {
+        window,
+        safe_area: insets(env),
+        keyboard_height: env.keyboard_height,
+        dark: env.color_scheme == nsh_js::ColorScheme::Dark,
+        font_scale: env.font_scale,
+        reduce_motion: env.reduce_motion,
+        screen_reader: env.screen_reader,
+        rtl: env.rtl,
+    }
+}
+
 /// What class variants read from the environment.
 fn class_environment(env: &Environment) -> nsh_core::tailwind::ClassEnvironment {
     nsh_core::tailwind::ClassEnvironment {
@@ -992,6 +1036,7 @@ fn class_environment(env: &Environment) -> nsh_core::tailwind::ClassEnvironment 
     }
 }
 
+/// Returns false on shutdown.
 fn handle<M: TextEngine>(host: &Host, state: &mut State<M>, message: Message) -> bool {
     match message {
         Message::Event(id, event, payload) => {
@@ -1045,10 +1090,13 @@ fn handle<M: TextEngine>(host: &Host, state: &mut State<M>, message: Message) ->
         Message::ComponentSize(id, size) => state.core.set_component_size(id, size),
         Message::AnimationsFinished(finished) => host.animations_finished(&finished),
         Message::Resize(size) => state.core.set_viewport(size),
+        Message::Wake => {}
         Message::Environment(env) => {
             state.core.set_font_scale(env.font_scale);
             state.core.set_class_environment(class_environment(&env));
             state.core.set_safe_area(insets(&env));
+            let window = Size::new(env.window.0, env.window.1);
+            state.core.set_environment(ui_environment(&env, window));
             host.set_environment(&env);
         }
         Message::RootSize(id, size, insets) => state.core.set_root_size(id, size, insets),

@@ -2,15 +2,24 @@
 //! components, slots and children) and the contexts of renders and
 //! handlers.
 
-use std::{any::Any, marker::PhantomData, rc::Rc};
+use std::{
+    any::Any,
+    cell::Cell,
+    future::Future,
+    marker::PhantomData,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 use super::{
     Component, Event, SharedString, Theme,
+    env::{self, Environment},
     style::{StyleRefinement, Styled, Variant},
+    task::{self, AsyncCx, Executor, Task, WeakComponent},
 };
 use crate::{
     AccessibilityProp, AccessibilityRole, AccessibilityState, EdgeInsets, EventKind, EventPayload,
-    ImageSource, JsonValue, ListContentStyle, NativeProp, NodeId, PointerEvents, Prop, Tag,
+    ImageSource, JsonValue, ListContentStyle, NativeProp, NodeId, PointerEvents, Prop, Size, Tag,
 };
 
 /// A handler of `E` on an element, made by [`RenderCx::listener`]: it runs
@@ -18,7 +27,7 @@ use crate::{
 pub struct Listener<E: ?Sized>(pub(crate) Rc<ErasedListener<E>>);
 
 /// A listener with the component's type erased (it downcasts the state).
-pub(crate) type ErasedListener<E> = dyn Fn(&mut dyn Any, &E, &mut ErasedEventCx);
+pub(crate) type ErasedListener<E> = dyn Fn(&mut dyn Any, &E, &mut ErasedCx);
 
 impl<E: ?Sized> Clone for Listener<E> {
     fn clone(&self) -> Self {
@@ -47,25 +56,51 @@ impl<E: Event> AnyEvent for E {
     }
 }
 
-/// What handlers did, for the core.
-#[derive(Default)]
-pub(crate) struct ErasedEventCx {
+/// What setup, listeners, timers and tasks did, for the core.
+pub(crate) struct ErasedCx {
     pub(crate) emits: Vec<Box<dyn AnyEvent>>,
     pub(crate) notify: bool,
+    pub(crate) environment: Environment,
+    /// The component's host and the core's executor, for its tasks.
+    pub(crate) host: NodeId,
+    pub(crate) executor: Rc<Executor>,
 }
 
-/// A render's context: the theme, and listeners for the elements.
+impl ErasedCx {
+    pub(crate) fn new(environment: Environment, host: NodeId, executor: Rc<Executor>) -> Self {
+        Self {
+            emits: Vec::new(),
+            notify: false,
+            environment,
+            host,
+            executor,
+        }
+    }
+}
+
+/// A render's context: the theme, the environment (reading it subscribes:
+/// the component renders again when what it read changes, as Solid's
+/// accessors do), and listeners for the elements.
 pub struct RenderCx<'a, C> {
     theme: &'a Theme,
+    environment: &'a Environment,
+    pub(crate) reads: Cell<u16>,
     _component: PhantomData<fn(&mut C)>,
 }
 
 impl<'a, C: Component> RenderCx<'a, C> {
-    pub(crate) fn new(theme: &'a Theme) -> Self {
+    pub(crate) fn new(theme: &'a Theme, environment: &'a Environment) -> Self {
         Self {
             theme,
+            environment,
+            reads: Cell::new(0),
             _component: PhantomData,
         }
+    }
+
+    fn read(&self, what: u16) -> &'a Environment {
+        self.reads.set(self.reads.get() | what);
+        self.environment
     }
 
     /// The app's theme.
@@ -73,34 +108,79 @@ impl<'a, C: Component> RenderCx<'a, C> {
         self.theme
     }
 
+    /// The surface's size in points (Solid: `windowSize()`).
+    pub fn window(&self) -> Size {
+        self.read(env::WINDOW).window
+    }
+
+    /// The edges system UI covers: notch, home indicator (Solid:
+    /// `safeArea()`).
+    pub fn safe_area(&self) -> EdgeInsets {
+        self.read(env::SAFE_AREA).safe_area
+    }
+
+    /// The software keyboard's height over the surface, 0 when hidden
+    /// (Solid: `keyboard().height`).
+    pub fn keyboard_height(&self) -> f32 {
+        self.read(env::KEYBOARD).keyboard_height
+    }
+
+    /// Dark appearance (Solid: `colorScheme() === "dark"`). Theme colors
+    /// follow it without this; read it for anything else.
+    pub fn dark(&self) -> bool {
+        self.read(env::APPEARANCE).dark
+    }
+
+    /// The user's text size relative to the default (Solid: `fontScale()`).
+    pub fn font_scale(&self) -> f32 {
+        self.read(env::FONT_SCALE).font_scale
+    }
+
+    /// The user asked for less motion (Solid: `reduceMotion()`).
+    pub fn reduce_motion(&self) -> bool {
+        self.read(env::MOTION).reduce_motion
+    }
+
+    /// A screen reader runs (Solid: `screenReaderEnabled()`).
+    pub fn screen_reader(&self) -> bool {
+        self.read(env::SCREEN_READER).screen_reader
+    }
+
+    /// The layout runs right to left (Solid: `isRTL()`).
+    pub fn rtl(&self) -> bool {
+        self.read(env::RTL).rtl
+    }
+
     /// A handler for an element of this render: `f` gets the component (its
-    /// state), the event and an [`EventCx`] to emit events or render again.
+    /// state), the event and a [`Context`] to change state, emit events and
+    /// start timers.
     pub fn listener<E: ?Sized + 'static>(
         &self,
-        f: impl Fn(&mut C, &E, &mut EventCx<'_, C>) + 'static,
+        f: impl Fn(&mut C, &E, &mut Context<'_, C>) + 'static,
     ) -> Listener<E> {
         Listener(Rc::new(move |this, event, cx| {
             if let Some(this) = this.downcast_mut::<C>() {
-                f(
-                    this,
-                    event,
-                    &mut EventCx {
-                        inner: cx,
-                        _component: PhantomData,
-                    },
-                );
+                f(this, event, &mut Context::new(cx));
             }
         }))
     }
 }
 
-/// A handler's context.
-pub struct EventCx<'a, C: Component> {
-    inner: &'a mut ErasedEventCx,
+/// The context of everything that changes a component: [`Component::setup`],
+/// [`Component::props_changed`], listeners, timers and tasks' updates.
+pub struct Context<'a, C: Component> {
+    inner: &'a mut ErasedCx,
     _component: PhantomData<fn(&mut C)>,
 }
 
-impl<C: Component> EventCx<'_, C> {
+impl<'a, C: Component> Context<'a, C> {
+    pub(crate) fn new(inner: &'a mut ErasedCx) -> Self {
+        Self {
+            inner,
+            _component: PhantomData,
+        }
+    }
+
     /// Sends `event` to the app (its `on<Event>` handler), or to the
     /// component that rendered this one.
     pub fn emit(&mut self, event: C::Event) {
@@ -110,6 +190,64 @@ impl<C: Component> EventCx<'_, C> {
     /// The component's state changed: render it again.
     pub fn notify(&mut self) {
         self.inner.notify = true;
+    }
+
+    /// The environment now (not a subscription: read it in the render for
+    /// that).
+    pub fn environment(&self) -> &Environment {
+        &self.inner.environment
+    }
+
+    /// Starts a task: `f(this, cx)` builds a future run on the engine
+    /// thread, which changes the component with `this.update(..)` and waits
+    /// with `cx.timer(..)` or for any other future. Dropping the [`Task`]
+    /// cancels it; the component's tasks end with it.
+    ///
+    /// ```ignore
+    /// self.loading = Some(cx.spawn(|this, cx| async move {
+    ///     cx.timer(Duration::from_millis(300)).await;
+    ///     this.update(|this, cx| { this.ready = true; cx.notify(); }).await;
+    /// }));
+    /// ```
+    pub fn spawn<R: 'static, Fut: Future<Output = R> + 'static>(
+        &mut self,
+        f: impl FnOnce(WeakComponent<C>, AsyncCx) -> Fut,
+    ) -> Task<R> {
+        task::spawn(&self.inner.executor, self.inner.host, f)
+    }
+
+    /// Runs `f` once after `delay` (Solid: `setTimeout`; dropping the task
+    /// is `clearTimeout`). A task: a timer, then an update.
+    pub fn set_timeout(
+        &mut self,
+        delay: Duration,
+        f: impl FnOnce(&mut C, &mut Context<'_, C>) + 'static,
+    ) -> Task<()> {
+        self.spawn(move |this, cx| async move {
+            cx.timer(delay).await;
+            this.update(f).await;
+        })
+    }
+
+    /// Runs `f` every `period` (Solid: `setInterval`; dropping the task is
+    /// `clearInterval`). Late wakes do not pile up runs.
+    pub fn set_interval(
+        &mut self,
+        period: Duration,
+        f: impl Fn(&mut C, &mut Context<'_, C>) + 'static,
+    ) -> Task<()> {
+        let f = Rc::new(f);
+        self.spawn(move |this, cx| async move {
+            let mut next = Instant::now() + period;
+            loop {
+                cx.timer_until(next).await;
+                next = (next + period).max(Instant::now());
+                let f = f.clone();
+                if this.update(move |this, cx| f(this, cx)).await.is_none() {
+                    break;
+                }
+            }
+        })
     }
 }
 
@@ -679,6 +817,18 @@ impl ListElement {
     pub fn content_padding_y(mut self, points: f32) -> Self {
         let p = &mut self.content().padding;
         (p.top, p.bottom) = (points, points);
+        self
+    }
+
+    /// Padding above the rows.
+    pub fn content_padding_top(mut self, points: f32) -> Self {
+        self.content().padding.top = points;
+        self
+    }
+
+    /// Padding below the rows.
+    pub fn content_padding_bottom(mut self, points: f32) -> Self {
+        self.content().padding.bottom = points;
         self
     }
 

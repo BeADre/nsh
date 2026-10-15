@@ -9,7 +9,7 @@
 //! its children are placed where the render's `Children` is. Renders run at
 //! the start of a commit, so props set in one JS turn render once.
 
-use std::{any::Any, sync::Arc};
+use std::{any::Any, rc::Rc, sync::Arc};
 
 use rustc_hash::FxHashMap;
 
@@ -19,9 +19,9 @@ use crate::{
     TextEngine,
     tailwind::ClassList,
     ui::{
-        AnyInstance, Attrs, Child, ComponentSpec, ElKind, ElNode, ErasedEventCx, IntoElement,
-        ListConfig, Listener, ParentElement, PlaceFn, Position, Registry, SharedString,
-        StyleRefinement, Theme, view,
+        AnyInstance, Attrs, Child, ComponentSpec, ElKind, ElNode, Environment, ErasedCx, Executor,
+        IntoElement, ListConfig, Listener, ParentElement, PlaceFn, Position, Registry,
+        SharedString, StyleRefinement, Theme, view,
     },
 };
 
@@ -32,6 +32,9 @@ const MAX_RENDERS: u32 = 16;
 /// Lowered styles kept for reuse (components render the same styles over
 /// and over); cleared when full.
 const STYLE_CACHE: usize = 4096;
+
+/// Rounds of polls and updates per run of the tasks, at most.
+const MAX_TASK_ROUNDS: u32 = 64;
 
 /// What renders on a host node.
 enum Inner {
@@ -82,6 +85,8 @@ pub(super) struct Instance {
     /// nested components by their host (a handful: lists beat maps).
     handlers: Vec<(NodeId, EventKind, Listener<EventPayload>)>,
     event_handlers: Vec<(NodeId, Listener<dyn Any>)>,
+    /// What the last render read of the environment.
+    reads: u16,
     dirty: bool,
     renders: u32,
 }
@@ -155,6 +160,9 @@ pub(super) struct Components {
     /// row function of the component's last render, and the number of rows
     /// its wrappers last saw.
     lists: FxHashMap<NodeId, (PlaceFn, u32)>,
+    environment: Environment,
+    /// Runs the components' async tasks and timers.
+    pub(super) executor: Rc<Executor>,
     next_id: NodeId,
     dirty: Vec<NodeId>,
     /// Reused buffers.
@@ -173,6 +181,8 @@ impl Default for Components {
             slot_hosts: FxHashMap::default(),
             styles: FxHashMap::default(),
             lists: FxHashMap::default(),
+            environment: Environment::default(),
+            executor: Rc::new(Executor::default()),
             // Odd: JS allocates the even ids (1 is the root).
             next_id: 3,
             dirty: Vec::new(),
@@ -183,6 +193,12 @@ impl Default for Components {
 }
 
 impl Components {
+    pub(super) fn for_viewport(viewport: crate::Size) -> Self {
+        let mut components = Self::default();
+        components.environment.window = viewport;
+        components
+    }
+
     fn alloc(&mut self) -> NodeId {
         let id = self.next_id;
         self.next_id += 2;
@@ -240,6 +256,86 @@ impl<M: TextEngine> Core<M> {
             }
             Err(e) => log::warn!("theme: {e}"),
         }
+    }
+
+    /// The environment components read ([`crate::ui::RenderCx::window`]
+    /// and the like): the components that read what changed render again.
+    pub fn set_environment(&mut self, environment: Environment) {
+        let changed = environment.changes(&self.components.environment);
+        self.components.environment = environment;
+        if changed == 0 {
+            return;
+        }
+        let hosts: Vec<NodeId> = self
+            .components
+            .instances
+            .iter()
+            .filter(|(_, i)| i.reads & changed != 0)
+            .map(|(&h, _)| h)
+            .collect();
+        for host in hosts {
+            self.components.mark(host);
+        }
+    }
+
+    /// The surface's size changed (the environment's window).
+    pub(super) fn components_viewport(&mut self, size: crate::Size) {
+        let environment = Environment {
+            window: size,
+            ..self.components.environment
+        };
+        self.set_environment(environment);
+    }
+
+    /// Wakes the engine when a component's task is woken (from any
+    /// thread): it then calls [`Self::run_component_tasks`].
+    pub fn set_task_notify(&mut self, notify: Arc<dyn Fn() + Send + Sync>) {
+        self.components.executor.set_notify(notify);
+    }
+
+    /// The tokio runtime the components' tasks are polled in the context
+    /// of (their timers, IO and background work run on it).
+    pub fn set_task_runtime(&mut self, runtime: tokio::runtime::Handle) {
+        self.components.executor.set_runtime(runtime);
+    }
+
+    /// Runs the components' woken tasks, with the state changes they ask
+    /// for, until they all wait.
+    pub fn run_component_tasks(&mut self) {
+        let executor = self.components.executor.clone();
+        // A task that keeps waking itself cannot hold the engine.
+        for _ in 0..MAX_TASK_ROUNDS {
+            let polled = executor.poll_ready();
+            let updates = executor.take_updates();
+            if !polled && updates.is_empty() {
+                return;
+            }
+            for update in updates {
+                let mut cx = self.erased_cx(update.host);
+                let target = match self.components.instances.get_mut(&update.host) {
+                    Some(inst) => match &mut inst.inner {
+                        Inner::Component(inner) => Some(inner),
+                        _ => None,
+                    },
+                    None => None,
+                };
+                match target {
+                    Some(inner) => {
+                        (update.run)(Some((inner.state(), &mut cx)));
+                        self.finish_event(update.host, cx);
+                    }
+                    None => (update.run)(None),
+                }
+            }
+        }
+    }
+
+    fn erased_cx(&self, host: NodeId) -> ErasedCx {
+        ErasedCx::new(
+            self.components.environment,
+            host,
+            self.components.executor.clone(),
+        )
     }
 
     /// Whether `id` is a component's host.
@@ -499,6 +595,7 @@ impl<M: TextEngine> Core<M> {
                 slots: Vec::new(),
                 handlers: Vec::new(),
                 event_handlers: Vec::new(),
+                reads: 0,
                 dirty: false,
                 renders: 0,
             }),
@@ -572,6 +669,7 @@ impl<M: TextEngine> Core<M> {
                 slots: Vec::new(),
                 handlers: Vec::new(),
                 event_handlers: Vec::new(),
+                reads: 0,
                 dirty: false,
                 renders: 0,
             }),
@@ -648,7 +746,14 @@ impl<M: TextEngine> Core<M> {
                     }
                 }
                 inner.set_children(!inst.js_children.is_empty());
-                inner.render(&self.components.theme)
+                // The setup the first time, else what changed in the props.
+                let mut cx = self.erased_cx(host);
+                inner.update(&mut cx);
+                let (el, reads) =
+                    inner.render(&self.components.theme, &self.components.environment);
+                inst.reads = reads;
+                self.finish_event(host, cx);
+                el
             }
             // The cell itself stays the list's: the wrapper goes inside.
             Inner::Row { place, index } => {
@@ -1169,6 +1274,8 @@ impl<M: TextEngine> Core<M> {
         let Some(inst) = self.components.instances.remove(&host) else {
             return;
         };
+        // Its tasks and timers end with it.
+        self.components.executor.cancel_host(host);
         for &child in &inst.js_children {
             self.detach_id(child);
         }
@@ -1206,6 +1313,7 @@ impl<M: TextEngine> Core<M> {
         kind: EventKind,
         payload: &EventPayload,
     ) -> bool {
+        let mut cx = self.erased_cx(host);
         let Some(inst) = self.components.instances.get_mut(&host) else {
             return false;
         };
@@ -1217,7 +1325,6 @@ impl<M: TextEngine> Core<M> {
         else {
             return false;
         };
-        let mut cx = ErasedEventCx::default();
         if let Inner::Component(inner) = &mut inst.inner {
             (listener.0)(inner.state(), payload, &mut cx);
         }
@@ -1227,7 +1334,7 @@ impl<M: TextEngine> Core<M> {
 
     /// Applies what a handler did: a new render, events for JS (or for the
     /// component that rendered this one).
-    fn finish_event(&mut self, host: NodeId, cx: ErasedEventCx) {
+    fn finish_event(&mut self, host: NodeId, cx: ErasedCx) {
         if cx.notify {
             self.components.mark(host);
         }
@@ -1236,6 +1343,7 @@ impl<M: TextEngine> Core<M> {
                 // A nested component: the component that rendered it gets
                 // the event, if it handles it.
                 Some(parent) => {
+                    let mut cx = self.erased_cx(parent);
                     let Some(inst) = self.components.instances.get_mut(&parent) else {
                         continue;
                     };
@@ -1247,7 +1355,6 @@ impl<M: TextEngine> Core<M> {
                     else {
                         continue;
                     };
-                    let mut cx = ErasedEventCx::default();
                     if let Inner::Component(inner) = &mut inst.inner {
                         (listener.0)(inner.state(), event.as_any(), &mut cx);
                     }

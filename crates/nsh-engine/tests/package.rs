@@ -54,6 +54,7 @@ fn first_texts(bundle: nsh_engine::Bundle) -> Vec<String> {
         header_heights: (44.0, 96.0),
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
+        runtime: None,
     };
     let _engine = Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap();
     let first = rx

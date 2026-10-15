@@ -62,6 +62,7 @@ fn uncaught_errors_point_at_app_sources() {
         header_heights: (44.0, 96.0),
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
+        runtime: None,
     };
     let _engine = Engine::start(config, || ApproxTextEngine, sink).unwrap();
     let error = rx

@@ -57,7 +57,8 @@ url = "2.5"
 ureq = "3.1"
 jni = "0.21"
 taffy = { version = "0.15", default-features = false, features = ["std", "taffy_tree", "flexbox", "grid", "block_layout", "content_size"] }
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "net", "sync", "fs"] }
+# Features per crate: the runtime's binaries get only what they use.
+tokio = { version = "1", default-features = false }
 
 # `full` is avoided on purpose: it enables `dyn-load` (dlopen2), which does not build for iOS / Catalyst.
 rquickjs = { version = "=0.14.0", default-features = false, features = ["std", "bindgen"] }

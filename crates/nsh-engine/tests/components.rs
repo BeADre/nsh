@@ -59,6 +59,7 @@ fn start(app: &str) -> (Engine, Receiver<MountBatch>) {
         header_heights: (44.0, 96.0),
         limits: nsh_engine::Limits::default(),
         components: nsh_ui_mobile::registry(),
+        runtime: None,
     };
     (
         Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap(),
@@ -252,4 +253,67 @@ fn rows_know_whether_they_are_last() {
         corners(&next, d).map(rounded),
         Some(vec![false, false, true, true])
     );
+}
+
+const STEPPER: &str = r#"import { createSignal } from "solid-js";
+import { render, root } from "nsh";
+import { Stepper } from "nsh/ui/mobile";
+
+const [changes, setChanges] = createSignal(0);
+render(
+  () => (
+    <view>
+      <Stepper defaultValue={5} min={0} max={100} onChange={() => setChanges(changes() + 1)} />
+      <text>{`changes ${changes()}`}</text>
+    </view>
+  ),
+  root,
+);
+"#;
+
+#[test]
+fn a_stateful_component_steps_while_held() {
+    let (engine, rx) = start(STEPPER);
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    assert!(text_ids(&first, "5").is_some(), "the default value");
+    // The + button: the second view listening to presses.
+    let plus = first
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            MountItem::Events { id, events } if events.contains(EventKind::PressIn) => Some(*id),
+            _ => None,
+        })
+        .nth(1)
+        .expect("the + button");
+    let control = engine.control();
+    control.dispatch_event(plus, EventKind::PressIn, EventPayload::None);
+    // One step at once, more after the hold (400ms, then every 80ms).
+    std::thread::sleep(Duration::from_millis(700));
+    control.dispatch_event(plus, EventKind::PressOut, EventPayload::None);
+    std::thread::sleep(Duration::from_millis(200));
+    let mut shown = Vec::new();
+    while let Ok(batch) = rx.recv_timeout(Duration::from_millis(100)) {
+        for item in batch.items {
+            if let MountItem::Text { text, .. } = item {
+                shown.push(text.text.clone());
+            }
+        }
+    }
+    let value: f64 = shown
+        .iter()
+        .rev()
+        .find_map(|t| t.parse().ok())
+        .expect("the value changed");
+    assert!(value >= 8.0, "held: {value}");
+    let changes: u32 = shown
+        .iter()
+        .rev()
+        .find_map(|t| t.strip_prefix("changes ")?.parse().ok())
+        .unwrap();
+    assert_eq!(changes as f64, value - 5.0, "one onChange per step");
+    // Released: no more steps.
+    assert!(rx.recv_timeout(Duration::from_millis(300)).is_err());
 }

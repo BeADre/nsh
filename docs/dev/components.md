@@ -79,8 +79,36 @@ impl Component for Button {
   whose `.on_event(cx.listener(..))` handles their typed events instead of the app). Their abilities are traits:
   `Styled`, `Accessible`, `Interactive` (`on_press`, `active` / `hover` / `focus` styles, `disabled`), `ParentElement`,
   `FluentBuilder` (`when`, `when_some`, `map`).
-- **State** is `Self`; listeners (`cx.listener(|this, event, cx| ..)`) get `&mut Self`, emit with `cx.emit(..)` and
-  render again with `cx.notify()`. `render(&self)` cannot change state.
+- **State** is `Self`, written like a Solid component where Rust allows:
+
+  | Solid | Rust component |
+  |---|---|
+  | the component's body (runs once) | `fn setup(&mut self, props, cx)` |
+  | an effect `on` a prop | `fn props_changed(&mut self, old, new, cx)` (before the next render) |
+  | event handlers | `cx.listener(|this, event, cx| ..)`: `&mut Self`, `cx.emit(..)`, `cx.notify()` renders again |
+  | `setTimeout` / `setInterval`, `clear*` | `cx.set_timeout(d, ..)` / `cx.set_interval(d, ..)` return a `Task`; dropping it clears it |
+  | async work, `onCleanup` | `cx.spawn(|this, cx| async move { .. this.update(..).await })`; `Drop`, and the component's tasks end with it |
+  | `windowSize()`, `safeArea()`, `keyboard()`, `colorScheme()`, ... | `cx.window()`, `cx.safe_area()`, `cx.keyboard_height()`, `cx.dark()`, ... in the render: reading subscribes |
+
+  `render(&self)` cannot change state. Timers are tasks: a `tokio::time` sleep, then an update.
+
+## Tasks
+
+`ui/task.rs`: a small executor of the core runs components' futures on the engine thread, so they may hold the
+component's `!Send` state. Each poll runs inside a tokio runtime's context (`Core::set_task_runtime`; the engine's
+`EngineConfig::runtime`, else one runtime of two threads shared by the process), so the tokio ecosystem works in a
+task: `tokio::time` timers, network and file IO, channels; `cx.background(fut)` / `cx.blocking(f)` run `Send` work on
+the runtime's threads. A waker may fire on any thread: it sends the engine a `Wake` message, and the loop runs the woken
+tasks (`Core::run_component_tasks`). `this.update(f)` does not touch the component during the poll: the core applies
+the queued updates after it (with a `Context`, so they can `notify`, emit, spawn), then the tasks waiting for their
+results run on; it resolves to `None` when the component is gone. A `Task` dropped cancels its future; a released
+component cancels all of its own.
+
+## Environment
+
+The engine hands the core what components may read (`ui::Environment`: window, safe area, keyboard height, appearance,
+font scale, reduced motion, screen reader, direction). A render records what it read (`RenderCx::window()` and the
+like); when the environment changes, only the components that read a changed part render again.
 
 ## Styles
 

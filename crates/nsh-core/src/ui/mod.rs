@@ -8,8 +8,11 @@
 //! its own, diffs it against the previous render and lays it out in the same
 //! pass as everything else, so a component sizes like any view, with no
 //! round trip. Events on its elements go to the component first
-//! ([`RenderCx::listener`]); it decides what reaches JS ([`EventCx::emit`])
-//! and calls [`EventCx::notify`] to render again.
+//! ([`RenderCx::listener`]); it decides what reaches JS ([`Context::emit`])
+//! and calls [`Context::notify`] to render again. State lives in the
+//! component (`Self`), set up from the first props ([`Component::setup`]),
+//! changed by listeners, timers and async tasks ([`Context::spawn`]); a render
+//! subscribes to what it reads of the environment ([`RenderCx::window`]).
 //!
 //! Props are a struct (`#[derive(Props)]`), events an enum
 //! (`#[derive(Event)]`); the JS glue and its TypeScript declarations are
@@ -24,7 +27,9 @@
 
 mod component;
 mod element;
+mod env;
 mod style;
+mod task;
 mod theme;
 mod value;
 
@@ -32,7 +37,8 @@ pub use nsh_macros::{Event, PropEnum, Props};
 
 pub(crate) use self::{
     component::AnyInstance,
-    element::{ElKind, ErasedEventCx, ListConfig, PlaceFn},
+    element::{ElKind, ErasedCx, ListConfig, PlaceFn},
+    task::Executor,
 };
 pub use self::{
     component::{
@@ -40,11 +46,13 @@ pub use self::{
         typescript,
     },
     element::{
-        Accessible, AnyElement, Attrs, Child, Children, ComponentElement, ElNode, Element, EventCx,
+        Accessible, AnyElement, Attrs, Child, Children, ComponentElement, Context, ElNode, Element,
         FluentBuilder, Image, Interactive, IntoElement, Items, ListElement, Listener,
         ParentElement, Position, RenderCx, Slot, SlotElement, Text, View, image, text, view,
     },
+    env::Environment,
     style::{AdaptiveColor, FontWeight, Length, StyleRefinement, Styled, px, relative, rgb, rgba},
+    task::{AsyncCx, Task, Updated, WeakComponent},
     theme::{Theme, ThemeColors, ThemeError},
     value::{JsValue, PropError, SharedString},
 };
@@ -56,10 +64,10 @@ pub use crate::{
 pub mod prelude {
     pub use super::{
         AccessibilityRole, AccessibilityState, Accessible, AdaptiveColor, Child, Children, Color,
-        Component, ComponentElement, Element, Event, EventCx, EventKind, EventPayload,
+        Component, ComponentElement, Context, Element, Environment, Event, EventKind, EventPayload,
         FluentBuilder, FontWeight, Interactive, IntoElement, Items, Length, Listener, NoEvent,
         ParentElement, PointerEvents, Position, PropEnum, Props, RenderCx, SharedString, Slot,
-        Styled, Theme, image, px, relative, rgb, rgba, text, view,
+        Styled, Task, Theme, WeakComponent, image, px, relative, rgb, rgba, text, view,
     };
 }
 

@@ -608,7 +608,7 @@ impl<M: TextEngine> Core<M> {
             max_nodes: usize::MAX,
             access: Arc::default(),
             denied: Default::default(),
-            components: Default::default(),
+            components: components::Components::for_viewport(viewport),
             lists: Vec::new(),
             roots: Vec::new(),
             accessories: Default::default(),
@@ -722,6 +722,7 @@ impl<M: TextEngine> Core<M> {
                 .expect("taffy root");
             self.needs_layout = true;
             self.restyle_where(crate::tailwind::deps::WIDTH | crate::tailwind::deps::HEIGHT);
+            self.components_viewport(viewport);
         }
     }
 

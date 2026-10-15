@@ -7,14 +7,15 @@ use std::{any::Any, fmt, sync::Arc};
 use rustc_hash::FxHashMap;
 
 use super::{
-    Children, IntoElement, PropError, Slot, Theme,
-    element::{ComponentElement, ElNode, RenderCx},
+    Children, Context, Environment, IntoElement, PropError, Slot, Theme,
+    element::{ComponentElement, ElNode, ErasedCx, RenderCx},
 };
 use crate::JsonValue;
 
 /// A component written in Rust. Its state is `Self` (`Default` makes a new
-/// one); its props come from JS (or from the component that renders it);
-/// its events go to JS.
+/// one, [`Component::setup`] sets it up from the first props); its props
+/// come from JS (or from the component that renders it); its events go to
+/// JS. Resources it owns are freed by `Drop`; its timers end with it.
 ///
 /// ```ignore
 /// #[derive(Default)]
@@ -41,9 +42,21 @@ pub trait Component: Default + 'static {
     /// Its events (`#[derive(Event)]`; [`NoEvent`] for none).
     type Event: Event;
 
-    /// Its element tree. Runs again when a prop changes or a handler
-    /// calls [`super::EventCx::notify`]; keep it cheap and free of side
-    /// effects.
+    /// Runs once, before the first render, with the first props: what the
+    /// body of a Solid component does (state from props, timers).
+    fn setup(&mut self, props: &Self::Props, cx: &mut Context<'_, Self>) {
+        let _ = (props, cx);
+    }
+
+    /// The props changed since the last render (Solid: an effect `on` a
+    /// prop): adjust the state before the next render.
+    fn props_changed(&mut self, old: &Self::Props, new: &Self::Props, cx: &mut Context<'_, Self>) {
+        let _ = (old, new, cx);
+    }
+
+    /// Its element tree. Runs again when a prop changes, a listener or a
+    /// timer calls [`Context::notify`], or what it read of the environment
+    /// changes; keep it cheap and free of side effects.
     fn render(&self, props: &Self::Props, cx: &mut RenderCx<'_, Self>) -> impl IntoElement;
 
     /// This component inside another one's render.
@@ -227,13 +240,19 @@ pub(crate) trait AnyInstance {
     fn set_props(&mut self, props: &dyn Any) -> bool;
     fn set_slot(&mut self, name: &'static str, filled: bool) -> bool;
     fn set_children(&mut self, present: bool) -> bool;
-    fn render(&self, theme: &Theme) -> ElNode;
+    /// Before a render: the setup the first time, else what changed.
+    fn update(&mut self, cx: &mut ErasedCx);
+    /// The tree, and what it read of the environment.
+    fn render(&mut self, theme: &Theme, environment: &Environment) -> (ElNode, u16);
     fn state(&mut self) -> &mut dyn Any;
 }
 
 struct Instance<C: Component> {
     state: C,
     props: C::Props,
+    /// The props of the last render (cheap: props hold shared strings).
+    rendered: Option<C::Props>,
+    set_up: bool,
 }
 
 impl<C: Component> AnyInstance for Instance<C> {
@@ -259,9 +278,26 @@ impl<C: Component> AnyInstance for Instance<C> {
         self.props.set_children(Children::new(present))
     }
 
-    fn render(&self, theme: &Theme) -> ElNode {
-        let mut cx = RenderCx::new(theme);
-        self.state.render(&self.props, &mut cx).into_element().0
+    fn update(&mut self, cx: &mut ErasedCx) {
+        if !self.set_up {
+            self.set_up = true;
+            self.state.setup(&self.props, &mut Context::new(cx));
+        } else if let Some(old) = &self.rendered
+            && *old != self.props
+        {
+            self.state
+                .props_changed(old, &self.props, &mut Context::new(cx));
+        }
+    }
+
+    fn render(&mut self, theme: &Theme, environment: &Environment) -> (ElNode, u16) {
+        let mut cx = RenderCx::new(theme, environment);
+        let node = self.state.render(&self.props, &mut cx).into_element().0;
+        match &mut self.rendered {
+            Some(old) if *old == self.props => {}
+            rendered => *rendered = Some(self.props.clone()),
+        }
+        (node, cx.reads.get())
     }
 
     fn state(&mut self) -> &mut dyn Any {
@@ -299,6 +335,8 @@ impl Registry {
             Box::new(Instance::<C> {
                 state: C::default(),
                 props: C::Props::initial(),
+                rendered: None,
+                set_up: false,
             })
         }
         Arc::make_mut(&mut self.types).insert(

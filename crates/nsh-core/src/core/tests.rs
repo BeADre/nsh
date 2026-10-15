@@ -3547,4 +3547,213 @@ mod components {
         assert!(c.key(4).is_ok());
         assert_eq!(frame_of(&batch, w6).map(|f| f.y), Some(26.0));
     }
+
+    /// Ticks every 20ms from `start` until 3, then reports it; shows
+    /// whether the window is wide.
+    #[derive(Default)]
+    struct Clock {
+        ticks: u32,
+        timer: Option<crate::ui::Task<()>>,
+    }
+
+    #[derive(Clone, PartialEq, Props)]
+    struct ClockProps {
+        #[prop(default)]
+        start: u32,
+    }
+
+    #[derive(Event)]
+    enum ClockEvent {
+        Done,
+    }
+
+    impl Component for Clock {
+        const NAME: &'static str = "test.clock";
+        type Props = ClockProps;
+        type Event = ClockEvent;
+
+        fn setup(&mut self, props: &ClockProps, cx: &mut crate::ui::Context<'_, Self>) {
+            self.ticks = props.start;
+            self.timer = Some(cx.set_interval(
+                std::time::Duration::from_millis(20),
+                |this: &mut Self, cx| {
+                    this.ticks += 1;
+                    cx.notify();
+                    if this.ticks == 3 {
+                        cx.emit(ClockEvent::Done);
+                        // Dropping the task stops it (`clearInterval`).
+                        this.timer = None;
+                    }
+                },
+            ));
+        }
+
+        fn props_changed(
+            &mut self,
+            old: &ClockProps,
+            new: &ClockProps,
+            _cx: &mut crate::ui::Context<'_, Self>,
+        ) {
+            if old.start != new.start {
+                self.ticks = new.start;
+            }
+        }
+
+        fn render(&self, _props: &ClockProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            let width = if cx.window().width > 500.0 {
+                "wide"
+            } else {
+                "narrow"
+            };
+            view().child(text(format!("{} {width}", self.ticks)))
+        }
+    }
+
+    /// Fetches a value on the runtime's threads, then shows it.
+    #[derive(Default)]
+    struct Loader {
+        value: Option<u64>,
+        task: Option<crate::ui::Task<()>>,
+    }
+
+    #[derive(Clone, PartialEq, Props)]
+    struct LoaderProps {}
+
+    impl Component for Loader {
+        const NAME: &'static str = "test.loader";
+        type Props = LoaderProps;
+        type Event = NoEvent;
+
+        fn setup(&mut self, _props: &LoaderProps, cx: &mut crate::ui::Context<'_, Self>) {
+            self.task = Some(cx.spawn(|this, cx| async move {
+                // tokio's ecosystem: a `Send` future on the runtime, a timer.
+                let value = cx
+                    .background(async { (1..=10u64).product::<u64>() })
+                    .await
+                    .unwrap();
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                this.update(move |this: &mut Self, cx| {
+                    this.value = Some(value);
+                    cx.notify();
+                })
+                .await;
+            }));
+        }
+
+        fn render(&self, _props: &LoaderProps, _cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            view().child(text(match self.value {
+                Some(v) => format!("loaded {v}"),
+                None => "loading".to_owned(),
+            }))
+        }
+    }
+
+    /// Runs the tasks and commits until `done` holds of what was shown.
+    fn run_until(c: &mut Core<FakeEngine>, done: impl Fn(&[String]) -> bool) -> Vec<String> {
+        let mut shown = Vec::new();
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while std::time::Instant::now() < end {
+            c.run_component_tasks();
+            if let Some(batch) = c.commit() {
+                shown.extend(texts(&batch));
+                if done(&shown) {
+                    return shown;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        panic!("not done: {shown:?}");
+    }
+
+    #[test]
+    fn state_tasks_props_and_the_environment() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_time()
+            .build()
+            .unwrap();
+        let mut c = core();
+        let mut registry = Registry::new();
+        registry.register::<Clock>().register::<Loader>();
+        c.set_components(registry);
+        c.set_task_runtime(runtime.handle().clone());
+        let mount = |c: &mut Core<FakeEngine>, id: NodeId, name: &str| {
+            apply(
+                c,
+                vec![
+                    Op::Create { id, tag: Tag::View },
+                    Op::SetProp {
+                        id,
+                        prop: Prop::Component(name.into()),
+                    },
+                    Op::Insert {
+                        parent: ROOT_ID,
+                        child: id,
+                        before: None,
+                    },
+                ],
+            )
+        };
+        mount(&mut c, 2, "test.clock");
+        assert_eq!(texts(&c.commit().unwrap()), ["0 narrow"]);
+
+        // The interval (a task: a timer, then an update) ticks to 3,
+        // reports it and stops.
+        let shown = run_until(&mut c, |s| s.iter().any(|t| t == "3 narrow"));
+        assert!(shown.starts_with(&["1 narrow".to_owned()]));
+        let mut events = Vec::new();
+        c.take_events(&mut events);
+        assert!(
+            matches!(&events[..], [(2, EventKind::NativeEvent, EventPayload::Native { name, .. })] if &**name == "done")
+        );
+        std::thread::sleep(std::time::Duration::from_millis(60));
+        c.run_component_tasks();
+        assert!(c.commit().is_none(), "stopped");
+
+        // A prop change reaches `props_changed` before the render.
+        apply(
+            &mut c,
+            vec![Op::SetProp {
+                id: 2,
+                prop: Prop::ComponentProp("start".into(), Some(json!(10))),
+            }],
+        );
+        assert_eq!(texts(&c.commit().unwrap()), ["10 narrow"]);
+
+        // What the render read of the environment renders it again; the
+        // rest does not.
+        let env = crate::ui::Environment {
+            window: Size::new(390.0, 844.0),
+            ..Default::default()
+        };
+        c.set_environment(crate::ui::Environment {
+            keyboard_height: 300.0,
+            ..env
+        });
+        assert!(c.commit().is_none());
+        c.set_viewport(Size::new(800.0, 600.0));
+        assert!(texts(&c.commit().unwrap()).contains(&"10 wide".to_owned()));
+
+        // A task with background work and a tokio timer.
+        mount(&mut c, 4, "test.loader");
+        assert!(texts(&c.commit().unwrap()).contains(&"loading".to_owned()));
+        run_until(&mut c, |s| s.iter().any(|t| t == "loaded 3628800"));
+
+        // A released component's tasks end with it.
+        mount(&mut c, 6, "test.clock");
+        c.commit();
+        assert_eq!(c.components.executor.task_count(), 1);
+        apply(
+            &mut c,
+            vec![
+                Op::Remove {
+                    parent: ROOT_ID,
+                    child: 6,
+                },
+                Op::Release { id: 6 },
+            ],
+        );
+        c.commit();
+        assert_eq!(c.components.executor.task_count(), 0);
+    }
 }
