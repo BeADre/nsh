@@ -159,6 +159,7 @@ fn edits_replace_modules_and_keep_unrelated_state() {
         environment: Default::default(),
         header_heights: (44.0, 96.0),
         limits: nsh_engine::Limits::default(),
+        components: Default::default(),
     };
     let engine = Engine::start(config, || ApproxTextEngine, ChannelSink(tx, failed_tx)).unwrap();
     let control = engine.control();

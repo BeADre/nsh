@@ -337,6 +337,9 @@ pub struct EngineConfig {
     pub header_heights: (f32, f32),
     /// The VM's resource limits.
     pub limits: Limits,
+    /// The Rust components the app can render (`nsh_ui_mobile::registry()`
+    /// on mobile).
+    pub components: nsh_core::component::Registry,
 }
 
 impl std::fmt::Debug for EngineConfig {
@@ -350,6 +353,7 @@ impl std::fmt::Debug for EngineConfig {
             .field("environment", &self.environment)
             .field("header_heights", &self.header_heights)
             .field("limits", &self.limits)
+            .field("components", &self.components)
             .finish()
     }
 }
@@ -572,6 +576,7 @@ fn run<M: TextEngine + 'static, S: MountSink>(
     }));
     let access = Arc::new(config.bundle.policy.access());
     let mut core = Core::new(text_engine, config.viewport);
+    core.set_components(config.components.clone());
     core.set_max_nodes(config.limits.max_nodes);
     core.set_access(access.clone());
     core.set_font_scale(config.environment.font_scale);
@@ -992,6 +997,10 @@ fn handle<M: TextEngine>(host: &Host, state: &mut State<M>, message: Message) ->
         Message::Event(id, event, payload) => {
             if state.trace {
                 log::info!(target: "nsh::perf", "event {event:?} on view {id}");
+            }
+            // Events on a Rust component's parts are the component's.
+            if state.core.component_event(id, event, &payload) {
+                return true;
             }
             // The core tracks input text for layout and to recognize stale
             // values from JS.

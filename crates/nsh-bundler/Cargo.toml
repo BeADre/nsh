@@ -11,6 +11,7 @@ workspace = true
 
 [dependencies]
 anyhow.workspace = true
+nsh-ui-mobile.workspace = true
 dom-expressions-compiler.workspace = true
 oxc.workspace = true
 rolldown.workspace = true

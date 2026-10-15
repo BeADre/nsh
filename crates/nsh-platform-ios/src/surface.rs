@@ -383,6 +383,7 @@ impl RootView {
             environment: self.environment(),
             header_heights: header_heights(mtm),
             limits: self.ivars().options.limits,
+            components: nsh_ui_mobile::registry(),
         };
         let sink = MainThreadSink {
             mounter: mounter.clone(),

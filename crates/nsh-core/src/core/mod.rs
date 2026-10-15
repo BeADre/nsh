@@ -1,4 +1,5 @@
 mod classes;
+mod components;
 mod list;
 #[cfg(test)]
 mod tests;
@@ -579,6 +580,8 @@ pub struct Core<M: TextEngine> {
     access: Arc<crate::access::Access>,
     /// Denials already logged (each once).
     denied: rustc_hash::FxHashSet<String>,
+    /// Rust components and what they rendered.
+    components: components::Components,
 }
 
 impl<M: TextEngine> Core<M> {
@@ -605,6 +608,7 @@ impl<M: TextEngine> Core<M> {
             max_nodes: usize::MAX,
             access: Arc::default(),
             denied: Default::default(),
+            components: Default::default(),
             lists: Vec::new(),
             roots: Vec::new(),
             accessories: Default::default(),
@@ -834,8 +838,20 @@ impl<M: TextEngine> Core<M> {
         }
     }
 
-    /// Applies one op.
+    /// Applies one op from JS.
     pub fn apply(&mut self, op: Op) -> Result<(), ApplyError> {
+        // Ops on a component's host go to its component.
+        if self.components.instances.is_empty() {
+            return self.apply_op(op);
+        }
+        match self.intercept(op)? {
+            Some(op) => self.apply_op(op),
+            None => Ok(()),
+        }
+    }
+
+    /// Applies one op as is (also for the nodes components expand).
+    fn apply_op(&mut self, op: Op) -> Result<(), ApplyError> {
         match op {
             Op::Create { id, tag } => self.create(id, tag),
             Op::CreateText { id, text } => {
@@ -958,6 +974,8 @@ impl<M: TextEngine> Core<M> {
     /// Finishes a turn: rebuilds text, runs layout, updates lists and
     /// returns the mount items, or `None` when nothing changed.
     pub fn commit(&mut self) -> Option<MountBatch> {
+        // Components whose props or state changed render first.
+        self.render_components();
         // Platforms animate the frames, insertions and removals that follow
         // in the batch; ops may already have queued some.
         if let Some(animation) = self.layout_animation.take() {
@@ -1485,6 +1503,19 @@ impl<M: TextEngine> Core<M> {
 
     fn set_prop(&mut self, id: NodeId, prop: Prop) -> Result<(), ApplyError> {
         let key = self.key(id)?;
+        // Rust components: `component` makes a view a host, `$name` props
+        // are its component's.
+        let prop = match prop {
+            Prop::Component(name) if self.nodes[key as usize].kind == Kind::View => {
+                self.create_instance(id, name);
+                return Ok(());
+            }
+            Prop::ComponentProp(name, value) if self.components.instances.contains_key(&id) => {
+                self.set_component_prop(id, name, value);
+                return Ok(());
+            }
+            prop => prop,
+        };
         let prop = self.check_prop(key, prop);
         let node = &mut self.nodes[key as usize];
         let mut flags = 0;

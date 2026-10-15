@@ -15,12 +15,14 @@ import {
   createRenderEffect,
   createRoot,
   createSignal,
+  mergeProps as mergeSolidProps,
+  splitProps,
   untrack,
 } from "solid-js";
 import { createRenderer } from "solid-js/universal";
 // The app's Tailwind theme (`nsh.json`), JSON or null.
 import tailwindTheme from "nsh:tailwind-theme";
-import type { GestureResponderEvent, TouchPoint } from "./types";
+import type { GestureResponderEvent, TouchPoint, ViewProps } from "./types";
 
 export const OP_CREATE = 0; // id, tag
 export const OP_CREATE_TEXT = 1; // id, text
@@ -166,7 +168,9 @@ export function command(id: number, name: string, argument?: unknown): void {
 
 export const ops: unknown[] = [];
 let scheduled = false;
-let nextId = 2; // 1 is the root view, owned by the platform.
+// Even ids: the core gives the nodes it expands for Rust components odd
+// ones (1 is the root view, owned by the platform).
+let nextId = 2;
 
 export function schedule(): void {
   if (!scheduled) {
@@ -222,7 +226,8 @@ function unlink(node: YNode) {
 }
 
 function newNode(isText: boolean): YNode {
-  const node = new YNode(nextId++, isText);
+  const node = new YNode(nextId, isText);
+  nextId += 2;
   registry.register(node, node.id);
   return node;
 }
@@ -365,6 +370,47 @@ function platformProps(node: YNode, name: "ios" | "android" | "desktop", value: 
     for (const key in prev) if (!value || !(key in value)) renderer.setProp(node, key, undefined, prev[key]);
   }
   if (value) for (const key in value) renderer.setProp(node, key, value[key], prev?.[key]);
+}
+
+/** What JS sets on a Rust component's host itself: the app's classes
+ * (appended to the component's own), its inline style, its test id, layout
+ * events and the ref (`ref.command(name, args)`). */
+export type ComponentHostProps = Pick<ViewProps, "class" | "classList" | "style" | "testID" | "onLayout" | "ref">;
+
+/** `press` -> `onPress`. */
+const eventHandler = (event: string): string => "on" + event.charAt(0).toUpperCase() + event.slice(1);
+
+/**
+ * The JS face of Rust component `name` (generated from its spec,
+ * `nsh_core::component::typescript`): a host node naming the component, its
+ * own `props` sent as `$name` when they change, its `events` delivered to
+ * the `on<Event>` handlers, its JSX children inserted when it takes some.
+ */
+export function component<P>(
+  name: string,
+  props: readonly string[],
+  events: readonly string[],
+  children: boolean,
+): (p: P) => any {
+  const own: string[] = [...props];
+  const handlers: string[] = events.map(eventHandler);
+  const split: string[] = children ? ["children"] : [];
+  return (p: P) => {
+    const node = createElement("view");
+    setProp(node, "component", name);
+    const [mine, on, kids, host] = splitProps(p as any, own, handlers, split);
+    const values: Record<string, unknown> = {};
+    for (const key of own) {
+      Object.defineProperty(values, "$" + key, { enumerable: true, get: () => mine[key] });
+    }
+    const listener =
+      handlers.length > 0
+        ? { onNativeEvent: (e: { name: string; data: unknown }) => on[eventHandler(e.name)]?.(e.data) }
+        : {};
+    spread(node, mergeSolidProps(host, values, listener), true);
+    if (children) insert(node, () => kids.children);
+    return node;
+  };
 }
 
 /** A component rendering intrinsic element `tag` with its props. */

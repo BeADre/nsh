@@ -322,6 +322,15 @@ pub struct TouchEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct EventMask(u64);
 
+impl std::ops::BitOr for EventMask {
+    type Output = EventMask;
+
+    #[inline]
+    fn bitor(self, other: EventMask) -> EventMask {
+        EventMask(self.0 | other.0)
+    }
+}
+
 impl EventMask {
     /// Returns true if `event` is in the set.
     #[inline]

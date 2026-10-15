@@ -10,6 +10,7 @@
 
 pub mod access;
 pub mod canvas;
+pub mod component;
 mod core;
 mod css;
 mod css_named;

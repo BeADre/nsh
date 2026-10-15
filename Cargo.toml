@@ -18,6 +18,7 @@ private_interfaces = "deny"
 nsh-anim = { path = "crates/nsh-anim" }
 nsh-core = { path = "crates/nsh-core" }
 nsh-package = { path = "crates/nsh-package" }
+nsh-ui-mobile = { path = "crates/nsh-ui-mobile" }
 nsh-js = { path = "crates/nsh-js" }
 nsh-engine = { path = "crates/nsh-engine" }
 nsh-bundler = { path = "crates/nsh-bundler" }

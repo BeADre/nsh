@@ -2882,3 +2882,268 @@ fn refused_urls_fail_and_send_nothing() {
         [(3, EventKind::Error, EventPayload::Error { message })] if message.contains("`tracker.io`")
     ));
 }
+
+mod components {
+    use serde_json::json;
+
+    use super::*;
+    use crate::component::{
+        Component, El, EventCx, EventSpec, PropSpec, PropType, Props, Registry, RenderCx, Spec,
+        text, view,
+    };
+
+    /// Counts taps; shows `label` and the count; holds its JSX children.
+    #[derive(Default)]
+    struct Tally {
+        taps: u32,
+    }
+
+    static TALLY: Spec = Spec {
+        name: "test.tally",
+        export: "Tally",
+        doc: "",
+        props: &[PropSpec {
+            name: "label",
+            ty: PropType::String,
+            default: Some("\"Taps\""),
+            doc: "",
+        }],
+        events: &[EventSpec {
+            name: "tap",
+            data: "{ count: number }",
+            doc: "",
+        }],
+        children: true,
+    };
+
+    impl Component for Tally {
+        fn spec() -> &'static Spec {
+            &TALLY
+        }
+
+        fn render(&self, p: &Props, _cx: &mut RenderCx) -> El<Self> {
+            view()
+                .class("p-2")
+                .on_press(|this: &mut Self, cx: &mut EventCx| {
+                    this.taps += 1;
+                    cx.emit("tap", json!({ "count": this.taps }));
+                    cx.notify();
+                })
+                .child(text(format!("{} {}", p.str("label"), self.taps)))
+                .child(view().class("gap-1").holds_children())
+        }
+
+        fn command(&mut self, name: &str, _args: &crate::JsonValue, cx: &mut EventCx) {
+            if name == "reset" {
+                self.taps = 0;
+                cx.notify();
+            }
+        }
+    }
+
+    fn texts(batch: &MountBatch) -> Vec<String> {
+        batch
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                MountItem::Text { text, .. } => Some(text.text.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn core_with_tally() -> Core<FakeEngine> {
+        let mut c = core();
+        let mut registry = Registry::new();
+        registry.register::<Tally>();
+        c.set_components(registry);
+        c
+    }
+
+    #[test]
+    fn components_render_handle_events_and_place_children() {
+        let mut c = core_with_tally();
+        let prop = |name: &str, value| Op::SetProp {
+            id: 2,
+            prop: Prop::ComponentProp(name.into(), Some(value)),
+        };
+        apply(
+            &mut c,
+            vec![
+                Op::Create {
+                    id: 2,
+                    tag: Tag::View,
+                },
+                Op::SetProp {
+                    id: 2,
+                    prop: Prop::Component("test.tally".into()),
+                },
+                prop("label", json!("Hits")),
+                Op::Create {
+                    id: 4,
+                    tag: Tag::View,
+                },
+                Op::Insert {
+                    parent: 2,
+                    child: 4,
+                    before: None,
+                },
+                Op::Insert {
+                    parent: ROOT_ID,
+                    child: 2,
+                    before: None,
+                },
+            ],
+        );
+        let batch = c.commit().unwrap();
+        assert_eq!(texts(&batch), ["Hits 0"]);
+        // Expanded nodes have odd ids; the JS child sits in the element that
+        // holds children, not in the host.
+        let holder = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Insert {
+                    parent, child: 4, ..
+                } => Some(*parent),
+                _ => None,
+            })
+            .expect("JS child placed");
+        assert!(holder % 2 == 1 && holder != 2);
+        assert!(
+            batch
+                .items
+                .iter()
+                .any(|i| matches!(i, MountItem::Create { id: 2, .. }))
+        );
+
+        // A press on the host goes to the component, which emits and renders
+        // again.
+        assert!(c.component_event(2, EventKind::Press, &EventPayload::None));
+        let mut events = Vec::new();
+        c.take_events(&mut events);
+        assert_eq!(
+            events,
+            [(
+                2,
+                EventKind::NativeEvent,
+                EventPayload::Native {
+                    name: "tap".into(),
+                    data: json!({ "count": 1 })
+                }
+            )]
+        );
+        let batch = c.commit().unwrap();
+        assert_eq!(texts(&batch), ["Hits 1"]);
+
+        // A prop change renders again; only what changed is sent.
+        apply(&mut c, vec![prop("label", json!("Taps"))]);
+        let batch = c.commit().unwrap();
+        assert_eq!(texts(&batch), ["Taps 1"]);
+        assert!(
+            !batch
+                .items
+                .iter()
+                .any(|i| matches!(i, MountItem::Create { .. }))
+        );
+
+        // Commands reach the component.
+        apply(
+            &mut c,
+            vec![Op::Command {
+                id: 2,
+                command: Command::Native {
+                    name: "reset".into(),
+                    args: json!(null),
+                },
+            }],
+        );
+        assert_eq!(texts(&c.commit().unwrap()), ["Taps 0"]);
+
+        // Unknown events on the host (no handler) are JS's.
+        assert!(!c.component_event(2, EventKind::Layout, &EventPayload::None));
+
+        // Releasing the host frees what it rendered; its JS child stays.
+        apply(
+            &mut c,
+            vec![
+                Op::Remove {
+                    parent: ROOT_ID,
+                    child: 2,
+                },
+                Op::Release { id: 2 },
+            ],
+        );
+        let batch = c.commit().unwrap();
+        let deleted: Vec<NodeId> = batch
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                MountItem::Delete { id } => Some(*id),
+                _ => None,
+            })
+            .collect();
+        assert!(deleted.contains(&2) && deleted.contains(&holder));
+        assert!(!deleted.contains(&4));
+        assert!(c.key(4).is_ok());
+    }
+
+    #[test]
+    fn the_apps_class_is_appended_and_unknown_components_render_nothing() {
+        let mut c = core_with_tally();
+        apply(
+            &mut c,
+            vec![
+                Op::Create {
+                    id: 2,
+                    tag: Tag::View,
+                },
+                Op::SetProp {
+                    id: 2,
+                    prop: Prop::Component("test.tally".into()),
+                },
+                Op::SetProp {
+                    id: 2,
+                    prop: Prop::Class("p-8".into()),
+                },
+                Op::Insert {
+                    parent: ROOT_ID,
+                    child: 2,
+                    before: None,
+                },
+                Op::Create {
+                    id: 6,
+                    tag: Tag::View,
+                },
+                Op::SetProp {
+                    id: 6,
+                    prop: Prop::Component("test.missing".into()),
+                },
+                Op::Insert {
+                    parent: ROOT_ID,
+                    child: 6,
+                    before: None,
+                },
+            ],
+        );
+        let batch = c.commit().unwrap();
+        // `p-8` (32pt) wins over the component's `p-2`: the text sits 32pt in.
+        let text_id = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Text { id, .. } => Some(*id),
+                _ => None,
+            })
+            .unwrap();
+        let frame = frame_of(&batch, text_id).unwrap();
+        assert_eq!((frame.x, frame.y), (32.0, 32.0));
+        // The unknown one is an empty view.
+        assert!(
+            batch
+                .items
+                .iter()
+                .any(|i| matches!(i, MountItem::Create { id: 6, .. }))
+        );
+    }
+}

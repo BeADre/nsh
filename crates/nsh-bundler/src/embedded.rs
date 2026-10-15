@@ -106,20 +106,39 @@ const RUNTIME: &[EmbeddedFile] = embedded! { "runtime":
     "types.ts" => None,
 };
 
-/// The mobile UI (`js/ui/mobile`, `nsh/ui/mobile`); its components in
-/// `components/` (TSX).
+/// The mobile UI (`js/ui/mobile`, `nsh/ui/mobile`); its components are Rust
+/// (`nsh-ui-mobile`), their JS face is [`generated`].
 const UI_MOBILE: &[EmbeddedFile] = embedded! { "ui/mobile":
     "index.ts" => Some("nsh/ui/mobile"),
-    "components/button.tsx" => None,
     "keyboard.ts" => None,
     "navigation.ts" => None,
     "safe-area.ts" => None,
     "system.ts" => None,
 };
 
+/// The JS glue and declarations of the Rust components
+/// (`ui/mobile/components.gen.ts`, re-exported by `nsh/ui/mobile`), generated
+/// from their specs once per process.
+fn generated() -> &'static [EmbeddedFile] {
+    static FILES: std::sync::OnceLock<[EmbeddedFile; 1]> = std::sync::OnceLock::new();
+    FILES.get_or_init(|| {
+        let source = nsh_core::component::typescript(&nsh_ui_mobile::specs());
+        [EmbeddedFile {
+            root: "ui/mobile",
+            path: "components.gen.ts",
+            specifier: None,
+            module: Embedded {
+                id: "\0nsh:ui/mobile/components.gen.ts",
+                source: Box::leak(source.into_boxed_str()),
+                lang: Lang::Ts,
+            },
+        }]
+    })
+}
+
 /// Every embedded file of nsh's JS.
 pub(crate) fn files() -> impl Iterator<Item = &'static EmbeddedFile> {
-    RUNTIME.iter().chain(UI_MOBILE)
+    RUNTIME.iter().chain(UI_MOBILE).chain(generated())
 }
 
 /// The internals of the runtime, which the UI sets build on: importable by

@@ -23,6 +23,7 @@ fn dropping_an_engine_aborts_running_js() {
         environment: Default::default(),
         header_heights: (44.0, 96.0),
         limits: nsh_engine::Limits::default(),
+        components: Default::default(),
     };
     let engine = Engine::start(config, || ApproxTextEngine, NullSink).unwrap();
     // Let the script start spinning.

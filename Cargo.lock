@@ -1811,6 +1811,7 @@ dependencies = [
  "imagesize",
  "log",
  "nsh-core",
+ "nsh-ui-mobile",
  "oxc",
  "oxc_sourcemap 9.0.0",
  "rolldown",
@@ -1839,6 +1840,7 @@ dependencies = [
  "nsh-engine",
  "nsh-js",
  "nsh-package",
+ "nsh-ui-mobile",
  "plist",
  "serde",
  "serde_json",
@@ -1945,6 +1947,7 @@ dependencies = [
  "nsh-core",
  "nsh-dev",
  "nsh-engine",
+ "nsh-ui-mobile",
  "rustc-hash",
  "serde_json",
  "ttf-parser",
@@ -1962,6 +1965,7 @@ dependencies = [
  "nsh-core",
  "nsh-dev",
  "nsh-engine",
+ "nsh-ui-mobile",
  "objc2",
  "objc2-core-foundation",
  "objc2-core-graphics",
@@ -1971,6 +1975,14 @@ dependencies = [
  "objc2-quartz-core",
  "objc2-ui-kit",
  "rustc-hash",
+ "serde_json",
+]
+
+[[package]]
+name = "nsh-ui-mobile"
+version = "0.1.0"
+dependencies = [
+ "nsh-core",
  "serde_json",
 ]
 
