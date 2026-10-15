@@ -9,7 +9,7 @@ use rustc_hash::FxHashMap;
 use super::{
     Children, Context, Environment, IntoElement, PropError, Slot, Theme, TsType, TsTypes,
     element::{ComponentElement, ElNode, ErasedCx, RenderCx},
-    module::{Function, Module, ModuleSpec},
+    module::{Function, FunctionSpec, Module, ModuleSpec},
 };
 use crate::{EdgeInsets, JsonValue};
 
@@ -459,6 +459,9 @@ pub struct Registry {
     modules: Arc<FxHashMap<&'static str, ModuleType>>,
     /// Values and types of `nsh/_core` exported as they are.
     reexports: Arc<(Vec<&'static str>, Vec<&'static str>)>,
+    /// The runtime module the functions belong to (`nsh/android`): JS
+    /// calls them as `nsh/android:Toast.show`, apart from any UI set's.
+    namespace: Option<&'static str>,
 }
 
 impl fmt::Debug for Registry {
@@ -515,8 +518,27 @@ impl Registry {
         self
     }
 
-    /// Function `name` of a module (`Alert.alert`).
+    /// A registry of the runtime's module `namespace` (`nsh/android`).
+    pub(crate) fn runtime(namespace: &'static str) -> Self {
+        Self {
+            namespace: Some(namespace),
+            ..Self::default()
+        }
+    }
+
+    /// The runtime module the registry's functions belong to (`None`: a UI
+    /// set's).
+    pub fn namespace(&self) -> Option<&'static str> {
+        self.namespace
+    }
+
+    /// Function `name` of a module (`Alert.alert`; with a namespace,
+    /// `nsh/android:Toast.show`).
     pub(crate) fn function(&self, name: &str) -> Option<&'static Function> {
+        let name = match self.namespace {
+            Some(namespace) => name.strip_prefix(namespace)?.strip_prefix(':')?,
+            None => name,
+        };
         let (module, function) = name.split_once('.')?;
         self.modules
             .get(module)?
@@ -586,31 +608,41 @@ pub fn typescript(registry: &Registry) -> String {
         let _ = write!(out, "\n{declaration}\n");
     }
     let module_of = |name: &str| modules.iter().find(|m| m.name == name);
+    // What JS calls a module by: its name, in the runtime's namespace.
+    let call_name = |m: &ModuleSpec| match registry.namespace {
+        Some(namespace) => format!("{namespace}:{}", m.name),
+        None => m.name.to_owned(),
+    };
+    let module_functions = |m: &ModuleSpec| {
+        m.functions
+            .iter()
+            .map(|f| format!("[{:?}, {}]", f.name, f.returns.is_some()))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let signature = |f: &FunctionSpec| {
+        let params = f
+            .params
+            .iter()
+            .map(|(n, ts, optional)| format!("{n}{}: {ts}", if *optional { "?" } else { "" }))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let returns = match &f.returns {
+            Some(ts) => format!("Promise<{ts}>"),
+            None => "void".to_owned(),
+        };
+        (params, returns)
+    };
     // A module's object: its declaration and the glue call.
     let module_object = |out: &mut String, m: &ModuleSpec| -> String {
         out.push_str("{\n");
         for f in &m.functions {
             doc(out, "  ", f.doc);
-            let params = f
-                .params
-                .iter()
-                .map(|(n, ts, optional)| format!("{n}{}: {ts}", if *optional { "?" } else { "" }))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let returns = match &f.returns {
-                Some(ts) => format!("Promise<{ts}>"),
-                None => "void".to_owned(),
-            };
+            let (params, returns) = signature(f);
             let _ = writeln!(out, "  {}({params}): {returns};", f.name);
         }
         out.push('}');
-        let functions = m
-            .functions
-            .iter()
-            .map(|f| format!("[{:?}, {}]", f.name, f.returns.is_some()))
-            .collect::<Vec<_>>()
-            .join(", ");
-        format!("module({:?}, [{functions}])", m.name)
+        format!("module({:?}, [{}])", call_name(m), module_functions(m))
     };
     for spec in &specs {
         // A component with rows is generic over their type, like `List`.
@@ -722,6 +754,26 @@ pub fn typescript(registry: &Registry) -> String {
             continue;
         }
         out.push('\n');
+        // Functions of their own: one object, exported function by function.
+        if m.flat {
+            let _ = writeln!(
+                out,
+                "const {}$: any = module({:?}, [{}]);",
+                m.name,
+                call_name(m),
+                module_functions(m)
+            );
+            for f in &m.functions {
+                doc(&mut out, "", f.doc);
+                let (params, returns) = signature(f);
+                let _ = writeln!(
+                    out,
+                    "export const {0}: ({params}) => {returns} = {1}$.{0};",
+                    f.name, m.name
+                );
+            }
+            continue;
+        }
         doc(&mut out, "", m.doc);
         let _ = write!(out, "export const {}: ", m.name);
         let call = module_object(&mut out, m);

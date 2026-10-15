@@ -11,7 +11,9 @@ files import their own root's files relatively (`./navigation`) and the runtime'
 files only; apps cannot). `.nsh/types` has one declaration file per embedded file (`nsh/list.d.ts`,
 `nsh/ui/mobile/navigation.d.ts`) and `nsh/ui/mobile.d.ts` re-exporting its set, found through the `nsh/*` path of the
 app's `tsconfig.json`; files nsh no longer generates are removed. `ui/mobile/components.gen.ts` is generated at build
-time from the Rust components' specs (`docs/dev/components.md`). `nsh` itself only has rendering and the types; there
+time from the Rust components' specs (`docs/dev/components.md`); so are the runtime's Rust modules
+(`nsh_core::runtime`): `runtime/<module>.gen.ts`, which the hand-written module re-exports and adds its JS part to
+(`nsh/android`: the back button's listeners), or the whole module when nothing in it is JS (`nsh/image`). `nsh` itself only has rendering and the types; there
 is no catch-all module, and moved APIs get no compatibility re-exports.
 
 | Module | Exports |
@@ -22,12 +24,12 @@ is no catch-all module, and moved APIs get no compatibility re-exports.
 | `nsh/accessibility` | `AccessibilityInfo`, `screenReaderEnabled()`, `reduceMotion()` |
 | `nsh/list` | `List` |
 | `nsh/canvas` | `Canvas`, `Path2D`, `CanvasRenderingContext2D`, `CanvasGradient` |
-| `nsh/image` | `Image.getSize`, `Image.prefetch` |
+| `nsh/image` | `Image.getSize`, `Image.prefetch` (Rust: promises the core resolves from the root's `ImageInfo` event) |
 | `nsh/gesture` | `PanResponder` |
 | `nsh/webview`, `nsh/video` | `WebView`, `Video` |
 | `nsh/native` | `nativeComponent(name, { props, events })`: a component for a native component the embedding app registered |
 | `nsh/ios` | `isAvailable`, `InputAccessoryView` |
-| `nsh/android` | `isAvailable`, `Toast`, `BackHandler`, `setStatusBarBackgroundColor` |
+| `nsh/android` | `isAvailable`, `Toast.show(message, "short" \| "long")`, `BackHandler` (`addEventListener` in JS, `exitApp` Rust), `setStatusBarBackgroundColor` (the status bar's base layer) |
 | `nsh/renderer` | what compiled JSX calls (`createElement`, `insert`, `spread`, ...; the Solid compiler's `moduleName`) |
 | `nsh/ui/mobile` | `Stack`, `Screen`, `createNavigator`, `Modal` (Solid, `navigation.ts`); everything else is Rust in `nsh-ui-mobile`, its JS generated: `SafeAreaView`, `KeyboardAvoidingView`, `StatusBar` (and `StatusBar.setBarStyle` / `setHidden`), `Alert.alert` and `ActionSheet.show` (promises of the index chosen; a list dialog on Android), `Keyboard.dismiss`, `Button`, `Card`, `Group`, `ListView`, `Stepper`; re-exported from the runtime: `safeArea()`, `keyboard()`, `useSafeAreaInsets()` |
 
@@ -47,7 +49,9 @@ is no catch-all module, and moved APIs get no compatibility re-exports.
 ## Where new things go
 
 - A primitive or environment both UI sets need: a module of `js/runtime` (`nsh/<module>`), listed in
-  `crates/nsh-bundler/src/embedded.rs`.
+  `crates/nsh-bundler/src/embedded.rs`. Functions that only ask the platform (a command, a request answered by an
+  event) are a Rust `#[module]` in `crates/nsh-core/src/runtime/`, registered in `runtime::registries()` under the
+  module's specifier; only what has to call the app's JS (listeners) or read JS signals synchronously is TS.
 - Mobile UI or interaction: `js/ui/mobile` (`nsh/ui/mobile`); its components are Rust, in `crates/nsh-ui-mobile`
   (see its README), with generated glue.
 - Something only one platform has: `nsh/ios` / `nsh/android`, or a prop in `ios={{…}}` / `android={{…}}` /

@@ -10,14 +10,13 @@ use nsh_anim::{
 };
 use nsh_core::{
     AccessibilityActionDef, AccessibilityProp, AccessibilityRole, AccessibilityState,
-    AccessibilityValue, AutoCapitalize, AutoFill, CellSlot, Checked, Color, Command, Dialog,
-    DialogButton, DialogButtonStyle, EdgeInsets, EllipsizeMode, EventKind, HeaderSlot, ImageProp,
-    ImageSource, KeyboardDismissMode, KeyboardTaps, KeyboardType, LayoutAnimation, LayoutCurve,
-    LayoutProperty, LayoutTransition, ListContentStyle, LiveRegion, ModalAnimation, ModalConfig,
-    ModalPresentation, ModalProp, NativeProp, NodeId, Op, PointerEvents, Prop, ResizeMode,
-    ReturnKeyType, ScreenAnimation, ScreenProp, ScrollProp, SnapAlignment, StatusBarSetting,
-    StatusBarStyle, Style, StyleDecl, StyleError, StylePatch, StyleValue, Tag, TransformKind,
-    Viewability, WebSource,
+    AccessibilityValue, AutoCapitalize, AutoFill, CellSlot, Checked, Color, Command, EdgeInsets,
+    EllipsizeMode, EventKind, HeaderSlot, ImageProp, ImageSource, KeyboardDismissMode,
+    KeyboardTaps, KeyboardType, LayoutAnimation, LayoutCurve, LayoutProperty, LayoutTransition,
+    ListContentStyle, LiveRegion, ModalAnimation, ModalConfig, ModalPresentation, ModalProp,
+    NativeProp, NodeId, Op, PointerEvents, Prop, ResizeMode, ReturnKeyType, ScreenAnimation,
+    ScreenProp, ScrollProp, SnapAlignment, Style, StyleDecl, StyleError, StylePatch, StyleValue,
+    Tag, TransformKind, Viewability, WebSource,
 };
 use rquickjs::{Array, Ctx, Exception, Object, Type, Value};
 use rustc_hash::FxHashSet;
@@ -217,7 +216,6 @@ pub(crate) fn decode<'js>(
                 let command = match name.as_str() {
                     "focus" => Command::Focus,
                     "blur" => Command::Blur,
-                    "exitApp" => Command::ExitApp,
                     "reload" => Command::Reload,
                     "goBack" => Command::GoBack,
                     "goForward" => Command::GoForward,
@@ -239,28 +237,6 @@ pub(crate) fn decode<'js>(
                             args,
                         }
                     }
-                    // What a function sets; the fields it leaves out keep
-                    // their values.
-                    "statusBar" => {
-                        let o = arg.as_object();
-                        let flag = |key: &str| {
-                            o.and_then(|o| o.get::<_, Option<bool>>(key).ok().flatten())
-                        };
-                        let text = |key: &str| {
-                            o.and_then(|o| o.get::<_, Option<String>>(key).ok().flatten())
-                        };
-                        Command::SetStatusBar(StatusBarSetting {
-                            style: text("barStyle").map(|s| match s.as_str() {
-                                "light-content" => StatusBarStyle::Light,
-                                "dark-content" => StatusBarStyle::Dark,
-                                _ => StatusBarStyle::Default,
-                            }),
-                            hidden: flag("hidden"),
-                            animated: flag("animated"),
-                            background: text("backgroundColor").and_then(|c| Color::parse(&c)),
-                        })
-                    }
-                    "dialog" => Command::Dialog(Box::new(decode_dialog(&arg)?)),
                     "setJsResponder" => Command::SetJsResponder {
                         block: arg.as_bool().unwrap_or(true),
                     },
@@ -275,35 +251,6 @@ pub(crate) fn decode<'js>(
                         Command::SetSelection {
                             start: field("start"),
                             end: field("end"),
-                        }
-                    }
-                    "announce" => Command::Announce(
-                        arg.as_string()
-                            .map(|s| s.to_string())
-                            .transpose()?
-                            .unwrap_or_default(),
-                    ),
-                    "accessibilityFocus" => Command::AccessibilityFocus,
-                    "imageInfo" => {
-                        let o = arg.as_object();
-                        Command::ImageInfo {
-                            id: o
-                                .and_then(|o| o.get::<_, Option<u32>>("id").ok().flatten())
-                                .unwrap_or(0),
-                            uri: o
-                                .and_then(|o| o.get::<_, Option<String>>("uri").ok().flatten())
-                                .unwrap_or_default(),
-                        }
-                    }
-                    "toast" => {
-                        let o = arg.as_object();
-                        Command::Toast {
-                            text: o
-                                .and_then(|o| o.get::<_, Option<String>>("text").ok().flatten())
-                                .unwrap_or_default(),
-                            long: o
-                                .and_then(|o| o.get::<_, Option<bool>>("long").ok().flatten())
-                                .unwrap_or(false),
                         }
                     }
                     "scrollToIndex" => {
@@ -1090,43 +1037,6 @@ fn decode_source(value: &Value<'_>) -> rquickjs::Result<Option<ImageSource>> {
         uri: uri.into(),
         size,
     }))
-}
-
-/// `{ id, title, message, buttons: [{ text, style }], cancelable, sheet }`.
-fn decode_dialog(arg: &Value<'_>) -> rquickjs::Result<Dialog> {
-    let Some(o) = arg.as_object() else {
-        return Ok(Dialog {
-            id: 0,
-            title: None,
-            message: None,
-            buttons: Vec::new(),
-            cancelable: true,
-            sheet: false,
-        });
-    };
-    let text = |key: &str| o.get::<_, Option<String>>(key).ok().flatten();
-    let mut buttons = Vec::new();
-    if let Some(items) = o.get::<_, Option<rquickjs::Array>>("buttons")? {
-        for item in items.iter::<Object>() {
-            let item = item?;
-            buttons.push(DialogButton {
-                text: item.get::<_, Option<String>>("text")?.unwrap_or_default(),
-                style: match item.get::<_, Option<String>>("style")?.as_deref() {
-                    Some("cancel") => DialogButtonStyle::Cancel,
-                    Some("destructive") => DialogButtonStyle::Destructive,
-                    _ => DialogButtonStyle::Default,
-                },
-            });
-        }
-    }
-    Ok(Dialog {
-        id: o.get::<_, Option<f64>>("id")?.unwrap_or(0.0) as u32,
-        title: text("title"),
-        message: text("message"),
-        buttons,
-        cancelable: o.get::<_, Option<bool>>("cancelable")?.unwrap_or(true),
-        sheet: o.get::<_, Option<bool>>("sheet")?.unwrap_or(false),
-    })
 }
 
 /// The properties of a style: an object, or (React Native style) an array

@@ -1,21 +1,15 @@
 // `nsh/android`: what only Android has. Importable everywhere (one bundle
-// runs on both platforms); elsewhere it does nothing.
+// runs on both platforms); elsewhere it does nothing. `Toast`,
+// `setStatusBarBackgroundColor` and `BackHandler.exitApp` are Rust
+// (`nsh_core::runtime`); the back button's listeners are the app's JS.
 
-import { command, os, root, setProp } from "./_core";
+import { os, root, setProp } from "./_core";
+import { BackHandler as NativeBackHandler } from "./android.gen";
+
+export * from "./android.gen";
 
 /** True on Android. */
 export const isAvailable: boolean = os === "android";
-
-/** Short messages at the bottom of the screen. */
-export const Toast = {
-  SHORT: 0 as const,
-  LONG: 1 as const,
-  show(message: string, duration: 0 | 1 = 0): void {
-    command(1, "toast", { text: message, long: duration === 1 });
-  },
-};
-
-// --- Back button (Android) ---------------------------------------------------
 
 const backListeners: (() => boolean | void)[] = [];
 
@@ -23,20 +17,19 @@ function onBackPress() {
   for (let i = backListeners.length - 1; i >= 0; i--) {
     if (backListeners[i]()) return;
   }
-  BackHandler.exitApp();
+  NativeBackHandler.exitApp();
 }
 
-/** The status bar's color (before edge-to-edge, API 35), under the
- * rendered `<StatusBar android={{ backgroundColor }}>`s. */
-export function setStatusBarBackgroundColor(backgroundColor: string, animated?: boolean): void {
-  command(1, "statusBar", { backgroundColor, animated });
-}
-
-/** The back button, after modals and stacks had their turn. */
-export const BackHandler = {
+/** The back button's listeners. */
+export interface BackListeners {
   /** `listener` returns true when it handled the press; the most recently
    * added listener runs first. Without a listener that handles it, the app
    * exits. */
+  addEventListener(event: "hardwareBackPress", listener: () => boolean | void): { remove(): void };
+}
+
+/** The back button, after modals and stacks had their turn. */
+export const BackHandler: typeof NativeBackHandler & BackListeners = Object.assign(NativeBackHandler, {
   addEventListener(_event: "hardwareBackPress", listener: () => boolean | void): { remove(): void } {
     backListeners.push(listener);
     if (backListeners.length === 1) setProp(root, "onBackPress", onBackPress);
@@ -48,8 +41,4 @@ export const BackHandler = {
       },
     };
   },
-  /** Leaves the app. */
-  exitApp(): void {
-    command(1, "exitApp");
-  },
-};
+});

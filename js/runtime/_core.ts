@@ -385,11 +385,22 @@ export type ComponentHostProps = Pick<ViewProps, "class" | "classList" | "style"
 /** Calls of components' methods JS waits for, numbered. */
 let calls = 0;
 
+/** Arguments of a Rust function or method: nodes go as `{ $node: id }`
+ * (Rust's `NodeRef`), the rest as they are. `a` is the call's own array. */
+function rustArgs(a: unknown[]): unknown[] {
+  for (let i = 0; i < a.length; i++) {
+    const v = a[i];
+    if (v instanceof YNode) a[i] = { $node: v.id };
+  }
+  return a;
+}
+
 /** Calls of modules' functions JS waits for (answered on the root). */
 const moduleCalls = new Map<number, [(v: unknown) => void, (e: Error) => void]>();
 
 /**
- * The JS object of a UI set's Rust module `name` (generated from its spec):
+ * The JS object of a Rust module `name` (a UI set's, or the runtime's as
+ * `nsh/android:Toast`; generated from its spec):
  * each function sends a call to the core, in order with the ops before it;
  * one with a result returns a `Promise` of it.
  */
@@ -403,9 +414,9 @@ export function module(name: string, functions: readonly (readonly [string, bool
             if (moduleCalls.size === 0) setProp(root, "onNativeEvent", onModuleReturn);
             const c = ++calls;
             moduleCalls.set(c, [resolve, reject]);
-            command(1, "native", { name: full, args: { c, a } });
+            command(1, "native", { name: full, args: { c, a: rustArgs(a) } });
           })
-      : (...a: unknown[]) => command(1, "native", { name: full, args: { c: 0, a } });
+      : (...a: unknown[]) => command(1, "native", { name: full, args: { c: 0, a: rustArgs(a) } });
   }
   return object;
 }
@@ -513,9 +524,9 @@ export function component<P>(
               new Promise((resolve, reject) => {
                 const c = ++calls;
                 (pending ??= new Map()).set(c, [resolve, reject]);
-                command(node.id, "native", { name: m, args: { c, a } });
+                command(node.id, "native", { name: m, args: { c, a: rustArgs(a) } });
               })
-          : (...a: unknown[]) => command(node.id, "native", { name: m, args: { c: 0, a } });
+          : (...a: unknown[]) => command(node.id, "native", { name: m, args: { c: 0, a: rustArgs(a) } });
       }
     }
     if (handlerNames.some((h) => h in q) || methods?.some(([, returns]) => returns)) {

@@ -40,7 +40,7 @@ pub use nsh_macros::{Event, JsObject, PropEnum, Props, methods, module};
 pub(crate) use self::{
     component::AnyInstance,
     element::{ElKind, ErasedCx, Globals, ListConfig, PlaceFn},
-    task::{Action, Executor, Output},
+    task::{Action, AnswerSlot, Executor},
 };
 pub use self::{
     component::{
@@ -59,9 +59,9 @@ pub use self::{
     },
     status_bar::StatusBarEntry,
     style::{AdaptiveColor, FontWeight, Length, StyleRefinement, Styled, px, relative, rgb, rgba},
-    task::{AsyncCx, DialogAnswer, Task, Updated, WeakComponent},
+    task::{Answer, AsyncCx, DialogAnswer, ImageSize, Task, Updated, WeakComponent},
     theme::{Theme, ThemeColors, ThemeError},
-    value::{JsValue, PropError, SharedString, TsType, TsTypes},
+    value::{JsValue, NodeRef, PropError, SharedString, TsType, TsTypes},
 };
 pub use crate::{
     AccessibilityRole, AccessibilityState, Dialog, DialogButton, DialogButtonStyle, EdgeInsets,

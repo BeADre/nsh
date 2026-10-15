@@ -133,7 +133,7 @@ export function System() {
               setAnswer(options[i] ?? "dismissed");
             }}
           />
-          <Button label="Toast (Android)" color="#57606a" onPress={() => Toast.show("Hello from a toast", Toast.SHORT)} />
+          <Button label="Toast (Android)" color="#57606a" onPress={() => Toast.show("Hello from a toast", "long")} />
           <Row label="Answer" value={answer() || "–"} />
         </Section>
         <Section title="Frames and timers">

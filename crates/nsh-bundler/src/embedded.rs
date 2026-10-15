@@ -95,7 +95,6 @@ const RUNTIME: &[EmbeddedFile] = embedded! { "runtime":
     "accessibility.ts" => Some("nsh/accessibility"),
     "list.ts" => Some("nsh/list"),
     "canvas.ts" => Some("nsh/canvas"),
-    "image.ts" => Some("nsh/image"),
     "gesture.ts" => Some("nsh/gesture"),
     "webview.ts" => Some("nsh/webview"),
     "video.ts" => Some("nsh/video"),
@@ -113,23 +112,46 @@ const UI_MOBILE: &[EmbeddedFile] = embedded! { "ui/mobile":
     "navigation.ts" => None,
 };
 
-/// The JS glue and declarations of the Rust components
-/// (`ui/mobile/components.gen.ts`, re-exported by `nsh/ui/mobile`), generated
-/// from their specs once per process.
+/// The JS glue and declarations of what is written in Rust, generated
+/// from the specs once per process: the mobile UI's components and modules
+/// (`ui/mobile/components.gen.ts`, re-exported by `nsh/ui/mobile`), and the
+/// runtime's modules (`runtime/android.gen.ts`, re-exported by
+/// `nsh/android`; a module with no hand-written part is the generated file
+/// alone: `runtime/image.ts`, `nsh/image`).
 fn generated() -> &'static [EmbeddedFile] {
-    static FILES: std::sync::OnceLock<[EmbeddedFile; 1]> = std::sync::OnceLock::new();
+    static FILES: std::sync::OnceLock<Vec<EmbeddedFile>> = std::sync::OnceLock::new();
+    let leak = |s: String| -> &'static str { Box::leak(s.into_boxed_str()) };
     FILES.get_or_init(|| {
-        let source = nsh_core::ui::typescript(&nsh_ui_mobile::registry());
-        [EmbeddedFile {
+        let mut files = vec![EmbeddedFile {
             root: "ui/mobile",
             path: "components.gen.ts",
             specifier: None,
             module: Embedded {
                 id: "\0nsh:ui/mobile/components.gen.ts",
-                source: Box::leak(source.into_boxed_str()),
+                source: leak(nsh_core::ui::typescript(&nsh_ui_mobile::registry())),
                 lang: Lang::Ts,
             },
-        }]
+        }];
+        for registry in nsh_core::runtime::registries() {
+            let specifier = registry.namespace().expect("runtime modules have one");
+            let name = specifier.strip_prefix("nsh/").unwrap_or(specifier);
+            let written = RUNTIME.iter().any(|f| f.specifier == Some(specifier));
+            let path = leak(match written {
+                true => format!("{name}.gen.ts"),
+                false => format!("{name}.ts"),
+            });
+            files.push(EmbeddedFile {
+                root: "runtime",
+                path,
+                specifier: (!written).then_some(specifier),
+                module: Embedded {
+                    id: leak(format!("\0nsh:runtime/{path}")),
+                    source: leak(nsh_core::ui::typescript(registry)),
+                    lang: Lang::Ts,
+                },
+            });
+        }
+        files
     })
 }
 

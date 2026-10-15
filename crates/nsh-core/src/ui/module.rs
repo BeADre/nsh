@@ -21,18 +21,22 @@ pub trait Module {
     const DOC: &'static str;
     /// Its functions.
     const FUNCTIONS: &'static [Function];
+    /// Its functions are exported one by one (`setStatusBarBackgroundColor`)
+    /// rather than as an object (`#[module(flat)]`).
+    const FLAT: bool = false;
 }
 
 /// A module function's parameter: its JS name, TypeScript type, and
 /// whether it may be left out.
 pub type ModuleParam = (&'static str, TsType, bool);
 
-/// The future of an `async` module function.
-pub type ModuleFuture = Pin<Box<dyn Future<Output = JsonValue>>>;
+/// The future of an `async` module function: its result, or the error the
+/// `Promise` rejects with.
+pub type ModuleFuture = Pin<Box<dyn Future<Output = Result<JsonValue, String>>>>;
 
 /// How a module function runs.
 pub enum FunctionCall {
-    /// At once, with a [`ModuleCx`].
+    /// At once, with a [`ModuleCx`]; an error rejects the `Promise`.
     Sync(fn(Vec<JsonValue>, &mut ModuleCx<'_>) -> Result<JsonValue, PropError>),
     /// As a task (its arguments checked first).
     Async(fn(Vec<JsonValue>, AsyncCx) -> Result<ModuleFuture, PropError>),
@@ -74,6 +78,8 @@ pub struct ModuleSpec {
     pub doc: &'static str,
     /// Its functions.
     pub functions: Vec<FunctionSpec>,
+    /// Exported one by one ([`Module::FLAT`]).
+    pub flat: bool,
     /// The named TypeScript types they use.
     pub types: TsTypes,
 }
@@ -98,6 +104,7 @@ impl ModuleSpec {
             name: M::NAME,
             doc: M::DOC,
             functions,
+            flat: M::FLAT,
             types,
         }
     }
@@ -161,5 +168,10 @@ impl<'a> ModuleCx<'a> {
             ROOT_ID,
             Command::LayoutAnimation(animation),
         ));
+    }
+
+    /// Asks the platform for `action` (the runtime's own modules).
+    pub(crate) fn act(&mut self, action: Action) {
+        self.inner.actions.push(action);
     }
 }

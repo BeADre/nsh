@@ -567,3 +567,133 @@ fn safe_area_and_keyboard_avoiding_views_pad_by_the_environment() {
         "the safe area view above the keyboard"
     );
 }
+
+const RUNTIME_MODULES: &str = r#"import { createSignal } from "solid-js";
+import { render, root, type YNode } from "nsh";
+import { AccessibilityInfo } from "nsh/accessibility";
+import { Toast } from "nsh/android";
+import { Image } from "nsh/image";
+
+const [shown, setShown] = createSignal("waiting");
+let note!: YNode;
+setTimeout(async () => {
+  Toast.show("hello", "long");
+  AccessibilityInfo.setAccessibilityFocus(note);
+  const size = await Image.getSize({ uri: "https://example.com/a.png" });
+  let failed = "no";
+  try {
+    await Image.getSize("https://example.com/missing.png");
+  } catch (e) {
+    failed = String((e as Error).message);
+  }
+  setShown(`${size.width}x${size.height} ${failed}`);
+}, 0);
+
+render(() => <text ref={note}>{shown()}</text>, root);
+"#;
+
+#[test]
+fn runtime_modules_are_rust() {
+    let (engine, rx) = start(RUNTIME_MODULES);
+    let note = rx
+        .recv_timeout(Duration::from_secs(5))
+        .ok()
+        .and_then(|b| text_ids(&b, "waiting"))
+        .expect("first frame");
+    let mut toast = None;
+    let mut focused = None;
+    let mut requests = Vec::new();
+    let control = engine.control();
+    until(&rx, |batch| {
+        for item in &batch.items {
+            match item {
+                MountItem::Command {
+                    id: ROOT_ID,
+                    command: Command::Toast { text, long },
+                } => toast = Some((text.clone(), *long)),
+                MountItem::Command {
+                    id,
+                    command: Command::AccessibilityFocus,
+                } => focused = Some(*id),
+                MountItem::Command {
+                    id: ROOT_ID,
+                    command: Command::ImageInfo { id, uri },
+                } => {
+                    requests.push(uri.clone());
+                    // The first one has a size, the second fails.
+                    let payload = if requests.len() == 1 {
+                        vec![
+                            ("id", PayloadValue::Number(*id as f64)),
+                            ("width", PayloadValue::Number(640.0)),
+                            ("height", PayloadValue::Number(480.0)),
+                        ]
+                    } else {
+                        vec![
+                            ("id", PayloadValue::Number(*id as f64)),
+                            ("error", PayloadValue::Str("not found".into())),
+                        ]
+                    };
+                    control.dispatch_event(
+                        ROOT_ID,
+                        EventKind::ImageInfo,
+                        EventPayload::Map(payload),
+                    );
+                }
+                _ => {}
+            }
+        }
+        shows(batch, "640x480 not found")
+    });
+    assert_eq!(toast, Some(("hello".to_owned(), true)));
+    // The node JS passed, by id.
+    assert_eq!(focused, Some(note));
+    assert_eq!(
+        requests,
+        [
+            "https://example.com/a.png",
+            "https://example.com/missing.png"
+        ]
+    );
+}
+
+const BACK: &str = r#"import { createSignal } from "solid-js";
+import { render, root } from "nsh";
+import { BackHandler } from "nsh/android";
+
+const [presses, setPresses] = createSignal(0);
+BackHandler.addEventListener("hardwareBackPress", () => {
+  setPresses(presses() + 1);
+  // The first press is handled, the second one leaves the app.
+  return presses() === 1;
+});
+
+render(() => <text>{`presses ${presses()}`}</text>, root);
+"#;
+
+#[test]
+fn unhandled_back_presses_exit_through_rust() {
+    let (engine, rx) = start(BACK);
+    until(&rx, |b| shows(b, "presses 0"));
+    let exits = |batches: &[MountBatch]| {
+        batches
+            .iter()
+            .flat_map(|b| &b.items)
+            .filter(|i| {
+                matches!(
+                    i,
+                    MountItem::Command {
+                        id: ROOT_ID,
+                        command: Command::ExitApp
+                    }
+                )
+            })
+            .count()
+    };
+    let control = engine.control();
+    control.dispatch_event(ROOT_ID, EventKind::BackPress, EventPayload::None);
+    let first = until(&rx, |b| shows(b, "presses 1"));
+    assert_eq!(exits(&first), 0, "handled");
+    control.dispatch_event(ROOT_ID, EventKind::BackPress, EventPayload::None);
+    let second = until(&rx, |b| exits(std::slice::from_ref(b)) > 0);
+    assert_eq!(exits(&second), 1, "not handled: the app exits");
+}

@@ -856,23 +856,38 @@ fn module_cx(ty: &Type) -> Option<bool> {
 /// comment documents the object). A function takes [`JsValue`] parameters
 /// (an `Option` one is optional), then optionally `cx: &mut ModuleCx`, or
 /// for an `async fn` `cx: AsyncCx`; it returns nothing (JS calls it and
-/// moves on) or a [`JsValue`] (JS gets a `Promise`). A UI set registers
+/// moves on) or a [`JsValue`] (JS gets a `Promise`), or a `Result` of one
+/// (an `Err` rejects the `Promise` with its message). A UI set registers
 /// the module (`Registry::module::<Alert>()`); a component exported under
 /// the same name gets the functions too (`StatusBar.setHidden(...)`).
+/// `#[module(flat)]` exports the functions one by one instead of as an
+/// object.
 #[proc_macro_attribute]
 pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
-    if !attr.is_empty() {
-        return syn::Error::new(Span::call_site(), "`#[module]` takes no arguments")
-            .into_compile_error()
-            .into();
-    }
+    let flat = match attr.to_string().as_str() {
+        "" => false,
+        "flat" => true,
+        _ => {
+            return syn::Error::new(Span::call_site(), "`#[module]` takes `flat` or nothing")
+                .into_compile_error()
+                .into();
+        }
+    };
     let item = parse_macro_input!(item as ItemImpl);
-    module_impl(item)
+    module_impl(item, flat)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }
 
-fn module_impl(item: ItemImpl) -> syn::Result<TokenStream2> {
+/// `Result<T, E>` -> `T`.
+fn result_ok(ty: &Type) -> Option<&Type> {
+    match last_segment(ty)? {
+        (id, ok) if id == "Result" => ok,
+        _ => None,
+    }
+}
+
+fn module_impl(item: ItemImpl, flat: bool) -> syn::Result<TokenStream2> {
     let ui = quote!(::nsh_core::ui);
     let self_ty = &item.self_ty;
     let Some((type_name, _)) = last_segment(self_ty) else {
@@ -942,18 +957,27 @@ fn module_impl(item: ItemImpl) -> syn::Result<TokenStream2> {
         } else {
             quote!(let mut args = args.into_iter();)
         };
+        // The result as `Result<JsonValue, String>`.
         let (returns, to_json) = match &f.sig.output {
             ReturnType::Default => (
                 quote!(::core::option::Option::None),
                 quote!({
                     let _ = value;
-                    ::nsh_core::JsonValue::Null
+                    ::core::result::Result::Ok(::nsh_core::JsonValue::Null)
                 }),
             ),
-            ReturnType::Type(_, ty) => (
-                quote!(::core::option::Option::Some(<#ty as #ui::JsValue>::ts_type)),
-                quote!(#ui::JsValue::to_json(&value)),
-            ),
+            ReturnType::Type(_, ty) => match result_ok(ty) {
+                Some(ok) => (
+                    quote!(::core::option::Option::Some(<#ok as #ui::JsValue>::ts_type)),
+                    quote!(value
+                        .map(|v| #ui::JsValue::to_json(&v))
+                        .map_err(|e| ::std::string::ToString::to_string(&e))),
+                ),
+                None => (
+                    quote!(::core::option::Option::Some(<#ty as #ui::JsValue>::ts_type)),
+                    quote!(::core::result::Result::Ok(#ui::JsValue::to_json(&value))),
+                ),
+            },
         };
         let call = if is_async {
             quote! {
@@ -974,7 +998,8 @@ fn module_impl(item: ItemImpl) -> syn::Result<TokenStream2> {
                     #args_iter
                     #(#decode)*
                     let value = #self_ty::#ident(#(#call_args),*);
-                    ::core::result::Result::Ok(#to_json)
+                    let result: ::core::result::Result<::nsh_core::JsonValue, ::std::string::String> = #to_json;
+                    result.map_err(#ui::PropError)
                 })
             }
         };
@@ -995,6 +1020,7 @@ fn module_impl(item: ItemImpl) -> syn::Result<TokenStream2> {
             const NAME: &'static str = #module_name;
             const DOC: &'static str = #module_doc;
             const FUNCTIONS: &'static [#ui::Function] = &[#(#entries),*];
+            const FLAT: bool = #flat;
         }
     })
 }

@@ -309,6 +309,30 @@ impl JsValue for Color {
     }
 }
 
+/// A node JS passes (a `YNode`, a `ref`): the glue sends its id as
+/// `{ "$node": id }`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NodeRef(pub crate::NodeId);
+
+impl JsValue for NodeRef {
+    fn ts_type(_types: &mut TsTypes) -> String {
+        "YNode".into()
+    }
+
+    fn from_json(value: JsonValue) -> Result<Self, PropError> {
+        value
+            .get("$node")
+            .and_then(JsonValue::as_u64)
+            .and_then(|id| crate::NodeId::try_from(id).ok())
+            .map(NodeRef)
+            .ok_or_else(|| PropError::expected("a node", &value))
+    }
+
+    fn to_json(&self) -> JsonValue {
+        serde_json::json!({ "$node": self.0 })
+    }
+}
+
 impl JsValue for JsonValue {
     fn ts_type(_types: &mut TsTypes) -> String {
         "unknown".into()

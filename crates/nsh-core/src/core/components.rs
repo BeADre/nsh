@@ -9,7 +9,7 @@
 //! its children are placed where the render's `Children` is. Renders run at
 //! the start of a commit, so props set in one JS turn render once.
 
-use std::{any::Any, cell::RefCell, rc::Rc, sync::Arc};
+use std::{any::Any, rc::Rc, sync::Arc};
 
 use rustc_hash::FxHashMap;
 
@@ -19,10 +19,10 @@ use crate::{
     Prop, Tag, TextEngine,
     tailwind::ClassList,
     ui::{
-        Action, AnyInstance, AsyncCx, Attrs, Child, ComponentSpec, ElKind, ElNode, Environment,
-        ErasedCx, Executor, FunctionCall, Globals, IntoElement, ListConfig, Listener, ModuleCx,
-        Output, ParentElement, PlaceFn, Position, PropError, Registry, SharedString,
-        StyleRefinement, Theme, view,
+        Action, AnswerSlot, AnyInstance, AsyncCx, Attrs, Child, ComponentSpec, ElKind, ElNode,
+        Environment, ErasedCx, Executor, Function, FunctionCall, Globals, ImageSize, IntoElement,
+        ListConfig, Listener, ModuleCx, ParentElement, PlaceFn, Position, PropError, Registry,
+        SharedString, StyleRefinement, Theme, view,
     },
 };
 
@@ -168,8 +168,11 @@ pub(super) struct Components {
     /// status bar's settings).
     pub(super) globals: Globals,
     /// Dialogs components show, by id: their answers.
-    dialogs: FxHashMap<u32, Rc<RefCell<Output<i32>>>>,
+    dialogs: FxHashMap<u32, AnswerSlot<i32>>,
     next_dialog: u32,
+    /// Image sizes asked for (`Image.getSize`), by request id: their answers.
+    image_infos: FxHashMap<u32, AnswerSlot<Result<ImageSize, String>>>,
+    next_image_info: u32,
     /// The insets screens and modals reported (`onInsets`).
     insets: FxHashMap<NodeId, EdgeInsets>,
     next_id: NodeId,
@@ -194,8 +197,9 @@ impl Default for Components {
             executor: Rc::new(Executor::default()),
             globals: Globals::default(),
             dialogs: FxHashMap::default(),
-            // Above the ids JS gives its own dialogs.
-            next_dialog: 1 << 30,
+            next_dialog: 1,
+            image_infos: FxHashMap::default(),
+            next_image_info: 1,
             insets: FxHashMap::default(),
             // Odd: JS allocates the even ids (1 is the root).
             next_id: 3,
@@ -588,7 +592,7 @@ impl<M: TextEngine> Core<M> {
             Op::Command {
                 id: crate::ROOT_ID,
                 command: Command::Native { name, args },
-            } if self.components.registry.function(&name).is_some() => {
+            } if self.function(&name).is_some() => {
                 self.call_function(&name, args);
                 Ok(None)
             }
@@ -679,8 +683,17 @@ impl<M: TextEngine> Core<M> {
 
     /// Calls module function `name` (`Alert.alert`); a call JS waits for
     /// gets its result as a `$return` event on the root.
+    /// Function `name` of a module: the UI set's (`Alert.alert`), else the
+    /// runtime's (`nsh/android:Toast.show`).
+    fn function(&self, name: &str) -> Option<&'static Function> {
+        self.components
+            .registry
+            .function(name)
+            .or_else(|| crate::runtime::function(name))
+    }
+
     fn call_function(&mut self, name: &str, args: JsonValue) {
-        let Some(function) = self.components.registry.function(name) else {
+        let Some(function) = self.function(name) else {
             return;
         };
         let call = args.get("c").and_then(JsonValue::as_u64).unwrap_or(0);
@@ -710,11 +723,13 @@ impl<M: TextEngine> Core<M> {
                             &self.components.executor,
                             root,
                             Box::pin(async move {
-                                let value = future.await;
-                                if call != 0
-                                    && let Some(executor) = executor.upgrade()
-                                {
-                                    executor.act(Action::Return(call, Ok(value)));
+                                let result = future.await;
+                                if call == 0 {
+                                    if let Err(e) = &result {
+                                        log::warn!(target: "js", "{}(): {e}", function.name);
+                                    }
+                                } else if let Some(executor) = executor.upgrade() {
+                                    executor.act(Action::Return(call, result));
                                 }
                             }),
                         );
@@ -1519,6 +1534,22 @@ impl<M: TextEngine> Core<M> {
                 });
             }
             Action::Return(call, result) => self.reply(crate::ROOT_ID, call, result),
+            Action::ImageInfo(uri, answer) => {
+                let id = self.components.next_image_info;
+                self.components.next_image_info += 1;
+                self.components.image_infos.insert(id, answer);
+                let _ = self.apply_op(Op::Command {
+                    id: crate::ROOT_ID,
+                    command: Command::ImageInfo { id, uri },
+                });
+            }
+        }
+    }
+
+    /// The answer to image info request `id`.
+    pub(super) fn answer_image_info(&mut self, id: u32, size: Result<ImageSize, String>) {
+        if let Some(answer) = self.components.image_infos.remove(&id) {
+            answer.borrow_mut().deliver(size);
         }
     }
 
@@ -1561,6 +1592,24 @@ impl<M: TextEngine> Core<M> {
                 answer
                     .borrow_mut()
                     .deliver(number("index").unwrap_or(-1.0) as i32);
+                true
+            }
+            EventKind::ImageInfo if id == crate::ROOT_ID => {
+                let Some(request) = number("id") else {
+                    return false;
+                };
+                let error = match payload {
+                    EventPayload::Map(entries) => entries.iter().find_map(|(k, v)| match v {
+                        crate::PayloadValue::Str(e) if *k == "error" => Some(e.clone()),
+                        _ => None,
+                    }),
+                    _ => None,
+                };
+                let size = match (number("width"), number("height"), error) {
+                    (Some(width), Some(height), None) => Ok(ImageSize { width, height }),
+                    (_, _, error) => Err(error.unwrap_or_else(|| "no size".into())),
+                };
+                self.answer_image_info(request as u32, size);
                 true
             }
             EventKind::Insets => {

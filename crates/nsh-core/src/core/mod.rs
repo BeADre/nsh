@@ -1038,14 +1038,7 @@ impl<M: TextEngine> Core<M> {
             match &command {
                 Command::ImageInfo { id: request, uri } if !self.access.allows_media(uri) => {
                     let message = not_granted("Image.getSize / prefetch of", uri, "network");
-                    self.events.push((
-                        crate::ROOT_ID,
-                        EventKind::ImageInfo,
-                        EventPayload::Map(vec![
-                            ("id", crate::PayloadValue::Number(*request as f64)),
-                            ("error", crate::PayloadValue::Str(message.clone())),
-                        ]),
-                    ));
+                    self.answer_image_info(*request, Err(message.clone()));
                     self.deny(message);
                     continue;
                 }

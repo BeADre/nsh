@@ -76,6 +76,18 @@ pub(crate) enum Action {
     Dialog(Dialog, Rc<RefCell<Output<i32>>>),
     /// The result of a module function JS waits for.
     Return(u64, Result<JsonValue, String>),
+    /// The pixel size of the image at the URI (its bytes stay loaded); the
+    /// answer resolves the slot.
+    ImageInfo(String, AnswerSlot<Result<ImageSize, String>>),
+}
+
+/// An image's size in pixels (`Image.getSize`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, super::JsObject)]
+pub struct ImageSize {
+    /// Width.
+    pub width: f64,
+    /// Height.
+    pub height: f64,
 }
 
 /// The platform services components and tasks use ([`super::Context`],
@@ -236,6 +248,9 @@ pub(crate) struct Output<T> {
     pub(crate) waker: Option<Waker>,
 }
 
+/// Where an [`Answer`] comes from.
+pub(crate) type AnswerSlot<T> = Rc<RefCell<Output<T>>>;
+
 impl<T> Default for Output<T> {
     fn default() -> Self {
         Self {
@@ -255,33 +270,37 @@ impl<T> Output<T> {
     }
 }
 
-/// The answer to a dialog ([`super::Context::dialog`]): the index of the
-/// button pressed, -1 when it was dismissed.
-#[must_use = "a dialog's answer does nothing unless awaited"]
-pub struct DialogAnswer {
-    slot: Rc<RefCell<Output<i32>>>,
+/// The answer the platform gives to a request (a dialog, an image's size),
+/// awaited in a task.
+#[must_use = "an answer does nothing unless awaited"]
+pub struct Answer<T> {
+    slot: Rc<RefCell<Output<T>>>,
 }
 
-impl DialogAnswer {
-    pub(crate) fn new() -> (Self, Rc<RefCell<Output<i32>>>) {
+/// The answer to a dialog ([`super::Context::dialog`]): the index of the
+/// button pressed, -1 when it was dismissed.
+pub type DialogAnswer = Answer<i32>;
+
+impl<T> Answer<T> {
+    pub(crate) fn new() -> (Self, Rc<RefCell<Output<T>>>) {
         let slot = Rc::new(RefCell::new(Output::default()));
         (Self { slot: slot.clone() }, slot)
     }
 }
 
-impl std::fmt::Debug for DialogAnswer {
+impl<T> std::fmt::Debug for Answer<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DialogAnswer").finish_non_exhaustive()
+        f.debug_struct("Answer").finish_non_exhaustive()
     }
 }
 
-impl Future for DialogAnswer {
-    type Output = i32;
+impl<T> Future for Answer<T> {
+    type Output = T;
 
-    fn poll(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<i32> {
+    fn poll(self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<T> {
         let mut slot = self.slot.borrow_mut();
         match slot.value.take() {
-            Some(index) => Poll::Ready(index),
+            Some(value) => Poll::Ready(value),
             None => {
                 slot.waker = Some(cx.waker().clone());
                 Poll::Pending
@@ -344,7 +363,7 @@ impl AsyncCx {
         Self { executor }
     }
 
-    fn act(&self, action: Action) {
+    pub(crate) fn act(&self, action: Action) {
         if let Some(executor) = self.executor.upgrade() {
             executor.act(action);
         }

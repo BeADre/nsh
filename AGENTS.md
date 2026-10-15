@@ -15,7 +15,8 @@ the module docs of the code (`//!`, Javadoc), which are the reference for how a 
 crates/
   nsh-core/            Platform-independent core: shadow tree, styles (RN semantics), Taffy layout (flex + grid), text merging, list virtualization,
                        mount items; CSS values (`css.rs`: colors, lengths, shadows, gradients, filters), effects (`effects.rs`), Tailwind (`tailwind/`);
-                       Rust components (`ui/`: elements, typed styles, the theme; `core/components.rs`)
+                       Rust components (`ui/`: elements, typed styles, the theme; `core/components.rs`); the runtime's Rust
+                       modules (`runtime/`: `nsh/android`'s Toast, `nsh/image`, ...; their JS is generated)
   nsh-macros/          Derives of Rust components (`Props`, `PropEnum`, `Event`, `JsObject`), `#[methods]`, `#[module]`, `Styled`'s spacing methods
   nsh-ui-mobile/       The components and modules of `nsh/ui/mobile` (Button, SafeAreaView, StatusBar, Alert, ...), written in Rust; their JS glue is generated
   nsh-anim/            Native animation graph (pure Rust): value / interpolate / math nodes, timing / spring / decay drivers

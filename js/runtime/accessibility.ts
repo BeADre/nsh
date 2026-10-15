@@ -1,7 +1,10 @@
-// `nsh/accessibility`: screen readers and motion settings.
+// `nsh/accessibility`: screen readers and motion settings. The screen
+// reader's commands are Rust (`nsh_core::runtime`); the settings are the
+// environment's signals, read at once.
 
 import { type Accessor, createRenderEffect, createRoot, untrack } from "solid-js";
-import { command, reduceMotion, screenReaderEnabled, type YNode } from "./_core";
+import { reduceMotion, screenReaderEnabled } from "./_core";
+import { AccessibilityInfo as NativeAccessibilityInfo } from "./accessibility.gen";
 
 export { reduceMotion, screenReaderEnabled } from "./_core";
 
@@ -25,17 +28,16 @@ createRoot(() => {
   watch("reduceMotionChanged", reduceMotion);
 });
 
-/** Screen reader and motion settings (React Native's `AccessibilityInfo`).
- * `screenReaderEnabled()` and `reduceMotion()` are the reactive forms. */
-export interface AccessibilityInfoStatic {
+/** The settings, at once, and their changes. */
+export interface AccessibilitySettings {
   isScreenReaderEnabled(): Promise<boolean>;
   isReduceMotionEnabled(): Promise<boolean>;
   addEventListener(event: AccessibilityChangeEvent, listener: (enabled: boolean) => void): { remove(): void };
-  announceForAccessibility(message: string): void;
-  setAccessibilityFocus(node: YNode): void;
 }
 
-export const AccessibilityInfo: AccessibilityInfoStatic = {
+/** Screen reader and motion settings. `screenReaderEnabled()` and
+ * `reduceMotion()` are the reactive forms. */
+export const AccessibilityInfo: typeof NativeAccessibilityInfo & AccessibilitySettings = Object.assign(NativeAccessibilityInfo, {
   isScreenReaderEnabled(): Promise<boolean> {
     return Promise.resolve(untrack(screenReaderEnabled));
   },
@@ -46,12 +48,4 @@ export const AccessibilityInfo: AccessibilityInfoStatic = {
     accessibilityListeners[event].add(listener);
     return { remove: () => accessibilityListeners[event].delete(listener) };
   },
-  /** The screen reader reads `message` (VoiceOver announcement, TalkBack). */
-  announceForAccessibility(message: string): void {
-    command(1, "announce", message);
-  },
-  /** Moves the screen reader's focus to `node` (a `ref`). */
-  setAccessibilityFocus(node: YNode): void {
-    command(node.id, "accessibilityFocus");
-  },
-};
+});

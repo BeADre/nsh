@@ -98,7 +98,7 @@ impl Component for Button {
   `render(&self)` cannot change state. Timers are tasks: a `tokio::time` sleep, then an update.
 - **Platform services** are on `Context` (setup, listeners, updates, methods), `ModuleCx` and `AsyncCx`:
   `cx.dialog(Dialog)` shows an alert or action sheet and returns a future of the index chosen (-1: dismissed; the
-  answer is the root's `Dialog` event, matched by an id from 2^30 up, so it never reaches JS's dialogs);
+  answer is the root's `Dialog` event, which the core resolves; JS never sees it);
   `dismiss_keyboard()`, `animate_layout(..)`, and the status bar (below). `cx.update_global::<G, _>(|g, cx| ..)` is
   state the surface's components and modules share.
 - **Element attributes for system UI**: `.inset_padding(insets)` / `.inset_margin(insets)` add to the padding /
@@ -127,6 +127,13 @@ parameters at the end may be left out), with an optional last `cx: &mut ModuleCx
 component with static functions). `Registry::reexport` re-exports runtime values (`safeArea`, `keyboard`,
 `useSafeAreaInsets` from `nsh/_core`) under the set's module, so no hand-written TS file is left in `js/ui/mobile`
 besides the navigation's Solid parts.
+
+The runtime has modules of its own the same way (`crates/nsh-core/src/runtime/`, `runtime::registries()`): one
+`Registry` per JS module (`Registry::runtime("nsh/android")`), whose functions JS calls as `nsh/android:Toast.show` so
+they never clash with a UI set's; the core looks a call up in the set's registry, then the runtime's. Runtime modules
+use the core's internal actions (toasts, announcements, `ImageInfo` requests) instead of public context methods.
+`#[module(flat)]` exports functions one by one (`setStatusBarBackgroundColor`); a function returning `Result` rejects
+the promise with the error; a `NodeRef` parameter is a `YNode` in TS (the glue sends `{ $node: id }`).
 
 ## The status bar
 
