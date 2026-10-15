@@ -126,8 +126,8 @@ pub(crate) struct Executor {
     ready: Arc<Ready>,
     /// The runtime tasks are polled in the context of.
     runtime: RefCell<Option<Handle>>,
-    /// Native animation nodes and animations made so far (their ids
-    /// follow [`super::animated::FIRST_ID`]).
+    /// Native animation nodes and animations made so far (their ids are
+    /// odd: JS's are even).
     anim_ids: std::cell::Cell<u32>,
     /// Live derived nodes, for renders deriving them again.
     derived: RefCell<super::animated::Derived>,
@@ -147,7 +147,7 @@ impl Executor {
     pub(crate) fn next_anim_id(&self) -> u32 {
         let n = self.anim_ids.get();
         self.anim_ids.set(n + 1);
-        super::animated::FIRST_ID + n
+        2 * n + 1
     }
 
     pub(crate) fn set_runtime(&self, runtime: Handle) {

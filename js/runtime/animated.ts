@@ -21,8 +21,10 @@ import {
 
 // --- Native animation values -------------------------------------------
 
-let nextAnimNode = 1;
-let nextAnimation = 1;
+// Even ids: the core gives its own nodes and animations (Rust components')
+// odd ones, so both stay dense (the graph indexes nodes by id).
+let nextAnimNode = 2;
+let nextAnimation = 2;
 const animationEnds = new Map<number, (finished: boolean) => void>();
 const animRegistry = new FinalizationRegistry<number>((node) => {
   ops.push(OP_ANIM, ANIM_RELEASE, node);
@@ -39,7 +41,8 @@ export class NativeNode {
   private readonly inputs: NativeNode[];
 
   constructor(inputs: NativeNode[] = []) {
-    this.__nv = nextAnimNode++;
+    this.__nv = nextAnimNode;
+    nextAnimNode += 2;
     this.inputs = inputs;
     animRegistry.register(this, this.__nv);
   }
@@ -210,7 +213,8 @@ export class NativeValue extends NativeNode {
   }
 
   private start(config: object): Promise<boolean> {
-    const id = nextAnimation++;
+    const id = nextAnimation;
+    nextAnimation += 2;
     ops.push(OP_ANIM, ANIM_START, this.__nv, id, config);
     schedule();
     return new Promise((resolve) => animationEnds.set(id, resolve));
@@ -261,7 +265,8 @@ class Composite implements CompositeAnimation {
 
   start(callback?: (result: { finished: boolean }) => void): Promise<boolean> {
     if (this.id) this.stop();
-    const id = (this.id = nextAnimation++);
+    const id = (this.id = nextAnimation);
+    nextAnimation += 2;
     runningComposites.add(this);
     ops.push(OP_ANIM, ANIM_START_COMPOSITE, id, this.key, this.spec());
     schedule();

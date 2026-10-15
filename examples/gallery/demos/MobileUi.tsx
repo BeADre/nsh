@@ -2,9 +2,11 @@
 // `ListView` recycles rows the app renders, a `Group` wraps each child in a
 // row. The app writes the content; the components only place it.
 import { createSignal } from "solid-js";
-import { Button, Group, ListView, Stepper, type StepperRef } from "nsh/ui/mobile";
+import { Button, Group, ListView, SelectList, Sheet, Stepper, type StepperRef, TextField } from "nsh/ui/mobile";
 
 const [inset, setInset] = createSignal(false);
+
+const cities = Array.from({ length: 500 }, (_, i) => `City ${i + 1}`);
 
 const stocks = Array.from({ length: 300 }, (_, i) => ({
   id: i,
@@ -18,8 +20,24 @@ function Header() {
   const [quantity, setQuantity] = createSignal(2);
   const [asked, setAsked] = createSignal("");
   let own!: StepperRef;
+  const [name, setName] = createSignal("Ada");
+  const [sheet, setSheet] = createSignal(false);
+  const [city, setCity] = createSignal<number | null>(null);
   return (
     <view style={{ padding: 16, gap: 16 }}>
+      <TextField label="Name (controlled; × clears and focuses)" placeholder="Your name" value={name()} onChange={setName} />
+      <TextField label="Password" placeholder="At least 8 characters" secure />
+      <text style={{ fontSize: 13, color: "#57606a" }}>{`Hello, ${name() || "nobody"}`}</text>
+      <Button title="Open the sheet (drag it down)" onPress={() => setSheet(true)} />
+      <Sheet open={sheet()} onClose={() => setSheet(false)}>
+        <text style={{ fontSize: 17, fontWeight: "600" }}>A sheet in Rust</text>
+        <text style={{ color: "#57606a" }}>It follows the finger natively and springs back; drag it down, tap outside or press back to close.</text>
+        <Button title="Done" onPress={() => setSheet(false)} />
+      </Sheet>
+      <text style={{ fontSize: 13, color: "#57606a" }}>{`SelectList: 500 rows of Rust data, chosen: ${city() === null ? "none" : cities[city()!]}`}</text>
+      <view style={{ height: 240, borderRadius: 12, overflow: "hidden" }}>
+        <SelectList options={cities} value={city()} onSelect={setCity} />
+      </view>
       <Group header={<text>Group: each child is a row</text>} footer={<text>The rows are JSX; the group adds the box and the dividers.</text>}>
         <text>Notifications</text>
         <text>Privacy</text>

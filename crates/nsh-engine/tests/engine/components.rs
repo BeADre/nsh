@@ -691,3 +691,67 @@ fn unhandled_back_presses_exit_through_rust() {
     let second = until(&rx, |b| exits(std::slice::from_ref(b)) > 0);
     assert_eq!(exits(&second), 1, "not handled: the app exits");
 }
+
+const FIELD: &str = r#"import { createSignal } from "solid-js";
+import { render, root } from "nsh";
+import { TextField } from "nsh/ui/mobile";
+
+const [name, setName] = createSignal("Ada");
+render(
+  () => (
+    <view>
+      <TextField value={name()} onChange={setName} />
+      <text>{`name ${name()}`}</text>
+    </view>
+  ),
+  root,
+);
+"#;
+
+#[test]
+fn a_rust_text_field_clears_after_typing() {
+    let (engine, rx) = start(FIELD);
+    let first = until(&rx, |b| shows(b, "name Ada"));
+    let input = first
+        .iter()
+        .flat_map(|b| &b.items)
+        .find_map(|i| match i {
+            MountItem::Create {
+                id,
+                kind: nsh_core::ViewKind::Input,
+            } => Some(*id),
+            _ => None,
+        })
+        .expect("an input");
+    let control = engine.control();
+    // The user types: two edits.
+    for (text, count) in [("Ada G", 1), ("Ada Gr", 2)] {
+        control.dispatch_event(
+            input,
+            EventKind::ChangeText,
+            EventPayload::Text {
+                text: text.into(),
+                count,
+            },
+        );
+    }
+    until(&rx, |b| shows(b, "name Ada Gr"));
+    // The clear button: the field sends the empty text, based on the last
+    // edit (else the platform drops it as stale).
+    let clear = first
+        .iter()
+        .flat_map(|b| &b.items)
+        .filter_map(|i| match i {
+            MountItem::Events { id, events } if events.contains(EventKind::Press) => Some(*id),
+            _ => None,
+        })
+        .next_back()
+        .expect("the clear button");
+    control.dispatch_event(clear, EventKind::Press, EventPayload::None);
+    let after = until(&rx, |b| shows(b, "name "));
+    let value = after.iter().flat_map(|b| &b.items).find_map(|i| match i {
+        MountItem::InputValue { id, text, count } if *id == input => Some((text.clone(), *count)),
+        _ => None,
+    });
+    assert_eq!(value, Some((String::new(), 2)));
+}

@@ -4106,7 +4106,7 @@ mod components {
             nsh_anim::AnimOp::CreateValue { node, value: 0.0 } => node,
             ref op => panic!("{op:?}"),
         };
-        assert!(value >= 1 << 31);
+        assert_eq!(value % 2, 1, "the core's ids are odd");
         assert!(
             matches!(anims[1], nsh_anim::AnimOp::CreateInterpolate { input, .. } if input == value)
         );
@@ -4139,9 +4139,9 @@ mod components {
                 animation,
                 finished: true,
             },
-            // JS's stay for JS.
+            // JS's (even ids) stay for JS.
             nsh_anim::Finished {
-                animation: 7,
+                animation: 8,
                 finished: true,
             },
         ];

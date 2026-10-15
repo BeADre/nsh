@@ -116,8 +116,9 @@ impl Component for Button {
   answer is the root's `Dialog` event, which the core resolves; JS never sees it);
   `dismiss_keyboard()`, `animate_layout(..)`, and the status bar (below). `cx.update_global::<G, _>(|g, cx| ..)` is
   state the surface's components and modules share.
-- **Native values** (`ui/animated.rs`) are nodes of the platform's animation graph with the core's ids (from 2^31,
-  apart from JS's); the last handle released frees the node. Deriving the same node again (a render calling
+- **Native values** (`ui/animated.rs`) are nodes of the platform's animation graph with odd ids (JS's are even,
+  like node ids: the graph indexes nodes by id, so both must stay dense; ids from 2^31 are the graph's own
+  composite steps); the last handle released frees the node. Deriving the same node again (a render calling
   `interpolate` each time) gets the live one, so bindings stay as they are. Bound style properties go into the
   element's inline style, before the app's `style` on a host (the core keeps the app's and composes the two). The
   animations' ends come back through `Core::animations_finished` (the engine hands JS the rest).

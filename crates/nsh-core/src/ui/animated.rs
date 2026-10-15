@@ -3,8 +3,8 @@
 //! graph that styles, drags, scroll offsets and drawings are bound to, so
 //! they move on the UI thread without a render per frame.
 //!
-//! Ids are the core's (from 2^31 up), apart from the ids JS gives its own
-//! nodes and animations.
+//! Ids are odd (JS gives its own nodes and animations even ones), so the
+//! graph, which indexes nodes by id, stays dense.
 
 use std::{
     fmt,
@@ -17,9 +17,6 @@ use super::{
     Color,
     task::{Action, Answer, Executor},
 };
-
-/// The first id of the core's nodes and animations.
-pub(crate) const FIRST_ID: u32 = 1 << 31;
 
 /// A node of the graph, released when its last handle goes.
 pub(crate) struct Node {
@@ -273,8 +270,19 @@ impl Default for Spring {
 }
 
 /// The end of an animation: `true` when it reached its end, `false` when
-/// it was stopped or replaced. Await it in a task, or drop it.
-pub type AnimationEnd = Answer<bool>;
+/// it was stopped or replaced. The animation runs either way: await this
+/// in a task to follow it up, or drop it.
+#[derive(Debug)]
+pub struct AnimationEnd(Answer<bool>);
+
+impl std::future::IntoFuture for AnimationEnd {
+    type Output = bool;
+    type IntoFuture = Answer<bool>;
+
+    fn into_future(self) -> Answer<bool> {
+        self.0
+    }
+}
 
 impl NativeValue {
     pub(crate) fn new(executor: &Rc<Executor>, value: f32) -> Self {
@@ -303,6 +311,7 @@ impl NativeValue {
 
     fn start(&self, driver: Driver) -> AnimationEnd {
         let (end, slot) = Answer::new();
+        let end = AnimationEnd(end);
         if let Some(executor) = self.0.executor() {
             let animation = executor.next_anim_id();
             executor.act(Action::Animate {

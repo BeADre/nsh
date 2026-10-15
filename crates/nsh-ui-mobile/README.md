@@ -33,6 +33,19 @@ stays native. JS only gets the events the component emits.
   stop. Read the environment in the render (`cx.safe_area()`): it renders again when that changes. `Stepper` is the
   example, also of methods: `#[methods] impl Stepper { pub fn set_value(..), pub fn value(&self) -> f64 }` are
   `ref.setValue(5)` and `await ref.value()` in JS.
+- **Every host element is there**: `input()`, `scroll()`, `modal()`, `canvas(Painter::new()..)`, `web_view(url)`,
+  `video(url)`, `native(name)`, with typed props and events (`on_change_text(cx.listener(|this, text: &str, cx| ..))`,
+  `on_layout`, `on_pan_end`, `on_scroll`). Props that take a plain color take `cx.color(theme.x)`.
+- **Element refs** send commands to what the component rendered: `cx.element_ref()` in `setup`, `.element_ref(&r)` on
+  the element, `r.focus()` / `r.scroll_to(..)` from listeners and tasks (`TextField` focuses its input after
+  clearing it).
+- **Native values** move styles without renders: `cx.native_value(0.0)`, `.bind_translate_y(&v)`, `.pan_values(..)`
+  (drags move it natively), `v.spring(..)` (await its `AnimationEnd` in a task). `Sheet` is the example.
+- **The component's own rows**: `virtual_list(count, move |i, at| row)` with `.keys(ids)`; rows' handlers are the
+  component's (`listener.map(move |_: &()| i)` passes the index). `SelectList` is the example. Rows outlive the
+  render: move what they read into them (copies of theme colors, an `Rc` of the data).
+- **Shared state**: `cx.global::<G>()` in the render subscribes, `update_global` renders the readers; `cx.provide(v)` /
+  `cx.context::<T>()` pass values down the tree. `catch_error` makes a component an error boundary.
 - **Modules are functions without a component**: `#[module] impl Alert { pub async fn alert(title: String, ..,
   cx: AsyncCx) -> i32 }` is `await Alert.alert(title)` in JS (`system.rs`); a sync function takes `cx: &mut ModuleCx`.
   Option parameters at the end may be left out; options objects are `#[derive(JsObject)]` structs. A module named like

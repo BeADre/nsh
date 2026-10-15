@@ -1951,7 +1951,8 @@ impl<M: TextEngine> Core<M> {
                 end.borrow_mut().deliver(f.finished);
                 false
             }
-            None => f.animation < crate::ui::animated::FIRST_ID,
+            // JS's are even.
+            None => f.animation % 2 == 0,
         });
     }
 

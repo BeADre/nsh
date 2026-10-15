@@ -40,6 +40,7 @@ mod theme;
 mod value;
 pub(crate) mod virtual_list;
 
+pub use nsh_anim::{Easing, Extrapolate, Output as AnimOutput};
 pub use nsh_macros::{Event, JsObject, PropEnum, Props, methods, module};
 
 pub use self::{
@@ -80,9 +81,11 @@ pub(crate) use self::{
     task::{Action, AnswerSlot, Executor},
 };
 pub use crate::{
-    AccessibilityRole, AccessibilityState, Dialog, DialogButton, DialogButtonStyle, EdgeInsets,
-    EventKind, EventPayload, LayoutAnimation, LayoutCurve, LayoutProperty, LayoutTransition,
-    PointerEvents, StatusBarConfig, StatusBarSetting, StatusBarStyle, style::Color,
+    AccessibilityRole, AccessibilityState, AutoCapitalize, AutoFill, Dialog, DialogButton,
+    DialogButtonStyle, EdgeInsets, EllipsizeMode, EventKind, EventPayload, KeyboardDismissMode,
+    KeyboardTaps, KeyboardType, LayoutAnimation, LayoutCurve, LayoutProperty, LayoutTransition,
+    ModalAnimation, ModalPresentation, PointerEvents, ResizeMode, ReturnKeyType, SnapAlignment,
+    StatusBarConfig, StatusBarSetting, StatusBarStyle, TouchEvent, TransformKind, style::Color,
 };
 
 /// Everything a component's module needs: `use nsh_core::ui::prelude::*;`.
@@ -92,10 +95,10 @@ pub mod prelude {
         AccessibilityState,
         Accessible,
         AdaptiveColor,
-        // Native animation values.
         Animated,
         AsyncCx,
-        // Host elements.
+        // Host elements and their settings.
+        AutoCapitalize,
         CanvasView,
         Child,
         Children,
@@ -105,6 +108,8 @@ pub mod prelude {
         ComponentError,
         Context,
         DialogAnswer,
+        // Native animation values.
+        Easing,
         EdgeInsets,
         Element,
         ElementRef,
@@ -122,11 +127,14 @@ pub mod prelude {
         Items,
         JsObject,
         JsValue,
+        KeyboardType,
         Length,
         ListLayout,
         Listener,
         Method,
         Modal,
+        ModalAnimation,
+        ModalPresentation,
         ModuleCx,
         NativeEvent,
         NativeNode,
@@ -141,6 +149,8 @@ pub mod prelude {
         PropEnum,
         Props,
         RenderCx,
+        ResizeMode,
+        ReturnKeyType,
         Scroll,
         ScrollEvent,
         ScrollOffset,

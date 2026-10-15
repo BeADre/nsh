@@ -31,7 +31,7 @@ is no catch-all module, and moved APIs get no compatibility re-exports.
 | `nsh/ios` | `isAvailable`, `InputAccessoryView` |
 | `nsh/android` | `isAvailable`, `Toast.show(message, "short" \| "long")`, `BackHandler` (`addEventListener` in JS, `exitApp` Rust), `setStatusBarBackgroundColor` (the status bar's base layer) |
 | `nsh/renderer` | what compiled JSX calls (`createElement`, `insert`, `spread`, ...; the Solid compiler's `moduleName`) |
-| `nsh/ui/mobile` | `Stack`, `Screen`, `createNavigator`, `Modal` (Solid, `navigation.ts`); everything else is Rust in `nsh-ui-mobile`, its JS generated: `SafeAreaView`, `KeyboardAvoidingView`, `StatusBar` (and `StatusBar.setBarStyle` / `setHidden`), `Alert.alert` and `ActionSheet.show` (promises of the index chosen; a list dialog on Android), `Keyboard.dismiss`, `Button`, `Card`, `Group`, `ListView`, `Stepper`; re-exported from the runtime: `safeArea()`, `keyboard()`, `useSafeAreaInsets()` |
+| `nsh/ui/mobile` | `Stack`, `Screen`, `createNavigator`, `Modal` (Solid, `navigation.ts`); everything else is Rust in `nsh-ui-mobile`, its JS generated: `SafeAreaView`, `KeyboardAvoidingView`, `StatusBar` (and `StatusBar.setBarStyle` / `setHidden`), `Alert.alert` and `ActionSheet.show` (promises of the index chosen; a list dialog on Android), `Keyboard.dismiss`, `Button`, `Card`, `Group`, `ListView`, `Stepper`, `TextField`, `Sheet`, `SelectList`; re-exported from the runtime: `safeArea()`, `keyboard()`, `useSafeAreaInsets()` |
 
 - **Platform modules** are importable on both platforms (one bundle runs on both); on the other one their calls do
   nothing and their components render nothing. `isAvailable` tells which.

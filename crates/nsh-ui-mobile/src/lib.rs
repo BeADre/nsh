@@ -13,9 +13,12 @@ mod group;
 mod keyboard;
 mod list_view;
 mod safe_area;
+mod select_list;
+mod sheet;
 mod status_bar;
 mod stepper;
 mod system;
+mod text_field;
 
 use std::sync::Arc;
 
@@ -28,9 +31,12 @@ pub use crate::{
     keyboard::{AvoidBehavior, Keyboard, KeyboardAvoidingView, KeyboardAvoidingViewProps},
     list_view::{ListView, ListViewProps, ListViewVariant},
     safe_area::{Edge, SafeAreaView, SafeAreaViewProps},
+    select_list::{SelectList, SelectListEvent, SelectListProps},
+    sheet::{Sheet, SheetEvent, SheetProps},
     status_bar::{BarAnimation, BarStyle, StatusBar, StatusBarProps},
     stepper::{Stepper, StepperEvent, StepperProps},
     system::{ActionSheet, ActionSheetOptions, Alert, AlertButton, AlertButtonStyle, AlertOptions},
+    text_field::{TextField, TextFieldEvent, TextFieldProps},
 };
 
 /// Every component of the mobile set, for an engine to render.
@@ -42,6 +48,9 @@ pub fn registry() -> Registry {
         .register::<Group>()
         .register::<ListView>()
         .register::<Stepper>()
+        .register::<TextField>()
+        .register::<Sheet>()
+        .register::<SelectList>()
         .register::<SafeAreaView>()
         .register::<KeyboardAvoidingView>()
         .register::<StatusBar>()

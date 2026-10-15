@@ -1044,14 +1044,14 @@ fn handle<M: TextEngine>(host: &Host, state: &mut State<M>, message: Message) ->
             if state.trace {
                 log::info!(target: "nsh::perf", "event {event:?} on view {id}");
             }
+            // The core tracks input text for layout and to recognize stale
+            // values (from JS and from Rust components alike).
+            if let (EventKind::ChangeText, EventPayload::Text { text, count }) = (event, &payload) {
+                state.core.input_changed(id, text, *count);
+            }
             // Events on a Rust component's parts are the component's.
             if state.core.component_event(id, event, &payload) {
                 return true;
-            }
-            // The core tracks input text for layout and to recognize stale
-            // values from JS.
-            if let (EventKind::ChangeText, EventPayload::Text { text, count }) = (event, &payload) {
-                state.core.input_changed(id, text, *count);
             }
             if let EventPayload::Touch(touch) = payload {
                 if touch.phase == nsh_core::TouchPhase::Move {
