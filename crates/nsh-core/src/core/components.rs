@@ -23,10 +23,11 @@ use crate::{
     Prop, Tag, TextEngine,
     tailwind::ClassList,
     ui::{
-        Action, AnswerSlot, AnyInstance, AsyncCx, Attrs, Child, ComponentSpec, ElKind, ElNode,
-        Environment, ErasedCx, Executor, Function, FunctionCall, Globals, ImageSize, IntoElement,
-        ListConfig, Listener, ModuleCx, ParentElement, PlaceFn, Position, PropError, Provided,
-        Registry, RenderReads, RenderScope, SharedString, StyleRefinement, Theme, view,
+        Action, AnswerSlot, AnyInstance, AsyncCx, Attrs, Child, ComponentError, ComponentSpec,
+        ElKind, ElNode, Environment, ErasedCx, Executor, Function, FunctionCall, Globals,
+        ImageSize, IntoElement, ListConfig, Listener, ModuleCx, ParentElement, PlaceFn, Position,
+        PropError, Provided, Registry, RenderReads, RenderScope, SharedString, StyleRefinement,
+        Theme, caught, view,
         virtual_list::{RowFn, VirtualListEl},
     },
 };
@@ -401,13 +402,17 @@ impl<M: TextEngine> Core<M> {
             .collect();
         for host in hosts {
             let mut cx = self.erased_cx(host);
+            let mut failed = None;
             if let Some(inst) = self.components.instances.get_mut(&host)
                 && let Inner::Component(inner) = &mut inst.inner
             {
-                inner.environment_changed(&old, &environment, &mut cx);
+                failed = caught(|| inner.environment_changed(&old, &environment, &mut cx)).err();
             }
             self.finish_event(host, cx);
             self.components.mark(host);
+            if let Some(message) = failed {
+                self.component_failed(host, message);
+            }
         }
     }
 
@@ -459,11 +464,17 @@ impl<M: TextEngine> Core<M> {
                 match target {
                     Some(inner) => {
                         let (state, props) = inner.parts();
-                        (update.run)(Some((state, props, &mut cx)));
+                        let failed = caught(|| (update.run)(Some((state, props, &mut cx)))).err();
                         self.finish_event(update.host, cx);
+                        if let Some(message) = failed {
+                            self.component_failed(update.host, message);
+                        }
                     }
                     None => (update.run)(None),
                 }
+            }
+            for (host, message) in executor.take_failures() {
+                self.component_failed(host, message);
             }
         }
     }
@@ -830,18 +841,28 @@ impl<M: TextEngine> Core<M> {
             _ => Vec::new(),
         };
         let mut cx = self.erased_cx(host);
+        let mut failed = None;
         let result = match self
             .components
             .instances
             .get_mut(&host)
             .map(|i| &mut i.inner)
         {
-            Some(Inner::Component(inner)) => inner
-                .call(name, args, &mut cx)
-                .unwrap_or_else(|| Err(PropError(format!("no method `{name}`")))),
+            Some(Inner::Component(inner)) => match caught(|| inner.call(name, args, &mut cx)) {
+                Ok(result) => {
+                    result.unwrap_or_else(|| Err(PropError(format!("no method `{name}`"))))
+                }
+                Err(message) => {
+                    failed = Some(message.clone());
+                    Err(PropError(message))
+                }
+            },
             _ => Err(PropError(format!("no method `{name}`"))),
         };
         self.finish_event(host, cx);
+        if let Some(message) = failed {
+            self.component_failed(host, message);
+        }
         if let Err(e) = &result {
             log::warn!(target: "js", "{name}(): {e}");
         }
@@ -959,9 +980,12 @@ impl<M: TextEngine> Core<M> {
                 self.components.instances.insert(host, inst);
                 continue;
             }
-            self.render(host, &mut inst);
+            let failed = self.render(host, &mut inst);
             self.components.instances.insert(host, inst);
             rendered.push(host);
+            if let Some(message) = failed {
+                self.component_failed(host, message);
+            }
         }
         for host in rendered.drain(..) {
             if let Some(inst) = self.components.instances.get_mut(&host) {
@@ -971,7 +995,9 @@ impl<M: TextEngine> Core<M> {
         self.components.rendered = rendered;
     }
 
-    fn render(&mut self, host: NodeId, inst: &mut Instance) {
+    /// Renders `inst` on `host`; what its code panicked with, if it did.
+    fn render(&mut self, host: NodeId, inst: &mut Instance) -> Option<String> {
+        let mut failure = None;
         let mut el = match &mut inst.inner {
             Inner::Component(inner) => {
                 // What the app passed, as props.
@@ -989,7 +1015,7 @@ impl<M: TextEngine> Core<M> {
                 inner.set_children(!inst.js_children.is_empty());
                 // The setup the first time, else what changed in the props.
                 let mut cx = self.erased_cx(host);
-                inner.update(&mut cx);
+                let mut failed = caught(|| inner.update(&mut cx)).err();
                 let context = |type_id| self.provided_above(host, type_id);
                 let scope = RenderScope {
                     theme: &self.components.theme,
@@ -998,10 +1024,18 @@ impl<M: TextEngine> Core<M> {
                     globals: &self.components.globals,
                     context: &context,
                 };
-                let (el, reads) = inner.render(&scope);
+                // A render that fails renders nothing.
+                let (el, reads) = match failed {
+                    Some(_) => (ElNode::empty_view(), RenderReads::default()),
+                    None => caught(|| inner.render(&scope)).unwrap_or_else(|message| {
+                        failed = Some(message);
+                        (ElNode::empty_view(), RenderReads::default())
+                    }),
+                };
                 let old = std::mem::replace(&mut inst.reads, reads);
                 self.provided_changed(host, &old.provided, &inst.reads.provided);
                 self.finish_event(host, cx);
+                failure = failed;
                 el
             }
             // The cell itself stays the list's: the wrapper goes inside.
@@ -1010,7 +1044,13 @@ impl<M: TextEngine> Core<M> {
                     index: *index,
                     count: self.rows_of_cell(host),
                 };
-                view().child(place(Child::row(), at)).into_element().0
+                match caught(|| view().child(place(Child::row(), at)).into_element().0) {
+                    Ok(el) => el,
+                    Err(message) => {
+                        failure = Some(message);
+                        ElNode::empty_view()
+                    }
+                }
             }
             Inner::VirtualRow { list, index } => {
                 let list = *list;
@@ -1021,8 +1061,14 @@ impl<M: TextEngine> Core<M> {
                             index,
                             count: state.count as usize,
                         };
-                        let row = (state.row)(index, at);
-                        view().child(row).into_element().0
+                        let row = state.row.clone();
+                        match caught(|| view().child(row(index, at)).into_element().0) {
+                            Ok(el) => el,
+                            Err(message) => {
+                                failure = Some(message);
+                                ElNode::empty_view()
+                            }
+                        }
                     }
                     None => ElNode::empty_view(),
                 }
@@ -1081,6 +1127,7 @@ impl<M: TextEngine> Core<M> {
                 self.detach_id(child);
             }
         }
+        failure
     }
 
     fn detach_id(&mut self, id: NodeId) {
@@ -1724,7 +1771,9 @@ impl<M: TextEngine> Core<M> {
         };
         if let Inner::Component(inner) = &mut inst.inner {
             let mut cx = self.erased_cx(host);
-            inner.cleanup(&mut cx);
+            if let Err(message) = caught(|| inner.cleanup(&mut cx)) {
+                log::error!(target: "js", "{} failed in its cleanup: {message}", inner.name());
+            }
             self.finish_event(host, cx);
         }
         // Its tasks and timers end with it.
@@ -1806,12 +1855,48 @@ impl<M: TextEngine> Core<M> {
         let Some(inst) = self.components.instances.get_mut(&owner) else {
             return false;
         };
+        let mut failed = None;
         if let Inner::Component(inner) = &mut inst.inner {
             let (state, props) = inner.parts();
-            (listener.0)(state, props, payload, &mut cx);
+            failed = caught(|| (listener.0)(state, props, payload, &mut cx)).err();
         }
         self.finish_event(owner, cx);
+        if let Some(message) = failed {
+            self.component_failed(owner, message);
+        }
         true
+    }
+
+    /// The code of `host`'s component panicked: the nearest component above
+    /// that handles the error does ([`Component::catch_error`]); else it is
+    /// reported.
+    fn component_failed(&mut self, host: NodeId, message: String) {
+        let component = match self.components.instances.get(&host).map(|i| &i.inner) {
+            Some(Inner::Component(inner)) => inner.name(),
+            _ => "a list row",
+        };
+        let error = ComponentError { component, message };
+        let mut key = self.key(host).ok();
+        while let Some(k) = key {
+            let parent = self.nodes[k as usize].parent;
+            if parent == NO_KEY {
+                break;
+            }
+            key = Some(parent);
+            let id = self.nodes[parent as usize].id;
+            let mut cx = self.erased_cx(id);
+            let Some(Inner::Component(inner)) =
+                self.components.instances.get_mut(&id).map(|i| &mut i.inner)
+            else {
+                continue;
+            };
+            let handled = caught(|| inner.catch_error(&error, &mut cx)).unwrap_or(false);
+            self.finish_event(id, cx);
+            if handled {
+                return;
+            }
+        }
+        log::error!(target: "js", "{error}");
     }
 
     /// The list cell `cell` is in.
@@ -2084,11 +2169,16 @@ impl<M: TextEngine> Core<M> {
                     else {
                         continue;
                     };
+                    let mut failed = None;
                     if let Inner::Component(inner) = &mut inst.inner {
                         let (state, props) = inner.parts();
-                        (listener.0)(state, props, event.as_any(), &mut cx);
+                        failed =
+                            caught(|| (listener.0)(state, props, event.as_any(), &mut cx)).err();
                     }
                     self.finish_event(parent, cx);
+                    if let Some(message) = failed {
+                        self.component_failed(parent, message);
+                    }
                 }
                 None => self.events.push((
                     host,

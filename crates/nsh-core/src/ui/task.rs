@@ -116,6 +116,7 @@ struct Inner {
     next_task: u64,
     updates: VecDeque<Update>,
     actions: VecDeque<Action>,
+    failures: Vec<(NodeId, String)>,
 }
 
 /// The executor of one core's component tasks.
@@ -222,10 +223,23 @@ impl Executor {
                 id,
                 ready: self.ready.clone(),
             }));
-            let done = future
-                .as_mut()
-                .poll(&mut TaskContext::from_waker(&waker))
-                .is_ready();
+            let done = match super::component::caught(|| {
+                future
+                    .as_mut()
+                    .poll(&mut TaskContext::from_waker(&waker))
+                    .is_ready()
+            }) {
+                Ok(done) => done,
+                // A task that panicked ends; its component failed.
+                Err(message) => {
+                    let mut inner = self.inner.borrow_mut();
+                    if let Some(entry) = inner.tasks.get(&id) {
+                        let host = entry.host;
+                        inner.failures.push((host, message));
+                    }
+                    true
+                }
+            };
             if done {
                 self.inner.borrow_mut().tasks.remove(&id);
                 drop(future);
@@ -239,6 +253,11 @@ impl Executor {
     #[cfg(test)]
     pub(crate) fn task_count(&self) -> usize {
         self.inner.borrow().tasks.len()
+    }
+
+    /// The tasks that panicked since, by component.
+    pub(crate) fn take_failures(&self) -> Vec<(NodeId, String)> {
+        std::mem::take(&mut self.inner.borrow_mut().failures)
     }
 
     /// The state changes tasks asked for.

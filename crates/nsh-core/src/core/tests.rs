@@ -4269,4 +4269,110 @@ mod components {
                 .all(|i| !matches!(i, MountItem::Create { .. }))
         );
     }
+
+    /// Shows a fallback while a component below it failed; a press tries
+    /// again.
+    #[derive(Default)]
+    struct Boundary {
+        error: Option<ComponentError>,
+    }
+
+    impl Component for Boundary {
+        const NAME: &'static str = "test.boundary";
+        type Props = WithChildren;
+        type Event = NoEvent;
+
+        fn catch_error(&mut self, error: &ComponentError, cx: &mut Context<'_, Self>) -> bool {
+            self.error = Some(error.clone());
+            cx.notify();
+            true
+        }
+
+        fn render(&self, props: &WithChildren, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            view()
+                .on_press(cx.listener(|this: &mut Self, _, cx| {
+                    this.error = None;
+                    cx.notify();
+                }))
+                .map(|v| match &self.error {
+                    Some(e) => v.child(text(format!("oops: {} ({})", e.component, e.message))),
+                    None => v.child(props.children),
+                })
+        }
+    }
+
+    /// Panics when pressed, and in its render once `explode` is set.
+    #[derive(Default)]
+    struct Faulty;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct FaultyProps {
+        #[prop(default)]
+        explode: bool,
+    }
+
+    impl Component for Faulty {
+        const NAME: &'static str = "test.faulty";
+        type Props = FaultyProps;
+        type Event = NoEvent;
+
+        fn render(&self, props: &FaultyProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            assert!(!props.explode, "exploded");
+            view()
+                .on_press(cx.listener(|_: &mut Self, _, _| panic!("pressed")))
+                .child(text("fine"))
+        }
+    }
+
+    #[test]
+    fn errors_of_components_go_to_the_nearest_boundary() {
+        let mut c = core();
+        let mut registry = Registry::new();
+        registry.register::<Boundary>().register::<Faulty>();
+        c.set_components(registry);
+        let host = |id, name: &str| {
+            vec![
+                Op::Create { id, tag: Tag::View },
+                Op::SetProp {
+                    id,
+                    prop: Prop::Component(name.into()),
+                },
+            ]
+        };
+        let mut ops = host(2, "test.boundary");
+        ops.push(Op::Create {
+            id: 4,
+            tag: Tag::View,
+        });
+        ops.extend(host(6, "test.faulty"));
+        for (parent, child) in [(4, 6), (2, 4), (ROOT_ID, 2)] {
+            ops.push(Op::Insert {
+                parent,
+                child,
+                before: None,
+            });
+        }
+        apply(&mut c, ops);
+        assert_eq!(texts(&c.commit().unwrap()), ["fine"]);
+
+        // A listener panics: the boundary shows its fallback.
+        assert!(c.component_event(6, EventKind::Press, &EventPayload::None));
+        assert_eq!(texts(&c.commit().unwrap()), ["oops: test.faulty (pressed)"]);
+        // Again: the content is back.
+        assert!(c.component_event(2, EventKind::Press, &EventPayload::None));
+        c.commit();
+
+        // A render panics: the same.
+        apply(
+            &mut c,
+            vec![Op::SetProp {
+                id: 6,
+                prop: Prop::ComponentProp("explode".into(), Some(serde_json::json!(true))),
+            }],
+        );
+        assert_eq!(
+            texts(&c.commit().unwrap()),
+            ["oops: test.faulty (exploded)"]
+        );
+    }
 }

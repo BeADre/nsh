@@ -84,10 +84,49 @@ pub trait Component: Default + 'static {
     /// changes; keep it cheap and free of side effects.
     fn render(&self, props: &Self::Props, cx: &mut RenderCx<'_, Self>) -> impl IntoElement;
 
+    /// A component below this one failed (its code panicked: a render, a
+    /// listener, a task): return true to handle it (Solid:
+    /// `<ErrorBoundary fallback>`), typically keeping the error, rendering
+    /// a fallback instead of the content and clearing it to try again. The
+    /// nearest component that handles it does; the failed one renders
+    /// nothing until it renders again.
+    fn catch_error(&mut self, error: &ComponentError, cx: &mut Context<'_, Self>) -> bool {
+        let _ = (error, cx);
+        false
+    }
+
     /// This component inside another one's render.
     fn element(props: Self::Props) -> ComponentElement<Self> {
         ComponentElement::new(props)
     }
+}
+
+/// A component's code panicked ([`Component::catch_error`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComponentError {
+    /// The component that failed (its registered name).
+    pub component: &'static str,
+    /// What its code panicked with.
+    pub message: String,
+}
+
+impl fmt::Display for ComponentError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} failed: {}", self.component, self.message)
+    }
+}
+
+/// Runs component code, catching a panic as its message.
+pub(crate) fn caught<R>(f: impl FnOnce() -> R) -> Result<R, String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).map_err(|payload| {
+        match payload.downcast::<String>() {
+            Ok(s) => *s,
+            Err(payload) => match payload.downcast::<&'static str>() {
+                Ok(s) => (*s).to_owned(),
+                Err(_) => "a panic".to_owned(),
+            },
+        }
+    })
 }
 
 /// A method JS calls on a component's ref (`#[methods]` makes them).
@@ -327,6 +366,10 @@ pub(crate) trait AnyInstance {
     fn environment_changed(&mut self, old: &Environment, new: &Environment, cx: &mut ErasedCx);
     /// The tree, and what it read of the environment.
     fn render(&mut self, scope: &RenderScope<'_>) -> (ElNode, RenderReads);
+    /// [`Component::catch_error`].
+    fn catch_error(&mut self, error: &ComponentError, cx: &mut ErasedCx) -> bool;
+    /// Its registered name.
+    fn name(&self) -> &'static str;
     /// The state, and the props.
     fn parts(&mut self) -> (&mut dyn Any, &dyn Any);
     /// Method `name` of the ref; `None` when it has none of that name.
@@ -412,6 +455,15 @@ impl<C: Component> AnyInstance for Instance<C> {
 
     fn parts(&mut self) -> (&mut dyn Any, &dyn Any) {
         (&mut self.state, &self.props)
+    }
+
+    fn catch_error(&mut self, error: &ComponentError, cx: &mut ErasedCx) -> bool {
+        self.state
+            .catch_error(error, &mut Context::new(cx, &self.props))
+    }
+
+    fn name(&self) -> &'static str {
+        C::NAME
     }
 
     fn call(

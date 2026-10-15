@@ -45,8 +45,8 @@ pub use nsh_macros::{Event, JsObject, PropEnum, Props, methods, module};
 pub use self::{
     animated::{AnimOperand, Animated, AnimationEnd, NativeNode, NativeValue, Spring},
     component::{
-        Component, ComponentSpec, Event, EventSpec, Method, MethodSpec, NoEvent, Param, PropKind,
-        PropSpec, Props, Registry, typescript,
+        Component, ComponentError, ComponentSpec, Event, EventSpec, Method, MethodSpec, NoEvent,
+        Param, PropKind, PropSpec, Props, Registry, typescript,
     },
     element::{
         Accessible, AnyElement, Attrs, Child, Children, ComponentElement, Context, ElNode, Element,
@@ -75,7 +75,7 @@ pub use self::{
     virtual_list::{ListLayout, VirtualList, virtual_list},
 };
 pub(crate) use self::{
-    component::AnyInstance,
+    component::{AnyInstance, caught},
     element::{ElKind, ErasedCx, Globals, PlaceFn, Provided, RenderReads, RenderScope},
     task::{Action, AnswerSlot, Executor},
 };
@@ -102,6 +102,7 @@ pub mod prelude {
         Color,
         Component,
         ComponentElement,
+        ComponentError,
         Context,
         DialogAnswer,
         EdgeInsets,
