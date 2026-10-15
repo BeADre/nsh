@@ -38,6 +38,7 @@ mod style;
 pub(crate) mod task;
 mod theme;
 mod value;
+pub(crate) mod virtual_list;
 
 pub use nsh_macros::{Event, JsObject, PropEnum, Props, methods, module};
 
@@ -49,7 +50,7 @@ pub use self::{
     },
     element::{
         Accessible, AnyElement, Attrs, Child, Children, ComponentElement, Context, ElNode, Element,
-        FluentBuilder, Image, Interactive, IntoElement, Items, ListElement, Listener,
+        FluentBuilder, Image, Interactive, IntoElement, Items, ListConfig, ListElement, Listener,
         ParentElement, Position, RenderCx, Slot, SlotElement, Style, Text, View, image, text, view,
     },
     element_ref::ElementRef,
@@ -71,10 +72,11 @@ pub use self::{
     task::{Answer, AsyncCx, DialogAnswer, ImageSize, Task, Updated, WeakComponent},
     theme::{Theme, ThemeColors, ThemeError},
     value::{JsValue, NodeRef, PropError, SharedString, TsType, TsTypes},
+    virtual_list::{ListLayout, VirtualList, virtual_list},
 };
 pub(crate) use self::{
     component::AnyInstance,
-    element::{ElKind, ErasedCx, Globals, ListConfig, PlaceFn, Provided, RenderReads, RenderScope},
+    element::{ElKind, ErasedCx, Globals, PlaceFn, Provided, RenderReads, RenderScope},
     task::{Action, AnswerSlot, Executor},
 };
 pub use crate::{
@@ -120,6 +122,7 @@ pub mod prelude {
         JsObject,
         JsValue,
         Length,
+        ListLayout,
         Listener,
         Method,
         Modal,
@@ -150,6 +153,7 @@ pub mod prelude {
         Video,
         VideoInfo,
         VideoProgress,
+        VirtualList,
         WeakComponent,
         WebNavigation,
         WebView,
@@ -168,6 +172,7 @@ pub mod prelude {
         text,
         video,
         view,
+        virtual_list,
         web_view,
     };
 }

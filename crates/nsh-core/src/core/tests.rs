@@ -4173,4 +4173,100 @@ mod components {
             .count();
         assert_eq!(released, 2, "{batch:?}");
     }
+
+    /// Its own rows in a virtual list; a press on a row removes it.
+    #[derive(Default)]
+    struct Inbox {
+        rows: std::rc::Rc<Vec<String>>,
+    }
+
+    impl Component for Inbox {
+        const NAME: &'static str = "test.inbox";
+        type Props = FormProps;
+        type Event = NoEvent;
+
+        fn setup(&mut self, _: &FormProps, _: &mut Context<'_, Self>) {
+            self.rows = std::rc::Rc::new((0..100).map(|i| format!("mail {i}")).collect());
+        }
+
+        fn render(&self, _: &FormProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            let rows = self.rows.clone();
+            let remove = cx.listener(|this: &mut Self, at: &usize, cx| {
+                std::rc::Rc::make_mut(&mut this.rows).remove(*at);
+                cx.notify();
+            });
+            view().flex_1().child(
+                virtual_list(rows.len(), move |i, at| {
+                    let remove = remove.clone();
+                    view()
+                        .h(px(40.0))
+                        .on_press(remove.map(move |_: &()| i))
+                        .child(text(format!(
+                            "{}{}",
+                            rows[i],
+                            if at.is_last() { " (last)" } else { "" }
+                        )))
+                })
+                .estimated_item_size(40.0)
+                .keys(self.rows.iter().cloned())
+                .flex_1(),
+            )
+        }
+    }
+
+    #[test]
+    fn virtual_lists_render_their_own_rows() {
+        let mut c = core();
+        let mut registry = Registry::new();
+        registry.register::<Inbox>();
+        c.set_components(registry);
+        apply(
+            &mut c,
+            vec![
+                Op::Create {
+                    id: 2,
+                    tag: Tag::View,
+                },
+                Op::SetProp {
+                    id: 2,
+                    prop: Prop::Component("test.inbox".into()),
+                },
+                Op::Insert {
+                    parent: ROOT_ID,
+                    child: 2,
+                    before: None,
+                },
+            ],
+        );
+        let batch = c.commit().unwrap();
+        // Bound in the same commit, no JS: the rows near the viewport.
+        let shown = texts(&batch);
+        assert!(shown.contains(&"mail 0".to_owned()), "{shown:?}");
+        assert!(shown.len() < 100, "virtualized: {}", shown.len());
+        let mut binds = Vec::new();
+        c.take_list_binds(&mut binds);
+        assert!(binds.is_empty(), "nothing for JS");
+
+        // A press on row 0 goes to the component, which removes it: the
+        // list splices, the other rows keep their cells (nothing to send),
+        // and the freed cell shows the row coming into view.
+        let row0 = batch
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                MountItem::Events { id, events } if events.contains(EventKind::Press) => Some(*id),
+                _ => None,
+            })
+            .next()
+            .expect("a row listens to presses");
+        assert!(c.component_event(row0, EventKind::Press, &EventPayload::None));
+        let batch = c.commit().unwrap();
+        assert_eq!(texts(&batch), ["mail 25"]);
+        assert!(
+            batch
+                .items
+                .iter()
+                .all(|i| !matches!(i, MountItem::Create { .. }))
+        );
+    }
 }

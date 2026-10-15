@@ -35,6 +35,8 @@ type Key = u32;
 
 const NO_KEY: Key = Key::MAX;
 
+/// Rounds of binding the components' own lists per commit, at most.
+const MAX_VIRTUAL_ROUNDS: u32 = 8;
 /// Dirty flags, processed once per commit.
 mod dirty {
     /// Emit [`crate::MountItem::ViewStyle`].
@@ -992,6 +994,28 @@ impl<M: TextEngine> Core<M> {
     /// Finishes a turn: rebuilds text, runs layout, updates lists and
     /// returns the mount items, or `None` when nothing changed.
     pub fn commit(&mut self) -> Option<MountBatch> {
+        self.commit_round();
+        // The components' own lists bind the cells the layout asked for
+        // here, and lay out again (JS's lists ask JS, through the engine).
+        for _ in 0..MAX_VIRTUAL_ROUNDS {
+            if !self.bind_virtual_lists() {
+                break;
+            }
+            self.commit_round();
+        }
+        if self.mount.is_empty() || matches!(self.mount[..], [MountItem::LayoutAnimation(_)]) {
+            self.mount.clear();
+            None
+        } else {
+            Some(MountBatch {
+                items: std::mem::take(&mut self.mount),
+            })
+        }
+    }
+
+    /// One round of a commit: renders, layout, lists, commands, into the
+    /// mount items.
+    fn commit_round(&mut self) {
         // Components whose props or state changed render first.
         self.render_components();
         // Platforms animate the frames, insertions and removals that follow
@@ -1067,14 +1091,6 @@ impl<M: TextEngine> Core<M> {
                 _ => {}
             }
             self.mount.push(MountItem::Command { id, command });
-        }
-        if self.mount.is_empty() || matches!(self.mount[..], [MountItem::LayoutAnimation(_)]) {
-            self.mount.clear();
-            None
-        } else {
-            Some(MountBatch {
-                items: std::mem::take(&mut self.mount),
-            })
         }
     }
 

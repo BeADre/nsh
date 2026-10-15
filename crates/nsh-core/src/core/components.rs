@@ -27,6 +27,7 @@ use crate::{
         Environment, ErasedCx, Executor, Function, FunctionCall, Globals, ImageSize, IntoElement,
         ListConfig, Listener, ModuleCx, ParentElement, PlaceFn, Position, PropError, Provided,
         Registry, RenderReads, RenderScope, SharedString, StyleRefinement, Theme, view,
+        virtual_list::{RowFn, VirtualListEl},
     },
 };
 
@@ -52,6 +53,23 @@ enum Inner {
         place: PlaceFn,
         index: usize,
     },
+    /// A cell of a component's own list ([`crate::ui::virtual_list`]): it
+    /// renders row `index` with the list's row function.
+    VirtualRow {
+        list: NodeId,
+        index: usize,
+    },
+}
+
+/// A component's own list.
+struct VirtualListState {
+    /// The component whose render it is in (its rows' handlers are its).
+    owner: NodeId,
+    row: RowFn,
+    count: u32,
+    keys: Option<Rc<[u64]>>,
+    /// The cells, by recycling slot.
+    cells: Vec<NodeId>,
 }
 
 /// Where a host's JS children are.
@@ -136,6 +154,8 @@ enum Part {
     Children,
     /// A nested component.
     Component(&'static str),
+    /// A list of the component's own rows; its cells are the core's.
+    VirtualList,
     /// One of the JS children (no node of its own).
     JsChild,
 }
@@ -210,6 +230,8 @@ pub(super) struct Components {
     next_image_info: u32,
     /// The ends of the animations components started, by id.
     animations: FxHashMap<nsh_anim::AnimId, AnswerSlot<bool>>,
+    /// The components' own lists, by node.
+    virtual_lists: FxHashMap<NodeId, VirtualListState>,
     /// The insets screens and modals reported (`onInsets`).
     insets: FxHashMap<NodeId, EdgeInsets>,
     next_id: NodeId,
@@ -238,6 +260,7 @@ impl Default for Components {
             image_infos: FxHashMap::default(),
             next_image_info: 1,
             animations: FxHashMap::default(),
+            virtual_lists: FxHashMap::default(),
             insets: FxHashMap::default(),
             // Odd: JS allocates the even ids (1 is the root).
             next_id: 3,
@@ -734,8 +757,6 @@ impl<M: TextEngine> Core<M> {
         self.components.mark(cell);
     }
 
-    /// Calls module function `name` (`Alert.alert`); a call JS waits for
-    /// gets its result as a `$return` event on the root.
     /// Function `name` of a module: the UI set's (`Alert.alert`), else the
     /// runtime's (`nsh/android:Toast.show`).
     fn function(&self, name: &str) -> Option<&'static Function> {
@@ -745,6 +766,8 @@ impl<M: TextEngine> Core<M> {
             .or_else(|| crate::runtime::function(name))
     }
 
+    /// Calls module function `name` (`Alert.alert`); a call JS waits for
+    /// gets its result as a `$return` event on the root.
     fn call_function(&mut self, name: &str, args: JsonValue) {
         let Some(function) = self.function(name) else {
             return;
@@ -988,6 +1011,21 @@ impl<M: TextEngine> Core<M> {
                     count: self.rows_of_cell(host),
                 };
                 view().child(place(Child::row(), at)).into_element().0
+            }
+            Inner::VirtualRow { list, index } => {
+                let list = *list;
+                let index = *index;
+                match self.components.virtual_lists.get(&list) {
+                    Some(state) => {
+                        let at = Position {
+                            index,
+                            count: state.count as usize,
+                        };
+                        let row = (state.row)(index, at);
+                        view().child(row).into_element().0
+                    }
+                    None => ElNode::empty_view(),
+                }
             }
             Inner::Missing => ElNode::empty_view(),
         };
@@ -1275,6 +1313,7 @@ impl<M: TextEngine> Core<M> {
                     el.kind = kind;
                     let part = match &el.kind {
                         ElKind::Component(c) => Part::Component(c.name),
+                        ElKind::VirtualList(_) => Part::VirtualList,
                         _ => Part::Node,
                     };
                     let matches = |o: &Expanded| o.tag == el.tag && o.part == part;
@@ -1387,6 +1426,7 @@ impl<M: TextEngine> Core<M> {
         host: NodeId,
         inst: &mut Instance,
     ) -> Expanded {
+        let old_list = prev.as_ref().map(|p| p.list).unwrap_or_default();
         let (id, old_attrs, old_style, old_classes, old_events, old_children, old_text) = match prev
         {
             Some(p) => (
@@ -1413,7 +1453,12 @@ impl<M: TextEngine> Core<M> {
                 )
             }
         };
-        if let ElKind::Component(c) = std::mem::replace(&mut el.kind, ElKind::Plain) {
+        let (component, virtual_list) = match std::mem::replace(&mut el.kind, ElKind::Plain) {
+            ElKind::Component(c) => (Some(c), None),
+            ElKind::VirtualList(list) => (None, Some(list)),
+            _ => (None, None),
+        };
+        if let Some(c) = component {
             // A nested component: its props, and the styles as the app's
             // classes of its host.
             if let Some(nested) = self.components.instances.get_mut(&id)
@@ -1478,6 +1523,14 @@ impl<M: TextEngine> Core<M> {
         let events = self.apply_handlers(id, &el, old_events, EventMask::default(), inst);
         let new_children = std::mem::take(&mut el.children);
         let children = self.reconcile_children(id, old_children, new_children, host, inst);
+        let list = match virtual_list {
+            Some(list) => {
+                let config = list.config;
+                self.update_virtual_list(id, host, *list, &old_list);
+                config
+            }
+            None => ListConfig::default(),
+        };
         Expanded {
             id,
             tag: el.tag,
@@ -1487,10 +1540,137 @@ impl<M: TextEngine> Core<M> {
             style: el.style,
             classes,
             events,
-            list: ListConfig::default(),
+            list,
             part,
             children,
         }
+    }
+
+    /// A render's list of its own rows: its layout, its rows (a splice
+    /// when the keys say rows came or went, then the count), and its live
+    /// cells render again with the new row function.
+    fn update_virtual_list(
+        &mut self,
+        id: NodeId,
+        owner: NodeId,
+        list: VirtualListEl,
+        old: &ListConfig,
+    ) {
+        let mut props = std::mem::take(&mut self.components.props);
+        list.config.changes(old, &mut props);
+        let (old_count, old_keys) = match self.components.virtual_lists.get(&id) {
+            Some(state) => (Some(state.count), state.keys.clone()),
+            None => (None, None),
+        };
+        if let (Some(old), Some(new)) = (&old_keys, &list.keys)
+            && let Some((at, removed, inserted)) = crate::ui::virtual_list::splice(old, new)
+        {
+            props.push(Prop::Splice(at, removed, inserted));
+        }
+        if old_count != Some(list.count) {
+            props.push(Prop::Count(list.count));
+        }
+        for prop in props.drain(..) {
+            let _ = self.apply_op(Op::SetProp { id, prop });
+        }
+        self.components.props = props;
+        let state = self
+            .components
+            .virtual_lists
+            .entry(id)
+            .or_insert_with(|| VirtualListState {
+                owner,
+                row: list.row.clone(),
+                count: 0,
+                keys: None,
+                cells: Vec::new(),
+            });
+        state.row = list.row;
+        state.count = list.count;
+        state.keys = list.keys;
+        let cells = state.cells.clone();
+        for cell in cells {
+            self.components.mark(cell);
+        }
+    }
+
+    /// Binds the cells of the components' own lists the last layout asked
+    /// for (creating them as needed); false when there were none.
+    pub(super) fn bind_virtual_lists(&mut self) -> bool {
+        if self.components.virtual_lists.is_empty() {
+            return false;
+        }
+        let mut binds = std::mem::take(&mut self.list_binds);
+        let mut bound = false;
+        binds.retain(|bind| {
+            if !self.components.virtual_lists.contains_key(&bind.list) {
+                return true;
+            }
+            for &(slot, index) in &bind.binds {
+                self.bind_virtual_cell(bind.list, slot as usize, index as usize);
+            }
+            bound = true;
+            false
+        });
+        self.list_binds = binds;
+        bound
+    }
+
+    fn bind_virtual_cell(&mut self, list: NodeId, slot: usize, index: usize) {
+        let state = &self.components.virtual_lists[&list];
+        let owner = state.owner;
+        let cell = match state.cells.get(slot).copied().filter(|&c| c != 0) {
+            Some(cell) => {
+                if let Some(inst) = self.components.instances.get_mut(&cell)
+                    && let Inner::VirtualRow { index: current, .. } = &mut inst.inner
+                {
+                    *current = index;
+                }
+                cell
+            }
+            None => {
+                let cell = self.components.alloc();
+                let _ = self.apply_op(Op::Create {
+                    id: cell,
+                    tag: Tag::Cell,
+                });
+                self.components.owners.insert(cell, owner);
+                let _ = self.apply_op(Op::SetProp {
+                    id: cell,
+                    prop: Prop::Slot(crate::CellSlot::Item(slot as u32)),
+                });
+                let _ = self.apply_op(Op::Insert {
+                    parent: list,
+                    child: cell,
+                    before: None,
+                });
+                self.components.instances.insert(
+                    cell,
+                    Box::new(Instance::new(
+                        Inner::VirtualRow { list, index },
+                        None,
+                        Vec::new(),
+                        None,
+                    )),
+                );
+                let cells = &mut self
+                    .components
+                    .virtual_lists
+                    .get_mut(&list)
+                    .expect("list")
+                    .cells;
+                if cells.len() <= slot {
+                    cells.resize(slot + 1, 0);
+                }
+                cells[slot] = cell;
+                cell
+            }
+        };
+        self.components.mark(cell);
+        let _ = self.apply_op(Op::SetProp {
+            id: cell,
+            prop: Prop::CellIndex(index as u32),
+        });
     }
 
     fn release_id(&mut self, id: NodeId) {
@@ -1515,6 +1695,14 @@ impl<M: TextEngine> Core<M> {
                 return;
             }
             Part::Component(_) => self.release_instance(e.id),
+            Part::VirtualList => {
+                if let Some(state) = self.components.virtual_lists.remove(&e.id) {
+                    for cell in state.cells.into_iter().filter(|&c| c != 0) {
+                        self.release_instance(cell);
+                        self.release_id(cell);
+                    }
+                }
+            }
             Part::Node => {}
         }
         if let Some(r) = &e.attrs.element_ref {
@@ -1596,12 +1784,41 @@ impl<M: TextEngine> Core<M> {
         else {
             return false;
         };
+        // A list row's handlers are the component's whose list it is.
+        let owner = match &inst.inner {
+            Inner::Component(_) => host,
+            Inner::VirtualRow { list, .. } => match self.components.virtual_lists.get(list) {
+                Some(state) => state.owner,
+                None => return false,
+            },
+            Inner::Row { .. } => match self
+                .list_of(host)
+                .and_then(|l| self.components.slot_hosts.get(&l))
+            {
+                Some(&owner) => owner,
+                None => return false,
+            },
+            Inner::Missing => return false,
+        };
+        if owner != host {
+            cx = self.erased_cx(owner);
+        }
+        let Some(inst) = self.components.instances.get_mut(&owner) else {
+            return false;
+        };
         if let Inner::Component(inner) = &mut inst.inner {
             let (state, props) = inner.parts();
             (listener.0)(state, props, payload, &mut cx);
         }
-        self.finish_event(host, cx);
+        self.finish_event(owner, cx);
         true
+    }
+
+    /// The list cell `cell` is in.
+    fn list_of(&self, cell: NodeId) -> Option<NodeId> {
+        let key = self.key(cell).ok()?;
+        let parent = self.nodes[key as usize].parent;
+        (parent != NO_KEY).then(|| self.nodes[parent as usize].id)
     }
 
     /// Applies what a handler did: a new render, events for JS (or for the

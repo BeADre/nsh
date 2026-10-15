@@ -245,6 +245,12 @@ never sees the expanded nodes; their events are the component's (below).
   rebinds a cell to another row (`cellIndex`), its wrapper renders again with the new position; so do all live cells
   when the number of rows changes (the last row moves), and when the component renders again. Binding, recycling, measuring and positioning stay the list's: a rebinding frame
   of `ListView` costs what one of `List` does (5 ops / 4 mount items in the gallery's Mobile UI demo).
+- The component's own rows (`virtual_list(count, |index, at| row)`, layout from `ListLayout`, `.keys(ids)` for
+  splices): the core creates the list and binds its cells itself, within the commit that needs them (`Core::commit`
+  binds and lays out again; JS is not involved); each cell is a small instance (`Inner::VirtualRow`) rendering the
+  row function, which runs again when the cell shows another row and when the component renders. With keys, rows
+  removed or inserted before others leave their cells and sizes alone. Rows' handlers run with the component's
+  state (also for the wrappers of the app's rows); a row passes its index with `listener.map(move |_: &()| index)`.
 - Named slots: the glue creates one holder view per slot **the app passes** (`componentSlot`), filled with that prop's
   JSX. The render's `Slot` element *is* that holder: its styles and handlers apply to it, the core places it but never
   releases it (it is JS's). Filling or emptying a holder renders the component again.

@@ -43,6 +43,18 @@ impl<E: ?Sized + 'static> Listener<E> {
     }
 }
 
+impl<E: 'static> Listener<E> {
+    /// This listener for events of another type, turned into `E` by `f`:
+    /// a list row hands the component its index with
+    /// `remove.map(move |_: &()| index)`.
+    pub fn map<F: ?Sized + 'static>(self, f: impl Fn(&F) -> E + 'static) -> Listener<F> {
+        let inner = self.0;
+        Listener(Rc::new(move |state, props, event: &F, cx| {
+            inner(state, props, &f(event), cx);
+        }))
+    }
+}
+
 impl<E: ?Sized> Clone for Listener<E> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
@@ -615,9 +627,11 @@ impl Position {
     }
 }
 
-/// How a list slot is laid out (each set field is sent to the list).
+/// How a list is laid out (each set field is sent to the list); set with
+/// [`super::ListLayout`]'s methods.
+#[doc(hidden)]
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub(crate) struct ListConfig {
+pub struct ListConfig {
     pub(crate) estimated: Option<f32>,
     pub(crate) columns: Option<u32>,
     pub(crate) horizontal: Option<bool>,
@@ -672,6 +686,8 @@ pub(crate) enum ElKind {
     EachChild(PlaceFn),
     /// The glue's list of an [`Items`] prop.
     List(Box<ListEl>),
+    /// A list of the component's own rows ([`super::virtual_list`]).
+    VirtualList(Box<super::virtual_list::VirtualListEl>),
     Component(ComponentEl),
 }
 
@@ -1311,90 +1327,12 @@ impl Image {
     }
 }
 
-impl ListElement {
+impl super::ListLayout for ListElement {
     fn config(&mut self) -> &mut ListConfig {
         match &mut self.0.kind {
             ElKind::List(list) => &mut list.config,
             _ => unreachable!("a ListElement is a list"),
         }
-    }
-
-    fn content(&mut self) -> &mut ListContentStyle {
-        self.config().content.get_or_insert_default()
-    }
-
-    /// The size of rows not measured yet, in points (default 50).
-    pub fn estimated_item_size(mut self, points: f32) -> Self {
-        self.config().estimated = Some(points);
-        self
-    }
-
-    /// Rows side by side (vertical lists).
-    pub fn columns(mut self, columns: u32) -> Self {
-        self.config().columns = Some(columns.max(1));
-        self
-    }
-
-    /// Scrolls horizontally.
-    pub fn horizontal(mut self) -> Self {
-        self.config().horizontal = Some(true);
-        self
-    }
-
-    /// Item 0 at the end (chats), starting scrolled to the end.
-    pub fn inverted(mut self) -> Self {
-        self.config().inverted = Some(true);
-        self
-    }
-
-    /// Whether the scroll indicator shows (default yes).
-    pub fn shows_indicator(mut self, shows: bool) -> Self {
-        self.config().shows_indicator = Some(shows);
-        self
-    }
-
-    /// Padding around the rows, in points.
-    pub fn content_padding(mut self, points: f32) -> Self {
-        self.content().padding = EdgeInsets::all(points);
-        self
-    }
-
-    /// Horizontal padding around the rows.
-    pub fn content_padding_x(mut self, points: f32) -> Self {
-        let p = &mut self.content().padding;
-        (p.left, p.right) = (points, points);
-        self
-    }
-
-    /// Vertical padding around the rows.
-    pub fn content_padding_y(mut self, points: f32) -> Self {
-        let p = &mut self.content().padding;
-        (p.top, p.bottom) = (points, points);
-        self
-    }
-
-    /// Padding above the rows.
-    pub fn content_padding_top(mut self, points: f32) -> Self {
-        self.content().padding.top = points;
-        self
-    }
-
-    /// Padding below the rows.
-    pub fn content_padding_bottom(mut self, points: f32) -> Self {
-        self.content().padding.bottom = points;
-        self
-    }
-
-    /// Space between rows (columns in horizontal lists).
-    pub fn row_gap(mut self, points: f32) -> Self {
-        self.content().row_gap = points;
-        self
-    }
-
-    /// Space between columns ([`Self::columns`]).
-    pub fn column_gap(mut self, points: f32) -> Self {
-        self.content().column_gap = points;
-        self
     }
 }
 
