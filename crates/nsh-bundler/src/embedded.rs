@@ -139,6 +139,7 @@ fn generated() -> &'static [EmbeddedFile] {
             ("protocol.gen.ts", nsh_core::js::protocol::typescript()),
             ("canvas.gen.ts", nsh_core::js::canvas::typescript()),
             ("style.gen.ts", nsh_core::js::style::typescript()),
+            ("elements.gen.ts", nsh_core::js::host::typescript()),
         ] {
             files.push(EmbeddedFile {
                 root: "runtime",

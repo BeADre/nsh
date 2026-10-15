@@ -1,11 +1,13 @@
 // Types of nsh apps: styles, the props of host elements and the JSX
 // namespace. Types only: nothing here reaches a bundle.
 //
-// The styles are generated from the core (`style.gen.ts`); keep the props
-// and events in sync with `crates/nsh-js/src/protocol.rs`.
+// The styles (`style.gen.ts`) and the host elements' props
+// (`elements.gen.ts`) are generated from the core; the event handlers are
+// written here, keep them in sync with the payloads of `nsh-js`'s
+// `dispatch_event`.
 
 import type { YNode } from "./_core";
-import type { NativeValue } from "./animated";
+import type * as Host from "./elements.gen";
 
 // The style interfaces and the value types they use, generated from the
 // core's table of style properties (`nsh_core::js::style`).
@@ -20,6 +22,39 @@ export type {
   TransformStep,
   ViewStyle,
 } from "./style.gen";
+// The props of the host elements and the value types they use, generated
+// from the core's `Prop` (`nsh_core::js::host`).
+export type {
+  AccessibilityRole,
+  AccessibilityState,
+  AutoCapitalize,
+  AutoComplete,
+  EllipsizeMode,
+  KeyboardDismissMode,
+  KeyboardType,
+  ListContentStyle,
+  LiveRegion,
+  ModalAnimation,
+  ModalPresentation,
+  PointerEvents,
+  ResizeMode,
+  ReturnKeyType,
+  ScreenAnimation,
+  SnapAlignment,
+  TextContentType,
+} from "./elements.gen";
+export type {
+  AndroidModalHostProps,
+  InputHostProps,
+  IOSModalHostProps,
+  IOSScreenHostProps,
+  IOSWebViewHostProps,
+  ListHostProps,
+  ModalHostProps,
+  ScreenHostProps,
+  VideoHostProps,
+  WebViewHostProps,
+} from "./elements.gen";
 
 /** A style, or a list of styles merged left to right (falsy entries are
  * skipped). */
@@ -41,20 +76,6 @@ export interface PanEvent {
   valueX?: number;
   /** The `pan.y` value now (with one). */
   valueY?: number;
-}
-
-export type AccessibilityRole =
-  | "none" | "button" | "link" | "search" | "image" | "imagebutton" | "keyboardkey" | "text" | "adjustable"
-  | "header" | "summary" | "alert" | "checkbox" | "combobox" | "menu" | "menubar" | "menuitem" | "progressbar"
-  | "radio" | "radiogroup" | "scrollbar" | "spinbutton" | "switch" | "tab" | "tablist" | "timer" | "toolbar"
-  | "list" | "grid";
-
-export interface AccessibilityState {
-  disabled?: boolean;
-  selected?: boolean;
-  checked?: boolean | "mixed";
-  busy?: boolean;
-  expanded?: boolean;
 }
 
 /** A finger of a touch event (points). */
@@ -115,119 +136,22 @@ export interface TouchProps {
   onResponderTerminationRequest?: (e: GestureResponderEvent) => boolean;
 }
 
-export type AutoComplete =
-  | "off"
-  | "username"
-  | "password"
-  | "current-password"
-  | "new-password"
-  | "one-time-code"
-  | "sms-otp"
-  | "email"
-  | "tel"
-  | "name"
-  | "given-name"
-  | "family-name"
-  | "additional-name"
-  | "nickname"
-  | "organization"
-  | "street-address"
-  | "address-line1"
-  | "address-line2"
-  | "address-level1"
-  | "address-level2"
-  | "postal-code"
-  | "country"
-  | "cc-number"
-  | "cc-exp"
-  | "cc-csc"
-  | "cc-name"
-  | "url"
-  | "birthdate-full";
-
-export type TextContentType =
-  | "none"
-  | "username"
-  | "password"
-  | "newPassword"
-  | "oneTimeCode"
-  | "emailAddress"
-  | "telephoneNumber"
-  | "name"
-  | "givenName"
-  | "middleName"
-  | "familyName"
-  | "nickname"
-  | "organizationName"
-  | "fullStreetAddress"
-  | "streetAddressLine1"
-  | "streetAddressLine2"
-  | "addressCity"
-  | "addressState"
-  | "postalCode"
-  | "countryName"
-  | "creditCardNumber"
-  | "creditCardExpiration"
-  | "creditCardSecurityCode"
-  | "creditCardName"
-  | "URL"
-  | "birthdate";
-
 /** Props every host element accepts. */
-export interface CommonProps extends TouchProps {
+export interface CommonProps extends TouchProps, Host.HostProps {
   ref?: YNode | ((node: YNode) => void);
   children?: JSX.Element;
-  /**
-   * Tailwind CSS classes (`"flex-row gap-2 p-4 bg-white dark:bg-zinc-900"`),
-   * resolved natively. Later classes win over earlier ones; `style` wins
-   * over both.
-   */
-  class?: string;
-  /** Classes applied while their value is truthy (`{ "opacity-50": busy() }`). */
-  classList?: Record<string, boolean | null | undefined>;
-  /** Ignores presses (no press feedback either), applies `disabled:` classes and disables controls. */
-  disabled?: boolean;
-  /** Touch handling of the view and its children (React Native semantics). */
-  pointerEvents?: "auto" | "none" | "box-none" | "box-only";
-  /** Extends the touch area beyond the bounds. */
-  hitSlop?: number | { top?: number; right?: number; bottom?: number; left?: number };
-  /** Opacity while pressed (native, no JS round trip). */
-  activeOpacity?: number;
-  /** The background while pressed; the children fade to `underlayOpacity` (native, no JS round trip). */
-  underlayColor?: ColorValue;
-  /** The children's opacity while `underlayColor` shows (default 0.85). */
-  underlayOpacity?: number;
-  /** Milliseconds before a press becomes a long press (default 500). */
-  delayLongPress?: number;
-  testID?: string;
   onPress?: () => void;
   onLongPress?: () => void;
   onPressIn?: () => void;
   onPressOut?: () => void;
   onLayout?: (e: LayoutEvent) => void;
-  /** Drags drive these native values (points) on the UI thread. */
-  pan?: { x?: NativeValue; y?: NativeValue };
   onPanStart?: (e: PanEvent) => void;
   /** With the release velocity, e.g. to start a `decay`. */
   onPanEnd?: (e: PanEvent) => void;
-  /** Two-finger pinches drive `scale` natively. */
-  pinch?: { scale?: NativeValue };
   onPinchStart?: (e: { scale: number; velocity: number }) => void;
   onPinchEnd?: (e: { scale: number; velocity: number }) => void;
-  /** Two-finger rotations drive `angle` (degrees) natively. */
-  rotation?: { angle?: NativeValue };
   onRotationStart?: (e: { rotation: number; velocity: number }) => void;
   onRotationEnd?: (e: { rotation: number; velocity: number }) => void;
-  accessible?: boolean;
-  accessibilityLabel?: string;
-  accessibilityHint?: string;
-  accessibilityRole?: AccessibilityRole;
-  role?: AccessibilityRole;
-  accessibilityState?: AccessibilityState;
-  accessibilityValue?: { min?: number; max?: number; now?: number; text?: string };
-  accessibilityElementsHidden?: boolean;
-  importantForAccessibility?: "auto" | "yes" | "no" | "no-hide-descendants";
-  accessibilityActions?: { name: string; label?: string }[];
   onAccessibilityAction?: (e: { actionName: string }) => void;
   /** iOS-only props (ignored elsewhere). */
   ios?: IOSProps;
@@ -244,14 +168,7 @@ export interface IOSProps {}
 export interface DesktopProps {}
 
 /** Android-only props of every element (`android={{…}}`). */
-export interface AndroidProps {
-  /** The material ripple while pressed. */
-  ripple?: { color?: ColorValue; borderless?: boolean; radius?: number; foreground?: boolean };
-  /** The material shadow (points), from the view's shape. */
-  elevation?: number;
-  /** How changes of the view are announced to TalkBack. */
-  accessibilityLiveRegion?: "none" | "polite" | "assertive";
-}
+export interface AndroidProps extends Host.AndroidHostProps {}
 
 /** `<view>` */
 export interface ViewProps extends CommonProps {
@@ -271,21 +188,8 @@ export interface TextLayoutLine {
   xHeight: number;
 }
 
-export interface TextProps extends CommonProps {
+export interface TextProps extends CommonProps, Host.TextHostProps {
   style?: StyleProp<TextStyle>;
-  /** 0 (default) is unlimited. */
-  numberOfLines?: number;
-  ellipsizeMode?: "tail" | "head" | "middle" | "clip";
-  /** Follow the system text size (default true). */
-  allowFontScaling?: boolean;
-  /** Upper bound of the system scale (0 is none). */
-  maxFontSizeMultiplier?: number;
-  /** A long press offers to copy the text. */
-  selectable?: boolean;
-  /** Shrink the font until the text fits its lines (`numberOfLines`) and box. */
-  adjustsFontSizeToFit?: boolean;
-  /** How far `adjustsFontSizeToFit` shrinks at most (0..1, default 0.1). */
-  minimumFontScale?: number;
   /** The laid-out lines (in the text's content box), after each layout. */
   onTextLayout?: (e: { lines: TextLayoutLine[] }) => void;
 }
@@ -298,17 +202,8 @@ export interface ImageAsset {
 }
 
 /** `<image>` */
-export interface ImageProps extends CommonProps {
+export interface ImageProps extends CommonProps, Host.ImageHostProps {
   style?: StyleProp<ImageStyle>;
-  /** A URL, `asset:/path`, or an imported asset. */
-  src?: string | ImageAsset | { uri: string };
-  resizeMode?: "cover" | "contain" | "stretch" | "center";
-  /** Shown until `src` has loaded (best a local asset). */
-  defaultSource?: string | ImageAsset | { uri: string };
-  /** Blurs the image by this radius in points (decoded once, off the main thread). */
-  blurRadius?: number;
-  /** How long a loaded image fades in, in milliseconds (default 0 on iOS, 300 on Android, like React Native). */
-  fadeDuration?: number;
   onLoadStart?: () => void;
   /** Download progress in bytes (`total` 0 when unknown); at most every 100 ms. */
   onProgress?: (e: { loaded: number; total: number }) => void;
@@ -333,31 +228,7 @@ export interface ScrollEvent {
 }
 
 /** How scroll views and lists scroll (React Native's ScrollView props). */
-export interface ScrollBehaviorProps {
-  /** Stops at multiples of the viewport. */
-  pagingEnabled?: boolean;
-  /** Stops at multiples of this length. */
-  snapToInterval?: number;
-  /** Stops at these offsets. */
-  snapToOffsets?: number[];
-  /** Which point of an item aligns with the viewport with `snapToInterval`. */
-  snapToAlignment?: "start" | "center" | "end";
-  /** A fling moves one snap point at most. */
-  disableIntervalMomentum?: boolean;
-  /** How fast a fling slows down: "normal", "fast", or the velocity kept per millisecond (0.998 / 0.99). */
-  decelerationRate?: "normal" | "fast" | number;
-  /** The user can scroll it (default true). */
-  scrollEnabled?: boolean;
-  /** Overscroll past the edges (default true). */
-  bounces?: boolean;
-  /** Room around the content. */
-  contentInset?: { top?: number; right?: number; bottom?: number; left?: number };
-  /** Where it starts. */
-  contentOffset?: { x?: number; y?: number };
-  /** Whether a tap dismisses the keyboard: "never" (default: the tap only dismisses it), "always" (never dismisses), "handled" (unless something handles the tap). */
-  keyboardShouldPersistTaps?: "never" | "always" | "handled" | boolean;
-  /** Minimum milliseconds between `onScroll` events (at most one per frame anyway). */
-  scrollEventThrottle?: number;
+export interface ScrollBehaviorProps extends Host.ScrollingHostProps {
   onScroll?: (e: ScrollEvent) => void;
   onScrollBeginDrag?: (e: { x: number; y: number }) => void;
   onScrollEndDrag?: (e: { x: number; y: number }) => void;
@@ -366,76 +237,29 @@ export interface ScrollBehaviorProps {
 }
 
 /** `<scroll>` */
-export interface ScrollProps extends CommonProps, ScrollBehaviorProps {
-  /** Pinching zooms the content when `maximumZoomScale` is above `minimumZoomScale` (default 1 both); zoomed in, it scrolls both ways. */
-  maximumZoomScale?: number;
-  minimumZoomScale?: number;
-  /** Zooms to this scale when it changes (the user's zoom is kept otherwise). */
-  zoomScale?: number;
-  /** Pinching may go past the limits and springs back (default true). */
-  bouncesZoom?: boolean;
-  /** The user can pinch to zoom (default true). */
-  pinchGestureEnabled?: boolean;
-  /** Content smaller than the viewport (zoomed out) is centered. */
-  centerContent?: boolean;
+export interface ScrollProps extends CommonProps, ScrollBehaviorProps, Host.ScrollHostProps {
   style?: StyleProp<ViewStyle>;
-  horizontal?: boolean;
-  showsIndicator?: boolean;
-  refreshing?: boolean;
   onRefresh?: () => void;
   onScrollEnd?: (e: { x: number; y: number }) => void;
-  /** Fed with the scroll offset natively, for scroll-linked effects. */
-  scrollValue?: NativeValue;
-  keyboardDismissMode?: "none" | "on-drag" | "interactive";
 }
 
 /** `<input>` */
-export interface InputProps extends CommonProps {
+export interface InputProps extends CommonProps, Host.InputHostProps {
   style?: StyleProp<TextStyle>;
-  /** Controlled text. */
-  value?: string;
-  defaultValue?: string;
   onChangeText?: (text: string) => void;
   onSubmitEditing?: (e: { text: string }) => void;
-  /** Return unfocuses a single-line input (default true); false keeps the keyboard up, e.g. to send several messages. */
-  blurOnSubmit?: boolean;
   onFocus?: () => void;
   onBlur?: () => void;
-  placeholder?: string;
-  placeholderTextColor?: ColorValue;
-  selectionColor?: ColorValue;
-  /** Controlled selection (UTF-16 units; `end` defaults to `start`, a caret). */
-  selection?: { start: number; end?: number };
   onSelectionChange?: (e: { start: number; end: number }) => void;
   /** Before the text changes: `key` is the typed text, `Backspace` or `Enter`. */
   onKeyPress?: (e: { key: string }) => void;
-  /** No caret is drawn. */
-  caretHidden?: boolean;
   /** The size of the text (at the input's width when multiline): grow a multiline input with it. */
   onContentSizeChange?: (e: { width: number; height: number }) => void;
-  /** What the input holds, for autofill (React Native's values, e.g. "username", "current-password", "new-password", "one-time-code", "email", "tel", "postal-code", "cc-number", "off"). */
-  autoComplete?: AutoComplete;
-  secureTextEntry?: boolean;
-  keyboardType?: "default" | "number-pad" | "numeric" | "decimal-pad" | "email-address" | "phone-pad" | "url";
-  returnKeyType?: "default" | "done" | "go" | "next" | "search" | "send";
-  autoCapitalize?: "none" | "sentences" | "words" | "characters";
-  autoCorrect?: boolean;
-  multiline?: boolean;
-  maxLength?: number;
-  editable?: boolean;
-  autoFocus?: boolean;
-  allowFontScaling?: boolean;
-  maxFontSizeMultiplier?: number;
   ios?: IOSInputProps;
 }
 
 /** iOS-only props of `<input>`. */
-export interface IOSInputProps extends IOSProps {
-  /** The `nativeID` of an `InputAccessoryView` (`nsh/ios`) shown over the keyboard while the input has focus. */
-  inputAccessoryViewID?: string;
-  /** iOS's names for `autoComplete` (which covers both platforms). */
-  textContentType?: TextContentType;
-}
+export interface IOSInputProps extends IOSProps, Host.IOSInputHostProps {}
 
 /** Host elements without components of their own take any prop the core
  * knows; their typed forms are the runtime's components (`WebView`, …). */

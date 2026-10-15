@@ -3,6 +3,8 @@
 
 use std::sync::Arc;
 
+use crate::{js::host::HostProps, ui::PropEnum};
+
 /// Edge insets in points.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct EdgeInsets {
@@ -34,7 +36,7 @@ impl EdgeInsets {
 }
 
 /// Which touches a view and its children receive (`pointerEvents`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PropEnum)]
 pub enum PointerEvents {
     /// The view and its children receive touches (default).
     #[default]
@@ -42,13 +44,15 @@ pub enum PointerEvents {
     /// Neither the view nor its children receive touches.
     None,
     /// Only the children receive touches; the view itself is transparent to them.
+    #[prop(rename = "box-none")]
     BoxNone,
     /// Only the view receives touches, never its children.
+    #[prop(rename = "box-only")]
     BoxOnly,
 }
 
 /// What an element is, for assistive technologies (`accessibilityRole`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PropEnum)]
 pub enum AccessibilityRole {
     /// No particular role.
     #[default]
@@ -62,8 +66,10 @@ pub enum AccessibilityRole {
     /// An image.
     Image,
     /// An image that acts as a button.
+    #[prop(rename = "imagebutton")]
     ImageButton,
     /// A key of a keyboard.
+    #[prop(rename = "keyboardkey")]
     KeyboardKey,
     /// Static text.
     Text,
@@ -111,45 +117,6 @@ pub enum AccessibilityRole {
     Grid,
 }
 
-impl AccessibilityRole {
-    /// Parses a React Native role name.
-    pub fn parse(name: &str) -> Option<Self> {
-        use AccessibilityRole::*;
-        Some(match name {
-            "none" => None,
-            "button" => Button,
-            "link" => Link,
-            "search" => Search,
-            "image" => Image,
-            "imagebutton" => ImageButton,
-            "keyboardkey" => KeyboardKey,
-            "text" => Text,
-            "adjustable" => Adjustable,
-            "header" => Header,
-            "summary" => Summary,
-            "alert" => Alert,
-            "checkbox" => Checkbox,
-            "combobox" => Combobox,
-            "menu" => Menu,
-            "menubar" => Menubar,
-            "menuitem" => Menuitem,
-            "progressbar" => Progressbar,
-            "radio" => Radio,
-            "radiogroup" => Radiogroup,
-            "scrollbar" => Scrollbar,
-            "spinbutton" => Spinbutton,
-            "switch" => Switch,
-            "tab" => Tab,
-            "tablist" => Tablist,
-            "timer" => Timer,
-            "toolbar" => Toolbar,
-            "list" => List,
-            "grid" => Grid,
-            _ => return Option::None,
-        })
-    }
-}
-
 /// Whether a checkable element is checked (`accessibilityState.checked`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Checked {
@@ -190,7 +157,7 @@ pub struct AccessibilityValue {
 }
 
 /// How changes of an element are announced (Android `accessibilityLiveRegion`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PropEnum)]
 pub enum LiveRegion {
     /// Not announced.
     #[default]
@@ -245,28 +212,42 @@ impl Accessibility {
 }
 
 /// One accessibility property, as set from JS.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, HostProps)]
 pub enum AccessibilityProp {
-    /// `accessible`.
+    /// `accessible`: the view is one element for assistive technologies (its
+    /// children are not exposed separately).
+    #[prop(js = "accessible")]
     Accessible(Option<bool>),
-    /// `accessibilityLabel`.
+    /// `accessibilityLabel`: what screen readers read.
+    #[prop(js = "accessibilityLabel")]
     Label(Option<Arc<str>>),
-    /// `accessibilityHint`.
+    /// `accessibilityHint`: what activating the element does.
+    #[prop(js = "accessibilityHint")]
     Hint(Option<Arc<str>>),
-    /// `accessibilityRole`.
+    /// `accessibilityRole` / `role`: what the element is.
+    #[prop(js = "accessibilityRole", js = "role", with = crate::js::host_values::role, reset = AccessibilityProp::Role(AccessibilityRole::None))]
     Role(AccessibilityRole),
     /// `accessibilityState`.
+    #[prop(js = "accessibilityState")]
     State(AccessibilityState),
-    /// `accessibilityValue`.
+    /// `accessibilityValue`: the value of a range or textual element.
+    #[prop(js = "accessibilityValue")]
     Value(Option<AccessibilityValue>),
-    /// `accessibilityElementsHidden`.
+    /// `accessibilityElementsHidden`: hides the view and its subtree from assistive
+    /// technologies.
+    #[prop(js = "accessibilityElementsHidden")]
     Hidden(bool),
     /// `importantForAccessibility`: `"auto"`, `"yes"`, `"no"` or
     /// `"no-hide-descendants"`.
+    #[prop(js = "importantForAccessibility", with = crate::js::host_values::important, reset = AccessibilityProp::Important(None, false), ts = "\"auto\" | \"yes\" | \"no\" | \"no-hide-descendants\"")]
     Important(Option<bool>, bool),
-    /// `accessibilityLiveRegion`.
+    /// `accessibilityLiveRegion` (Android): how changes of the view are announced
+    /// to TalkBack.
+    #[prop(android = "accessibilityLiveRegion")]
     LiveRegion(LiveRegion),
-    /// `accessibilityActions`.
+    /// `accessibilityActions`: custom actions offered to assistive technologies
+    /// (`onAccessibilityAction` reports them).
+    #[prop(js = "accessibilityActions")]
     Actions(Vec<AccessibilityActionDef>),
 }
 

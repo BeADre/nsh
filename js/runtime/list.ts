@@ -12,8 +12,7 @@ import {
   setProp,
   YNode,
 } from "./_core";
-import type { NativeValue } from "./animated";
-import type { JSX, ScrollBehaviorProps, StyleProp, ViewStyle } from "./types";
+import type { JSX, ListHostProps, ScrollBehaviorProps, StyleProp, ViewStyle } from "./types";
 
 // --- Virtualized list ----------------------------------------------------
 
@@ -40,54 +39,25 @@ export interface ViewabilityConfig {
   minimumViewTime?: number;
 }
 
-export interface ListProps<T> extends ScrollBehaviorProps {
+export interface ListProps<T> extends ScrollBehaviorProps, ListHostProps {
   each: readonly T[];
-  /** Size used for items not measured yet (points). */
-  estimatedItemSize?: number;
-  horizontal?: boolean;
-  /** Items per row (vertical lists). */
-  numColumns?: number;
-  /** Laid out from the end, item 0 last (chat style); starts scrolled to the end and keeps its distance from the end as content changes. */
-  inverted?: boolean;
-  /** Items that stick to the top while scrolled past (one column, not inverted). */
-  stickyHeaderIndices?: number[];
   ListHeaderComponent?: ListSlot;
   ListFooterComponent?: ListSlot;
   /** Shown instead of the items while `each` is empty. */
   ListEmptyComponent?: ListSlot;
   /** Rendered between items (one column). */
   ItemSeparatorComponent?: ListSlot;
-  /** Padding (`padding`, `paddingHorizontal`, `paddingTop`, …) and `gap` / `rowGap` / `columnGap` of the content. */
-  contentContainerStyle?: {
-    padding?: number;
-    paddingHorizontal?: number;
-    paddingVertical?: number;
-    paddingTop?: number;
-    paddingRight?: number;
-    paddingBottom?: number;
-    paddingLeft?: number;
-    gap?: number;
-    rowGap?: number;
-    columnGap?: number;
-  };
   /** Scrolls to this item before the first frame. */
   initialScrollIndex?: number;
   /** Key of an item in `onViewableItemsChanged` tokens (default: `item.key`, `item.id`, or the index). */
   keyExtractor?: (item: T, index: number) => string;
   onViewableItemsChanged?: (info: { viewableItems: ViewToken<T>[]; changed: ViewToken<T>[] }) => void;
-  viewabilityConfig?: ViewabilityConfig;
   style?: StyleProp<ViewStyle>;
-  showsIndicator?: boolean;
-  refreshing?: boolean;
   onRefresh?: () => void;
   onEndReached?: () => void;
   /** How close to the end (in viewports) `onEndReached` fires; default 1. */
   onEndReachedThreshold?: number;
   onScrollEnd?: (e: { x: number; y: number }) => void;
-  /** Native value fed with the scroll offset, for scroll-linked effects. */
-  scrollValue?: NativeValue;
-  /** Whether dragging the list dismisses the keyboard. */
-  keyboardDismissMode?: "none" | "on-drag" | "interactive";
   ref?: YNode | ((node: YNode) => void);
   /** Renders one row. Called once per recycled cell; `item` and `index`
    * change when the cell is reused for another item. */

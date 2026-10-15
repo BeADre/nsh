@@ -7,8 +7,9 @@
   declarations. `nsh init` writes a `tsconfig.json` mapping `nsh`, `nsh/jsx-runtime` and `solid-js` there (`jsxImportSource: "nsh"`,
   no DOM library), so editors type-check apps without `node_modules`.
 - Exports of the runtime's files need explicit types (isolated declarations cannot infer); a nsh-bundler test
-  enforces it. The style types are generated from the core's `style_keys!` table (`style.gen.ts`); keep the element
-  props in `types.ts` in sync with what `protocol.rs` accepts.
+  enforces it. The style types are generated from the core's `style_keys!` table (`style.gen.ts`), the host elements'
+  props from `Prop`'s `#[derive(HostProps)]` (`elements.gen.ts`); the event handlers in `types.ts` follow the payloads
+  of `nsh-js`'s `dispatch_event`.
 - To check the declarations themselves, run `tsc -p .` in an app with `skipLibCheck` off (only solid's `hydration.d.ts`
   mentions the DOM `Element`).
 

@@ -13,7 +13,7 @@ Things that were found the hard way. Read the section of the area you change bef
   `Release` (from FinalizationRegistry) frees the node and its native view.
 - **`nsh_js::BUNDLE_NAME` (`bundle.js`)** is the module name of every bundle and is how stacks are matched for symbolication; `BYTECODE_VERSION`
   is tested against the linked QuickJS version: update both when upgrading rquickjs.
-- **Op buffer opcodes** are defined in both `js/runtime/_core.ts` (and `animated.ts`, `canvas.ts`) and `crates/nsh-js/src/protocol.rs` and must stay in sync.
+- **Op buffer opcodes** are generated (`protocol.gen.ts` from `nsh_core::js::protocol`): never write a code by hand in `js/runtime`.
 - **rquickjs converts `Option::None` to `undefined`, not `null`**: compare native results with `== null` in JS.
 - **`on*` props are event handlers to the JS renderer** (registered, sent to the core as a listener flag): settings must not
   be named `on...` on host elements (`List` sends `onEndReachedThreshold` as `endReachedThreshold`).

@@ -4,7 +4,7 @@
 //! core's [`Prop`]s, kept per element and diffed by kind: a prop a render
 //! no longer sets goes back to its default, as when JS clears it.
 
-use std::{mem::discriminant, sync::Arc};
+use std::sync::Arc;
 
 use super::{
     Accessible, AnyElement, Interactive,
@@ -22,109 +22,24 @@ use crate::{
         CanvasFont, CanvasGradient, CanvasImage, CanvasOp, CanvasTextAlign, CanvasTextBaseline,
         Composite, Drawing, FillRule, GradientShape, LineCap, LineJoin, Num, Paint, Path, PathOp,
     },
+    js::host::HostProps,
 };
 
 /// Whether `a` and `b` set the same property (their values aside).
 pub(crate) fn same_kind(a: &Prop, b: &Prop) -> bool {
     match (a, b) {
-        (Prop::Scroll(a), Prop::Scroll(b)) => discriminant(a) == discriminant(b),
-        (Prop::Native(a), Prop::Native(b)) => discriminant(a) == discriminant(b),
-        (Prop::Modal(a), Prop::Modal(b)) => discriminant(a) == discriminant(b),
-        (Prop::Image(a), Prop::Image(b)) => discriminant(a) == discriminant(b),
         (Prop::ComponentProp(a, _), Prop::ComponentProp(b, _)) => a == b,
-        _ => discriminant(a) == discriminant(b),
+        _ => HostProps::same_kind(a, b),
     }
 }
 
 /// `prop`'s property at its default (what clearing it from JS sets), for
-/// the props elements set; `None` for the others.
+/// the props elements set; `None` for those set once.
 pub(crate) fn reset(prop: &Prop) -> Option<Prop> {
-    use NativeProp as N;
-    use ScrollProp as S;
-    Some(match prop {
-        Prop::Horizontal(_) => Prop::Horizontal(false),
-        Prop::ShowsIndicator(_) => Prop::ShowsIndicator(true),
-        Prop::Refreshing(_) => Prop::Refreshing(false),
-        Prop::ResizeMode(_) => Prop::ResizeMode(ResizeMode::Cover),
-        Prop::EllipsizeMode(_) => Prop::EllipsizeMode(Default::default()),
-        Prop::Selectable(_) => Prop::Selectable(false),
-        Prop::Value(_) => Prop::Value(String::new()),
-        Prop::DefaultValue(_) => return None,
-        Prop::Placeholder(_) => Prop::Placeholder(String::new()),
-        Prop::PlaceholderColor(_) => Prop::PlaceholderColor(None),
-        Prop::SelectionColor(_) => Prop::SelectionColor(None),
-        Prop::Secure(_) => Prop::Secure(false),
-        Prop::KeyboardType(_) => Prop::KeyboardType(KeyboardType::Default),
-        Prop::ReturnKeyType(_) => Prop::ReturnKeyType(ReturnKeyType::Default),
-        Prop::AutoCapitalize(_) => Prop::AutoCapitalize(AutoCapitalize::Sentences),
-        Prop::AutoCorrect(_) => Prop::AutoCorrect(true),
-        Prop::Multiline(_) => Prop::Multiline(false),
-        Prop::MaxLength(_) => Prop::MaxLength(None),
-        Prop::Editable(_) => Prop::Editable(true),
-        Prop::BlurOnSubmit(_) => Prop::BlurOnSubmit(true),
-        Prop::AutoFocus(_) => Prop::AutoFocus(false),
-        Prop::CaretHidden(_) => Prop::CaretHidden(false),
-        Prop::AutoFill(_) => Prop::AutoFill(AutoFill::Default),
-        Prop::InputAccessoryViewId(_) => Prop::InputAccessoryViewId(None),
-        Prop::NativeId(_) => Prop::NativeId(None),
-        Prop::Selection(..) => return None,
-        Prop::KeyboardDismissMode(_) => Prop::KeyboardDismissMode(KeyboardDismissMode::None),
-        Prop::HitSlop(_) => Prop::HitSlop(EdgeInsets::default()),
-        Prop::UnderlayColor(_) => Prop::UnderlayColor(None),
-        Prop::UnderlayOpacity(_) => Prop::UnderlayOpacity(crate::UNDERLAY_OPACITY),
-        Prop::LongPressDelay(_) => Prop::LongPressDelay(None),
-        Prop::Ripple(_) => Prop::Ripple(None),
-        Prop::Elevation(_) => Prop::Elevation(0.0),
-        Prop::TestId(_) => Prop::TestId(None),
-        Prop::Component(_) => return None,
-        Prop::ComponentProp(name, _) => Prop::ComponentProp(name.clone(), None),
-        Prop::Scroll(s) => Prop::Scroll(match s {
-            S::Paging(_) => S::Paging(false),
-            S::SnapInterval(_) => S::SnapInterval(0.0),
-            S::SnapOffsets(_) => S::SnapOffsets(Vec::new()),
-            S::SnapAlignment(_) => S::SnapAlignment(SnapAlignment::Start),
-            S::Deceleration(_) => S::Deceleration(0.0),
-            S::Bounces(_) => S::Bounces(true),
-            S::ContentInset(_) => S::ContentInset(EdgeInsets::default()),
-            S::ContentOffset(..) => return None,
-            S::KeyboardTaps(_) => S::KeyboardTaps(KeyboardTaps::Never),
-            S::EventThrottle(_) => S::EventThrottle(0.0),
-            S::DisableIntervalMomentum(_) => S::DisableIntervalMomentum(false),
-            S::MinZoom(_) => S::MinZoom(1.0),
-            S::MaxZoom(_) => S::MaxZoom(1.0),
-            S::Zoom(_) => S::Zoom(1.0),
-            S::BouncesZoom(_) => S::BouncesZoom(true),
-            S::Pinch(_) => S::Pinch(true),
-            S::CenterContent(_) => S::CenterContent(false),
-        }),
-        Prop::Modal(m) => Prop::Modal(match m {
-            ModalProp::Animation(_) => ModalProp::Animation(ModalAnimation::Slide),
-            ModalProp::Presentation(_) => ModalProp::Presentation(ModalPresentation::FullScreen),
-            ModalProp::Transparent(_) => ModalProp::Transparent(false),
-            ModalProp::StatusBarTranslucent(_) => ModalProp::StatusBarTranslucent(false),
-            ModalProp::Orientations(_) => ModalProp::Orientations(0),
-            ModalProp::Dismissible(_) => ModalProp::Dismissible(false),
-        }),
-        Prop::Native(n) => Prop::Native(match n {
-            N::Disabled(_) => N::Disabled(false),
-            N::Source(_) => N::Source(WebSource::None),
-            N::InjectedJavaScript(_) => N::InjectedJavaScript(None),
-            N::InjectedJavaScriptBefore(_) => N::InjectedJavaScriptBefore(None),
-            N::UserAgent(_) => N::UserAgent(None),
-            N::ScrollEnabled(_) => N::ScrollEnabled(true),
-            N::JavaScriptEnabled(_) => N::JavaScriptEnabled(true),
-            N::BackForwardGestures(_) => N::BackForwardGestures(false),
-            N::Paused(_) => N::Paused(false),
-            N::Muted(_) => N::Muted(false),
-            N::Volume(_) => N::Volume(1.0),
-            N::Rate(_) => N::Rate(1.0),
-            N::Repeat(_) => N::Repeat(false),
-            N::VideoResizeMode(_) => N::VideoResizeMode(ResizeMode::Contain),
-            N::Controls(_) => N::Controls(false),
-            N::ProgressInterval(_) => N::ProgressInterval(250.0),
-        }),
-        _ => return None,
-    })
+    match prop {
+        Prop::ComponentProp(name, _) => Some(Prop::ComponentProp(name.clone(), None)),
+        _ => HostProps::reset(prop),
+    }
 }
 
 /// Sets `prop` on `node`, replacing the value of the same property.

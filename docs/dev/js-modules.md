@@ -36,7 +36,8 @@ is no catch-all module, and moved APIs get no compatibility re-exports.
 - **Platform modules** are importable on both platforms (one bundle runs on both); on the other one their calls do
   nothing and their components render nothing. `isAvailable` tells which.
 - **Platform-only props** are grouped: `ios={{…}}` / `android={{…}}` / `desktop={{…}}` (macOS, Windows, Linux) on
-  elements and components (`IOSProps` / `AndroidProps` / `DesktopProps` in `types.ts`, extended per element). The
+  elements and components (`IOSProps` / `AndroidProps` / `DesktopProps` in `types.ts`, extended per element; the host props in them are the
+  generated `IOS…HostProps` / `Android…HostProps` of `elements.gen.ts`). The
   renderer (`platformProps` in `_core.ts`) sends only the current platform's object, each key as a prop of its own (keys removed from the object are cleared); the core knows them by
   those names. Android: `ripple`, `elevation`, `accessibilityLiveRegion`, Modal `statusBarTranslucent`, StatusBar
   `backgroundColor` (a Rust component's `android` prop). Alert's `cancelable` is an option of both platforms (iOS

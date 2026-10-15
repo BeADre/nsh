@@ -552,11 +552,12 @@ export function component<P>(
   };
 }
 
-/** A component rendering intrinsic element `tag` with its props. */
-export function hostComponent<P>(tag: string): (props: P) => YNode {
+/** A component rendering intrinsic element `tag` with its props (and
+ * with `children`, its children). */
+export function hostComponent<P>(tag: string, children = false): (props: P) => YNode {
   return (props: P) => {
     const node = createElement(tag);
-    spread(node, props as any, true);
+    spread(node, props as any, !children);
     return node;
   };
 }

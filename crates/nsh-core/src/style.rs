@@ -13,6 +13,7 @@ use crate::{
     },
     grid,
     transform::{Transform, TransformKind},
+    ui::PropEnum,
 };
 
 /// An sRGB color packed as `0xRRGGBBAA`.
@@ -176,7 +177,7 @@ impl TextTransform {
 }
 
 /// Where text that does not fit `numberOfLines` is cut (`ellipsizeMode`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, PropEnum)]
 pub enum EllipsizeMode {
     /// "Lorem ips…" (default).
     #[default]

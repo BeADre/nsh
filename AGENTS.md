@@ -17,7 +17,8 @@ crates/
                        mount items; CSS values (`css.rs`: colors, lengths, shadows, gradients, filters), effects (`effects.rs`), Tailwind (`tailwind/`);
                        Rust components (`ui/`: elements, typed styles, the theme; `core/components.rs`); the runtime's Rust
                        modules (`runtime/`: `nsh/android`'s Toast, `nsh/image`, ...; their JS is generated)
-  nsh-macros/          Derives of Rust components (`Props`, `PropEnum`, `Event`, `JsObject`), `#[methods]`, `#[module]`, `Styled`'s spacing methods
+  nsh-macros/          Derives of Rust components (`Props`, `PropEnum`, `Event`, `JsObject`), `#[methods]`, `#[module]`, `Styled`'s spacing methods;
+                       `HostProps` (the host elements' props: decoding, defaults and TS)
   nsh-ui-mobile/       The components and modules of `nsh/ui/mobile` (Button, SafeAreaView, StatusBar, Alert, ...), written in Rust; their JS glue is generated
   nsh-anim/            Native animation graph (pure Rust): value / interpolate / math nodes, timing / spring / decay drivers
   nsh-js/              QuickJS host: console / timers / op bridge, op buffer decoding, bytecode compilation and loading
@@ -39,7 +40,8 @@ crates/
 js/runtime/*.ts       The JS runtime, one file per module apps import (docs/dev/js-modules.md): `index.ts` is `nsh`, `list.ts` is
                       `nsh/list`, ...; `_core.ts` is internal (the Solid universal renderer, the op buffer, the environment,
                       touches, the engine's hooks), bundled by nsh-bundler
-js/runtime/types.ts   Style, element-prop and JSX types (types only; also the source of `.nsh/types/nsh/types.d.ts`)
+js/runtime/types.ts   Element and JSX types over the generated style and host prop types, with the event handlers (types only;
+                      also the source of `.nsh/types/nsh/types.d.ts`)
 js/runtime/globals.d.ts  Declarations of the JS globals (console, timers, fetch, ...) and of asset imports
 js/runtime/hot.js     Hot module replacement runtime of development bundles (module registry, component proxies)
 js/ui/mobile/         The mobile UI, `nsh/ui/mobile` (`index.ts` re-exports the others): navigation and modals in Solid;
@@ -136,9 +138,10 @@ host it is an empty crate, so always run clippy on platform code with the Cataly
   trusted as the app. QuickJS bytecode is trusted input (`Bundle::bytecode` is `unsafe`): it only loads from the app's
   own resources, the dev server and verified packages (`docs/dev/signed-packages.md`).
 - **Generated, never hand-copied**: the op buffer's codes (`OP_*`, `ANIM_*`, `CV_*`), the canvas's recording methods
-  and properties, and the style types come from `crates/nsh-core/src/js/` (`protocol.gen.ts`, `canvas.gen.ts`,
-  `style.gen.ts`); a new style property is one line of `style_keys!` (`style.rs`) with its TS type.
-- **Keep in sync**: element props and events in `types.ts` ↔ `protocol.rs`; the order of `EventKind` ↔
+  and properties, the style types and the host elements' props come from `crates/nsh-core/src/js/` (`protocol.gen.ts`,
+  `canvas.gen.ts`, `style.gen.ts`, `elements.gen.ts`); a new style property is one line of `style_keys!` (`style.rs`)
+  with its TS type, a new host prop one variant of `Prop` with `#[prop(js = …)]` (`docs/dev/elements.md`).
+- **Keep in sync**: the event handlers in `types.ts` ↔ the payloads of `nsh-js`'s `dispatch_event`; the order of `EventKind` ↔
   `Native.java`; `encode.rs` opcodes ↔ `Mounter.java`; new event payload keys ↔ the JNI event map's key list;
   `BUNDLE_NAME` / `BYTECODE_VERSION` ↔ the linked QuickJS.
 

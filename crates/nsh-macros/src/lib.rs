@@ -15,6 +15,8 @@
 //! The code they generate names `::nsh_core::ui`. `style_helpers!` is
 //! internal to `nsh-core`: the spacing and sizing methods of `Styled`.
 
+mod host_props;
+
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
@@ -67,6 +69,8 @@ struct PropAttr {
     /// `default` (`Some(None)`) or `default = expr`.
     default: Option<Option<Expr>>,
     rename: Option<String>,
+    /// More names a `PropEnum` variant is read from.
+    aliases: Vec<String>,
 }
 
 fn prop_attr(attrs: &[Attribute]) -> syn::Result<PropAttr> {
@@ -86,8 +90,13 @@ fn prop_attr(attrs: &[Attribute]) -> syn::Result<PropAttr> {
             } else if meta.path.is_ident("rename") {
                 out.rename = Some(meta.value()?.parse::<LitStr>()?.value());
                 Ok(())
+            } else if meta.path.is_ident("alias") {
+                out.aliases.push(meta.value()?.parse::<LitStr>()?.value());
+                Ok(())
             } else {
-                Err(meta.error("expected `default`, `default = …` or `rename = \"…\"`"))
+                Err(meta.error(
+                    "expected `default`, `default = …`, `rename = \"…\"` or `alias = \"…\"`",
+                ))
             }
         })?;
     }
@@ -324,9 +333,29 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
     })
 }
 
+/// `#[derive(HostProps)]` on an enum of host element props
+/// (`nsh_core::js::host`): `#[prop(js = "name", …)]` on a variant gives
+/// its JS name (several for aliases; `ios = …` / `android = …` inside
+/// `ios={{…}}` / `android={{…}}`), how its payload decodes (its
+/// `HostValue`; `default = …`, `min` / `max`, `required`, or a whole
+/// decoder `with = path`), where it applies (`on = TEXT | INPUT`), its
+/// TypeScript type (`ts = "…"` over the payload's) and its reset
+/// (`reset = …`); `nested` delegates to an enum of the same kind,
+/// `internal` keeps it out of the element types. Doc comments document
+/// the props.
+#[proc_macro_derive(HostProps, attributes(prop))]
+pub fn derive_host_props(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    host_props::host_props(input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
 /// `#[derive(PropEnum)]`: an enum of unit variants as a string union in JS,
 /// each variant in camel case (`SemiBold` is `"semiBold"`;
-/// `#[prop(rename = "…")]` sets it).
+/// `#[prop(rename = "…")]` sets it, `#[prop(alias = "…")]` adds names it
+/// is read from). It is a `JsValue` for components' props and a
+/// `HostValue` for host props.
 #[proc_macro_derive(PropEnum, attributes(prop))]
 pub fn derive_prop_enum(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -346,6 +375,10 @@ fn prop_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
     let ui = quote!(::nsh_core::ui);
     let mut names = Vec::new();
     let mut idents = Vec::new();
+    // Every name a variant is read from (its own, then its aliases).
+    let mut read = Vec::new();
+    let mut accepted = Vec::new();
+    let mut patterns = Vec::new();
     for v in &data.variants {
         if !matches!(v.fields, Fields::Unit) {
             return Err(syn::Error::new(
@@ -354,10 +387,18 @@ fn prop_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
             ));
         }
         let attr = prop_attr(&v.attrs)?;
-        names.push(attr.rename.unwrap_or_else(|| camel(&v.ident.to_string())));
+        let own = attr.rename.unwrap_or_else(|| camel(&v.ident.to_string()));
+        let mut all = vec![own.clone()];
+        all.extend(attr.aliases);
+        names.push(own);
+        let ident = &v.ident;
+        read.push(quote!(#(#all)|* => Self::#ident));
+        patterns.push(quote!(#(#all)|*));
+        accepted.extend(all);
         idents.push(&v.ident);
     }
-    let ts = names
+    // The aliases are part of the type: JS may use them.
+    let ts = accepted
         .iter()
         .map(|n| format!("{n:?}"))
         .collect::<Vec<_>>()
@@ -377,16 +418,34 @@ fn prop_enum(input: DeriveInput) -> syn::Result<TokenStream2> {
             }
 
             fn from_json(value: ::nsh_core::JsonValue) -> ::core::result::Result<Self, #ui::PropError> {
-                match value.as_str() {
-                    #(::core::option::Option::Some(#names) => ::core::result::Result::Ok(Self::#idents),)*
-                    _ => ::core::result::Result::Err(#ui::PropError::expected(#expected, &value)),
-                }
+                ::core::result::Result::Ok(match value.as_str() {
+                    #(::core::option::Option::Some(#patterns) => Self::#idents,)*
+                    _ => return ::core::result::Result::Err(#ui::PropError::expected(#expected, &value)),
+                })
             }
 
             fn to_json(&self) -> ::nsh_core::JsonValue {
                 ::nsh_core::JsonValue::String(::std::string::String::from(match self {
                     #(Self::#idents => #names,)*
                 }))
+            }
+        }
+
+        impl ::nsh_core::js::host::HostValue for #name {
+            /// One of the names; anything else is none (the prop's
+            /// default).
+            fn decode<I: ::nsh_core::js::host::HostInput>(
+                input: &I,
+                _cx: &mut ::nsh_core::js::host::HostCx,
+            ) -> ::core::option::Option<Self> {
+                ::core::option::Option::Some(match input.as_string()?.as_str() {
+                    #(#read,)*
+                    _ => return ::core::option::Option::None,
+                })
+            }
+
+            fn ts_type(types: &mut #ui::TsTypes) -> ::std::string::String {
+                <Self as #ui::JsValue>::ts_type(types)
             }
         }
     })

@@ -1,0 +1,356 @@
+//! The props of host elements as JS sets them: how each one is decoded
+//! from the JS value and what its TypeScript type is, from one definition.
+//! `#[derive(HostProps)]` on [`crate::Prop`] (and the enums it nests) maps
+//! JS names to variants, decodes their payloads with [`HostValue`] and
+//! writes the [`HostPropSpec`]s the element types are generated from. The
+//! decoders read JS values through [`HostInput`], which `nsh-js` implements
+//! for QuickJS values: no JSON in between.
+
+use std::sync::Arc;
+
+pub use nsh_macros::HostProps;
+
+use crate::{EdgeInsets, style::Color, ui::TsTypes};
+
+/// A JS value as host props read it.
+pub trait HostInput: Sized {
+    /// `null` or `undefined`.
+    fn is_nullish(&self) -> bool;
+    /// An object (arrays and functions are objects too).
+    fn is_object(&self) -> bool;
+    /// A boolean.
+    fn as_bool(&self) -> Option<bool>;
+    /// A number.
+    fn as_number(&self) -> Option<f64>;
+    /// A string.
+    fn as_string(&self) -> Option<String>;
+    /// Field `key` of an object (`None`: not an object, or no such field).
+    fn field(&self, key: &str) -> Option<Self>;
+    /// The items of an array (empty for anything else).
+    fn items(&self) -> Vec<Self>;
+    /// The fields of an object (empty for anything else).
+    fn entries(&self) -> Vec<(String, Self)>;
+    /// Truthy, as JS sees it.
+    fn truthy(&self) -> bool;
+    /// The native animation node this value is (`NativeNode.__nv`).
+    fn native_node(&self) -> Option<nsh_anim::NodeId> {
+        self.field("__nv")
+            .and_then(|v| v.as_number())
+            .map(|n| n as nsh_anim::NodeId)
+    }
+}
+
+/// Where decoding reports what it could not take.
+#[derive(Debug, Default)]
+pub struct HostCx {
+    /// Warnings for the app's console (`unknown accessibilityRole`).
+    pub warnings: Vec<String>,
+}
+
+impl HostCx {
+    /// Reports `message`.
+    pub fn warn(&mut self, message: impl Into<String>) {
+        self.warnings.push(message.into());
+    }
+}
+
+/// A prop's value: how it comes out of a JS value and its TypeScript type.
+/// `decode` gives `None` for a value it does not take (`undefined`, another
+/// type): the prop then gets its default.
+pub trait HostValue: Sized {
+    /// The value in `input`.
+    fn decode<I: HostInput>(input: &I, cx: &mut HostCx) -> Option<Self>;
+    /// Its TypeScript type, declaring the named types it uses.
+    fn ts_type(types: &mut TsTypes) -> String;
+}
+
+/// Where a host prop applies, for the generated element types.
+pub mod on {
+    /// Every element.
+    pub const ALL: u32 = 1;
+    /// `<text>`.
+    pub const TEXT: u32 = 1 << 1;
+    /// `<image>`.
+    pub const IMAGE: u32 = 1 << 2;
+    /// Scroll views and lists (their scrolling behavior).
+    pub const SCROLLING: u32 = 1 << 3;
+    /// `<scroll>` only.
+    pub const SCROLL: u32 = 1 << 4;
+    /// Lists (`List`).
+    pub const LIST: u32 = 1 << 5;
+    /// `<input>`.
+    pub const INPUT: u32 = 1 << 6;
+    /// Screens of a stack.
+    pub const SCREEN: u32 = 1 << 7;
+    /// `<modal>`.
+    pub const MODAL: u32 = 1 << 8;
+    /// `<webview>`.
+    pub const WEBVIEW: u32 = 1 << 9;
+    /// `<video>`.
+    pub const VIDEO: u32 = 1 << 10;
+    /// Input accessories (iOS).
+    pub const INPUT_ACCESSORY: u32 = 1 << 11;
+    /// Set by the runtime itself, not part of the elements' types.
+    pub const INTERNAL: u32 = 1 << 31;
+}
+
+/// The platform a prop is for: everywhere, or inside `ios={{…}}` /
+/// `android={{…}}`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Platform {
+    /// Every platform.
+    All,
+    /// `ios={{…}}`.
+    Ios,
+    /// `android={{…}}`.
+    Android,
+}
+
+/// One host prop, for the generated TypeScript.
+#[derive(Debug, Clone)]
+pub struct HostPropSpec {
+    /// Its JS name.
+    pub name: &'static str,
+    /// Its TypeScript type.
+    pub ts: String,
+    /// Documentation.
+    pub doc: &'static str,
+    /// The elements it applies to ([`on`] bits).
+    pub on: u32,
+    /// The platform it is for.
+    pub platform: Platform,
+}
+
+/// An enum of host props (`#[derive(HostProps)]`).
+pub trait HostProps: Sized {
+    /// The prop JS name `name` sets with `input`: `None` for a name that is
+    /// not one of these props, `Some(None)` when nothing is to be set.
+    fn decode<I: HostInput>(name: &str, input: &I, cx: &mut HostCx) -> Option<Option<Self>>;
+    /// This prop at its default (what clearing it from JS sets); `None` for
+    /// the props the runtime sets once.
+    fn reset(&self) -> Option<Self>;
+    /// Whether `self` and `other` set the same property.
+    fn same_kind(&self, other: &Self) -> bool;
+    /// The props, for the generated TypeScript.
+    fn specs(types: &mut TsTypes, out: &mut Vec<HostPropSpec>);
+}
+
+/// Numbers held to a range after decoding (`#[prop(min = …, max = …)]`).
+pub trait Clamped {
+    /// `self` within `min..=max` (either bound left out).
+    fn clamped(self, min: Option<f64>, max: Option<f64>) -> Self;
+}
+
+impl Clamped for f32 {
+    fn clamped(self, min: Option<f64>, max: Option<f64>) -> Self {
+        let v = min.map_or(self, |m| self.max(m as f32));
+        max.map_or(v, |m| v.min(m as f32))
+    }
+}
+
+impl Clamped for u32 {
+    fn clamped(self, min: Option<f64>, max: Option<f64>) -> Self {
+        let v = min.map_or(self, |m| self.max(m as u32));
+        max.map_or(v, |m| v.min(m as u32))
+    }
+}
+
+impl<T: Clamped> Clamped for Option<T> {
+    fn clamped(self, min: Option<f64>, max: Option<f64>) -> Self {
+        self.map(|v| v.clamped(min, max))
+    }
+}
+
+impl HostValue for bool {
+    fn decode<I: HostInput>(input: &I, _: &mut HostCx) -> Option<Self> {
+        input.as_bool()
+    }
+
+    fn ts_type(_: &mut TsTypes) -> String {
+        "boolean".into()
+    }
+}
+
+impl HostValue for f32 {
+    fn decode<I: HostInput>(input: &I, _: &mut HostCx) -> Option<Self> {
+        input.as_number().map(|n| n as f32)
+    }
+
+    fn ts_type(_: &mut TsTypes) -> String {
+        "number".into()
+    }
+}
+
+impl HostValue for u32 {
+    /// Negative numbers are 0, fractions are cut.
+    fn decode<I: HostInput>(input: &I, _: &mut HostCx) -> Option<Self> {
+        input.as_number().map(|n| n.max(0.0) as u32)
+    }
+
+    fn ts_type(_: &mut TsTypes) -> String {
+        "number".into()
+    }
+}
+
+impl HostValue for String {
+    /// Anything but a string is the empty string's default.
+    fn decode<I: HostInput>(input: &I, _: &mut HostCx) -> Option<Self> {
+        input.as_string()
+    }
+
+    fn ts_type(_: &mut TsTypes) -> String {
+        "string".into()
+    }
+}
+
+impl HostValue for Arc<str> {
+    /// The empty string is no value.
+    fn decode<I: HostInput>(input: &I, _: &mut HostCx) -> Option<Self> {
+        input.as_string().filter(|s| !s.is_empty()).map(Into::into)
+    }
+
+    fn ts_type(_: &mut TsTypes) -> String {
+        "string".into()
+    }
+}
+
+impl HostValue for Box<str> {
+    /// The empty string is no value.
+    fn decode<I: HostInput>(input: &I, _: &mut HostCx) -> Option<Self> {
+        input.as_string().filter(|s| !s.is_empty()).map(Into::into)
+    }
+
+    fn ts_type(_: &mut TsTypes) -> String {
+        "string".into()
+    }
+}
+
+impl HostValue for Color {
+    /// A CSS color string; anything else, or an invalid color, is none.
+    fn decode<I: HostInput>(input: &I, _: &mut HostCx) -> Option<Self> {
+        input.as_string().and_then(|s| Color::parse(&s))
+    }
+
+    fn ts_type(_: &mut TsTypes) -> String {
+        "ColorValue".into()
+    }
+}
+
+/// `None` when there is no value: the prop is cleared.
+impl<T: HostValue> HostValue for Option<T> {
+    fn decode<I: HostInput>(input: &I, cx: &mut HostCx) -> Option<Self> {
+        Some(T::decode(input, cx))
+    }
+
+    fn ts_type(types: &mut TsTypes) -> String {
+        T::ts_type(types)
+    }
+}
+
+/// The items `T` takes, the others skipped.
+impl<T: HostValue> HostValue for Vec<T> {
+    fn decode<I: HostInput>(input: &I, cx: &mut HostCx) -> Option<Self> {
+        Some(
+            input
+                .items()
+                .iter()
+                .filter_map(|i| T::decode(i, cx))
+                .collect(),
+        )
+    }
+
+    fn ts_type(types: &mut TsTypes) -> String {
+        format!("{}[]", T::ts_type(types))
+    }
+}
+
+/// `{ top, right, bottom, left }` (each 0 when left out).
+impl HostValue for EdgeInsets {
+    fn decode<I: HostInput>(input: &I, _: &mut HostCx) -> Option<Self> {
+        let side = |key| input.field(key).and_then(|v| v.as_number()).unwrap_or(0.0) as f32;
+        Some(EdgeInsets {
+            top: side("top"),
+            right: side("right"),
+            bottom: side("bottom"),
+            left: side("left"),
+        })
+    }
+
+    fn ts_type(_: &mut TsTypes) -> String {
+        "{ top?: number; right?: number; bottom?: number; left?: number }".into()
+    }
+}
+
+/// Field `key` of `input` as `T`.
+pub fn field<T: HostValue, I: HostInput>(input: &I, key: &str, cx: &mut HostCx) -> Option<T> {
+    input.field(key).and_then(|v| T::decode(&v, cx))
+}
+
+/// The interfaces of `elements.gen.ts`, by the elements their props apply
+/// to: `HostProps` for every element, `TextHostProps` for `<text>`, ...
+const GROUPS: &[(u32, &str, &str)] = &[
+    (on::ALL, "", "every element"),
+    (on::TEXT, "Text", "`<text>`"),
+    (on::IMAGE, "Image", "`<image>`"),
+    (
+        on::SCROLLING,
+        "Scrolling",
+        "scroll views and lists (how they scroll)",
+    ),
+    (on::SCROLL, "Scroll", "`<scroll>`"),
+    (on::LIST, "List", "lists"),
+    (on::INPUT, "Input", "`<input>`"),
+    (on::SCREEN, "Screen", "the screens of a stack"),
+    (on::MODAL, "Modal", "modals"),
+    (on::WEBVIEW, "WebView", "web views"),
+    (on::VIDEO, "Video", "videos"),
+    (on::INPUT_ACCESSORY, "InputAccessory", "input accessories"),
+];
+
+/// The TypeScript of the host elements' props (`elements.gen.ts`): the
+/// named types they use and one interface per element group and platform
+/// (`InputHostProps`, `IOSInputHostProps`, ...), which the element types of
+/// `types.ts` and the runtime's components extend.
+pub fn typescript() -> String {
+    use std::fmt::Write as _;
+    let mut types = TsTypes::default();
+    let mut specs = Vec::new();
+    <crate::Prop as HostProps>::specs(&mut types, &mut specs);
+    let mut out = super::banner("the host props of nsh_core (nsh_core::js::host)");
+    out.push_str(
+        "import type { NativeValue } from \"./animated\";\n\
+         import type { ViewabilityConfig } from \"./list\";\n\
+         import type { ColorValue } from \"./style.gen\";\n\
+         import type { ImageAsset } from \"./types\";\n",
+    );
+    for declaration in types.declarations() {
+        let _ = write!(out, "\n{declaration}\n");
+    }
+    for (bit, group, what) in GROUPS {
+        for (platform, prefix, inside) in [
+            (Platform::All, "", ""),
+            (Platform::Ios, "IOS", " inside `ios={{…}}`"),
+            (Platform::Android, "Android", " inside `android={{…}}`"),
+        ] {
+            let props: Vec<&HostPropSpec> = specs
+                .iter()
+                .filter(|s| s.on & bit != 0 && s.platform == platform)
+                .collect();
+            if props.is_empty() {
+                continue;
+            }
+            let _ = write!(
+                out,
+                "\n/** The props of {what}{inside}. */\nexport interface {prefix}{group}HostProps {{\n"
+            );
+            for p in props {
+                if !p.doc.is_empty() {
+                    let _ = writeln!(out, "  /** {} */", p.doc);
+                }
+                let _ = writeln!(out, "  {}?: {};", p.name, p.ts);
+            }
+            out.push_str("}\n");
+        }
+    }
+    out
+}

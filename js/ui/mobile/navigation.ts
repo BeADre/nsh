@@ -22,7 +22,16 @@ import {
   spread,
   YNode,
 } from "nsh/_core";
-import type { JSX, StyleProp, ViewStyle } from "nsh";
+import type {
+  AndroidModalHostProps,
+  IOSModalHostProps,
+  IOSScreenHostProps,
+  JSX,
+  ModalHostProps,
+  ScreenHostProps,
+  StyleProp,
+  ViewStyle,
+} from "nsh";
 
 // --- Navigation -------------------------------------------------------------
 
@@ -97,39 +106,17 @@ export function Stack<R>(props: StackProps<R>): YNode {
   return stack;
 }
 
-export interface ScreenProps {
-  title?: string;
-  headerShown?: boolean;
-  /** The content extends under the header. */
-  headerTransparent?: boolean;
-  headerTintColor?: string;
-  headerBackgroundColor?: string;
-  headerTitleColor?: string;
-  headerBackVisible?: boolean;
+export interface ScreenProps extends ScreenHostProps {
   headerLeft?: JSX.Element;
   headerRight?: JSX.Element;
   /** Replaces the title. */
   headerTitle?: JSX.Element;
-  /** The interactive back gesture (iOS swipe back, Android predictive back
-   * following the finger); the back buttons pop either way (default true). */
-  gestureEnabled?: boolean;
-  /** The user cannot leave the screen: no swipe back, and the back buttons
-   * (header, Android back) call `onBackRequest` instead of popping, e.g. to
-   * confirm discarding changes and then `pop()`. Decided natively when the
-   * system asks, so set it before the user acts. */
-  preventBack?: boolean;
   /** The user tried to leave a screen with `preventBack`. */
   onBackRequest?: () => void;
-  animation?: "default" | "fade" | "none";
   style?: StyleProp<ViewStyle>;
   onDismiss?: () => void;
   children?: JSX.Element;
-  ios?: {
-    /** A large title; the content scrolls under the header. */
-    headerLargeTitle?: boolean;
-    /** Label of the back button leading back to this screen. */
-    headerBackTitle?: string;
-  };
+  ios?: IOSScreenHostProps;
 }
 
 /** One screen of a `<Stack>`, with its header options. */
@@ -175,17 +162,9 @@ export function Screen(props: ScreenProps): YNode {
   return node;
 }
 
-export interface ModalProps {
+export interface ModalProps extends ModalHostProps {
   /** Shown while true (default). */
   visible?: boolean;
-  animationType?: "slide" | "fade" | "none";
-  /** The background shows what is behind. */
-  transparent?: boolean;
-  /** The user closes it natively (iOS sheet swiped down, Android back
-   * button), then `onRequestClose` and `onDismiss` follow: set `visible` to
-   * false there. Without it (default) those only ask to close and `visible`
-   * decides. */
-  dismissible?: boolean;
   /** The user asked to close (Android back button, iOS sheet swipe): set
    * `visible` to false to close it. */
   onRequestClose?: () => void;
@@ -193,16 +172,8 @@ export interface ModalProps {
   onDismiss?: () => void;
   style?: StyleProp<ViewStyle>;
   children?: JSX.Element;
-  ios?: {
-    /** `"pageSheet"` / `"formSheet"` keep what is behind visible. */
-    presentationStyle?: "fullScreen" | "pageSheet" | "formSheet";
-    /** The orientations it allows (default: the presenter's). */
-    supportedOrientations?: ("portrait" | "portrait-upside-down" | "landscape" | "landscape-left" | "landscape-right")[];
-  };
-  android?: {
-    /** The content reaches under the status bar (default: it starts below). */
-    statusBarTranslucent?: boolean;
-  };
+  ios?: IOSModalHostProps;
+  android?: AndroidModalHostProps;
 }
 
 /** Content presented over everything else, in its own native window layer. */

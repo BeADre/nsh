@@ -21,6 +21,17 @@ On Android the same elements map to `Box` (ViewGroup), `TextBox`, `ImageBox`, `S
 (MediaPlayer on a TextureView, MediaController); both are `WidgetBox`es. Every host element and runtime component is typed in
 `js/runtime/types.ts` and the runtime's modules.
 
+**Host props are one definition.** A host prop is a variant of `nsh_core::Prop` (or of the enum it nests: `ScrollProp`,
+`NativeProp`, `AccessibilityProp`, ...) with `#[prop(js = "name", ...)]`: `#[derive(HostProps)]` (`nsh_core::js::host`)
+derives from it how `nsh-js` decodes the JS value (straight from QuickJS values, no JSON), the default clearing the
+prop sets (`HostProps::reset`, also used when a Rust component's render stops setting it) and the TypeScript of
+`elements.gen.ts`: one interface per element group and platform (`InputHostProps`, `IOSInputHostProps`, ...) that
+the element types of `types.ts` and the runtime's components extend. The payload's type decodes itself (`HostValue`;
+`#[derive(PropEnum)]` for string unions); `default`, `min` / `max`, `on` (the element groups), `ios` / `android`
+(names inside `ios={{…}}` / `android={{…}}`), `with` (a decoder of the whole variant, `js/host_values.rs`), `once`
+(not reset) and `internal` (set by the runtime, untyped) cover the rest. The event handlers stay in `types.ts`: the
+same event carries different payloads on different elements (`onLoad`).
+
 ## Primitives only
 
 nsh's runtime provides the basic capabilities. Components are the UI sets' (Rust, `crates/nsh-ui-mobile`,

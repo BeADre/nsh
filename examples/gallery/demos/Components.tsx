@@ -109,7 +109,7 @@ function Accessory() {
       <Show when={Platform.OS === "android"}>
         <text style={styles.muted}>Android has no input accessories.</text>
       </Show>
-      <InputAccessoryView nativeID="counter" backgroundColor="#f6f8fa">
+      <InputAccessoryView nativeID="counter" style={{ backgroundColor: "#f6f8fa" }}>
         <view style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: hairline, borderTopColor: colors.border }}>
           <text style={[styles.muted, { flex: 1 }]}>{text().length} characters</text>
           <UiButton label="Clear" color="#57606a" onPress={() => setText("")} />
