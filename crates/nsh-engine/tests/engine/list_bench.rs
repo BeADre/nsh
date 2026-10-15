@@ -1,7 +1,7 @@
 //! Scroll benchmark of the gallery example's list: cost of the frames that
 //! rebind a row (JS + core), back to back and with an idle gap.
 //!
-//! Run with `cargo test --release -p nsh-engine --test list_bench -- --ignored --nocapture`.
+//! Run with `cargo test --release -p nsh-engine --test engine bench_gallery_scroll -- --ignored --nocapture`.
 //!
 //! Finding (Apple Silicon): ~20µs hot, ~40µs when the caches are flushed
 //! between frames, but ~150µs after sleeping 10ms. The difference is the CPU

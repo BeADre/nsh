@@ -2,10 +2,10 @@
 //! (`examples/bench`): the first frame of 200 Buttons, one update of all their
 //! titles, and scrolling a recycled list with a Button per row.
 //!
-//! Run with `cargo test --release -p nsh-engine --test component_bench bench_ -- --ignored --nocapture`;
+//! Run with `cargo test --release -p nsh-engine --test engine bench_components -- --ignored --nocapture`;
 //! the numbers are in `docs/dev/performance.md`. `profile_components` loops
 //! the Rust Grid for a profiler (`samply record <test binary>
-//! profile_components --ignored --exact`).
+//! component_bench::profile_components --ignored --exact`).
 
 use std::time::{Duration, Instant};
 

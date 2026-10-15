@@ -3,20 +3,13 @@
 
 use std::{path::PathBuf, time::Duration};
 
-use crossbeam_channel::Sender;
-use nsh_core::{ApproxTextEngine, MountBatch, MountItem, Size};
+use nsh_core::{ApproxTextEngine, MountItem, Size};
 use nsh_engine::{
-    Engine, EngineConfig, MountSink,
+    Engine, EngineConfig,
     package::{App, Contents, SecretKey, TrustStore, build, certify},
 };
 
-struct ChannelSink(Sender<MountBatch>);
-
-impl MountSink for ChannelSink {
-    fn submit(&self, batch: MountBatch) {
-        let _ = self.0.send(batch);
-    }
-}
+use crate::ChannelSink;
 
 fn counter(build_number: u64, bytecode_version: &str) -> Contents {
     let entry = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/counter/App.tsx");

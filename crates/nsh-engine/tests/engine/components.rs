@@ -5,20 +5,14 @@
 
 use std::time::Duration;
 
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::Receiver;
 use nsh_core::{
     ApproxTextEngine, Command, DialogButtonStyle, EventKind, EventPayload, MountBatch, MountItem,
     PayloadValue, ROOT_ID, Size, StatusBarStyle,
 };
-use nsh_engine::{Bundle, Engine, EngineConfig, Environment, Insets, MountSink};
+use nsh_engine::{Bundle, Engine, EngineConfig, Environment, Insets};
 
-struct ChannelSink(Sender<MountBatch>);
-
-impl MountSink for ChannelSink {
-    fn submit(&self, batch: MountBatch) {
-        let _ = self.0.send(batch);
-    }
-}
+use crate::ChannelSink;
 
 const APP: &str = r#"import { createSignal, Show } from "solid-js";
 import { render, root } from "nsh";

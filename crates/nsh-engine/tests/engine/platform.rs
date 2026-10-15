@@ -3,17 +3,10 @@
 
 use std::time::Duration;
 
-use crossbeam_channel::Sender;
-use nsh_core::{ApproxTextEngine, MountBatch, MountItem, Size};
-use nsh_engine::{Bundle, Engine, EngineConfig, Environment, MountSink, Os};
+use nsh_core::{ApproxTextEngine, MountItem, Size};
+use nsh_engine::{Bundle, Engine, EngineConfig, Environment, Os};
 
-struct ChannelSink(Sender<MountBatch>);
-
-impl MountSink for ChannelSink {
-    fn submit(&self, batch: MountBatch) {
-        let _ = self.0.send(batch);
-    }
-}
+use crate::ChannelSink;
 
 const APP: &str = r#"import { render, root } from "nsh";
 import { Platform } from "nsh/device";

@@ -3,20 +3,13 @@
 
 use std::time::Duration;
 
-use crossbeam_channel::Sender;
 use nsh_core::{
     ApproxTextEngine, MountBatch, MountItem, Size,
     canvas::{CanvasOp, LineCap, Num, PathOp},
 };
-use nsh_engine::{Bundle, Engine, EngineConfig, MountSink};
+use nsh_engine::{Bundle, Engine, EngineConfig};
 
-struct ChannelSink(Sender<MountBatch>);
-
-impl MountSink for ChannelSink {
-    fn submit(&self, batch: MountBatch) {
-        let _ = self.0.send(batch);
-    }
-}
+use crate::ChannelSink;
 
 const APP: &str = r##"import { render, root } from "nsh";
 import { Canvas, Path2D } from "nsh/canvas";

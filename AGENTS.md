@@ -100,7 +100,7 @@ cargo xtask dist                                                                
 ./target/debug/nsh revoke --root keys/root.secret --sequence 1 --package <sha256> -o revocations.json
 
 cargo test --workspace
-cargo test --release -p nsh-engine --test list_bench -- --ignored --nocapture   # gallery scroll benchmark (JS + core)
+cargo test --release -p nsh-engine --test engine bench_gallery_scroll -- --ignored --nocapture   # gallery scroll benchmark (JS + core)
 cargo test --release -p nsh-core bench_ -- --ignored --nocapture                # row / cell relayout benchmarks
 cargo +nightly fmt --all                                                        # .rustfmt.toml uses nightly options
 cargo clippy --workspace --all-targets
@@ -153,6 +153,9 @@ host it is an empty crate, so always run clippy on platform code with the Cataly
 - Library crates only log through the `log` facade (no `eprintln!`); performance logs use target `nsh::perf`, JS logs target `js`. Binaries install the logger.
 - Dependencies are declared once in the root `Cargo.toml` `[workspace.dependencies]`; crates only write `.workspace = true`.
 - Every `unsafe` block has a `// SAFETY:` comment.
+- A crate's integration tests are one test binary (`tests/<name>/main.rs` with a module per area, as
+  `nsh-engine/tests/engine/`), never a new `tests/*.rs`: each binary links its own copy of the bundler, QuickJS and
+  the core (about 1 GiB of debug objects apiece).
 
 ## Commits and pull requests
 
