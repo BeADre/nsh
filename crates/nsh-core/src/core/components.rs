@@ -1009,6 +1009,14 @@ impl<M: TextEngine> Core<M> {
         if new.inline != old.inline {
             let _ = self.apply_op(inline_style(id, new.inline.as_ref()));
         }
+        if new.drawing != old.drawing
+            && let Some(drawing) = &new.drawing
+        {
+            let _ = self.apply_op(Op::Draw {
+                id,
+                drawing: Box::new((**drawing).clone()),
+            });
+        }
     }
 
     /// Sets node `id`'s classes: `style` lowered, then `user` (a host's).

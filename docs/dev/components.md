@@ -77,10 +77,19 @@ impl Component for Button {
     generic over the row type). `.list(props.items, |l| l.flex_1().estimated_item_size(48.0), |row, at|
     view().px_4().when(at.is_last(), |v| v.rounded_b(px(16.0))).child(row))` places the list, lays it out (size, columns, padding, gaps, direction) and wraps each
     row; only rows near the viewport exist and cells are recycled as with `List`.
-- **Elements** are `view()`, `text(..)`, `image(..)`, strings (as texts) and other components (`Button::element(props)`,
-  whose `.on_event(cx.listener(..))` handles their typed events instead of the app). Their abilities are traits:
-  `Styled`, `Accessible`, `Interactive` (`on_press`, `active` / `hover` / `focus` styles, `disabled`), `ParentElement`,
-  `FluentBuilder` (`when`, `when_some`, `map`).
+- **Elements** are `view()`, `text(..)`, `image(..)`, the other host elements (`input()`, `scroll()`, `modal()`,
+  `canvas(drawing)`, `web_view(url)`, `video(url)`, `native(name)` for the embedder's components; `ui/host.rs`),
+  strings (as texts) and other components (`Button::element(props)`, whose `.on_event(cx.listener(..))` handles their
+  typed events instead of the app). Their abilities are traits: `Styled`, `Accessible`, `Interactive` (`active` /
+  `hover` / `focus` styles, `disabled`, `hit_slop`, and the typed events every element has: `on_press`,
+  `on_long_press`, `on_layout(Rect)`, `on_touch(TouchEvent)`, `on_pan_start`, ...), `ParentElement`, `FluentBuilder`
+  (`when`, `when_some`, `map`). Each host element has its own props and typed events (`input().value(..)
+  .on_change_text(cx.listener(|this, text: &str, cx| ..))`, `scroll().on_scroll(..)`, `modal().on_request_close(..)`);
+  `on(kind, listener)` takes any native event with its raw payload. Host props are the core's `Prop`s, kept one per
+  property and diffed by kind: one a render stops setting goes back to its default, as when JS clears it. A modal
+  is presented while it is in the render. Canvases draw a `Drawing`, recorded with `Painter` (the Canvas 2D
+  operations); a new drawing replaces the old one. Props that take a plain color (an input's placeholder color)
+  take `cx.color(theme.muted_foreground)`: the theme color for the appearance now.
 - **State** is `Self`, written like a Solid component where Rust allows:
 
   | Solid | Rust component |

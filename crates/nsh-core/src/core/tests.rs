@@ -3756,4 +3756,128 @@ mod components {
         c.commit();
         assert_eq!(c.components.executor.task_count(), 0);
     }
+
+    /// A form: an input it controls, a scroll view, a modal while the
+    /// name is long enough, a canvas drawing its length.
+    #[derive(Default)]
+    struct Form {
+        name: String,
+        focused: bool,
+    }
+
+    impl Component for Form {
+        const NAME: &'static str = "test.form";
+        type Props = FormProps;
+        type Event = NoEvent;
+
+        fn render(&self, _: &FormProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            let len = self.name.len() as f32;
+            view()
+                .child(
+                    scroll().bounces(false).child(
+                        input()
+                            .value(self.name.clone())
+                            .when(self.name.is_empty(), |i| i.placeholder("Name"))
+                            .on_change_text(cx.listener(|this: &mut Self, text: &str, cx| {
+                                this.name = text.to_owned();
+                                cx.notify();
+                            }))
+                            .on_focus(cx.listener(|this: &mut Self, _, cx| {
+                                this.focused = true;
+                                cx.notify();
+                            })),
+                    ),
+                )
+                .child(canvas(Painter::new().fill_rect(0.0, 0.0, len, 4.0)))
+                .children((self.name.len() > 2).then(|| {
+                    modal()
+                        .transparent(true)
+                        .child(text(format!("Hi {}", self.name)))
+                }))
+                .child(text(if self.focused { "focused" } else { "idle" }))
+        }
+    }
+
+    #[derive(Clone, PartialEq, Props)]
+    struct FormProps {}
+
+    #[test]
+    fn host_elements_take_typed_props_and_events() {
+        let mut c = core();
+        let mut registry = Registry::new();
+        registry.register::<Form>();
+        c.set_components(registry);
+        apply(
+            &mut c,
+            vec![
+                Op::Create {
+                    id: 2,
+                    tag: Tag::View,
+                },
+                Op::SetProp {
+                    id: 2,
+                    prop: Prop::Component("test.form".into()),
+                },
+                Op::Insert {
+                    parent: ROOT_ID,
+                    child: 2,
+                    before: None,
+                },
+            ],
+        );
+        let batch = c.commit().unwrap();
+        let created = |batch: &MountBatch, wanted: ViewKind| {
+            batch.items.iter().find_map(|i| match i {
+                MountItem::Create { id, kind } if *kind == wanted => Some(*id),
+                _ => None,
+            })
+        };
+        let input = created(&batch, ViewKind::Input).expect("an input");
+        assert!(created(&batch, ViewKind::Scroll).is_some());
+        assert!(created(&batch, ViewKind::Modal).is_none(), "no modal yet");
+        let placeholder = |batch: &MountBatch| {
+            batch.items.iter().find_map(|i| match i {
+                MountItem::Input { config, .. } => Some(config.placeholder.clone()),
+                _ => None,
+            })
+        };
+        assert_eq!(placeholder(&batch).as_deref(), Some("Name"));
+        assert!(
+            batch
+                .items
+                .iter()
+                .any(|i| matches!(i, MountItem::Canvas { .. }))
+        );
+        assert_eq!(texts(&batch), ["idle"]);
+
+        // Typing: the component gets the text, the placeholder goes back to
+        // its default, the modal appears, the canvas draws again; the
+        // input's value is the platform's already, so it is not sent back.
+        c.input_changed(input, "Ada", 1);
+        assert!(c.component_event(
+            input,
+            EventKind::ChangeText,
+            &EventPayload::Text {
+                text: "Ada".into(),
+                count: 1
+            }
+        ));
+        assert!(c.component_event(input, EventKind::Focus, &EventPayload::None));
+        let batch = c.commit().unwrap();
+        assert_eq!(placeholder(&batch).as_deref(), Some(""));
+        assert!(created(&batch, ViewKind::Modal).is_some());
+        assert!(
+            batch
+                .items
+                .iter()
+                .any(|i| matches!(i, MountItem::Canvas { .. }))
+        );
+        assert!(
+            !batch
+                .items
+                .iter()
+                .any(|i| matches!(i, MountItem::InputValue { .. }))
+        );
+        assert_eq!(texts(&batch), ["Hi Ada", "focused"]);
+    }
 }

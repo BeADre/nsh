@@ -28,6 +28,8 @@
 mod component;
 mod element;
 pub(crate) mod env;
+mod events;
+pub(crate) mod host;
 mod module;
 pub(crate) mod status_bar;
 mod style;
@@ -53,6 +55,14 @@ pub use self::{
         ParentElement, Position, RenderCx, Slot, SlotElement, Style, Text, View, image, text, view,
     },
     env::Environment,
+    events::{
+        GestureEvent, NativeEvent, PanEvent, ScrollEvent, ScrollOffset, Selection, VideoInfo,
+        VideoProgress, WebNavigation,
+    },
+    host::{
+        CanvasArg, CanvasView, Input, Modal, NativeView, Painter, Scroll, Video, WebView, canvas,
+        input, modal, native, scroll, video, web_view,
+    },
     module::{
         Function, FunctionCall, FunctionSpec, Module, ModuleCx, ModuleFuture, ModuleParam,
         ModuleSpec,
@@ -72,13 +82,83 @@ pub use crate::{
 /// Everything a component's module needs: `use nsh_core::ui::prelude::*;`.
 pub mod prelude {
     pub use super::{
-        AccessibilityRole, AccessibilityState, Accessible, AdaptiveColor, AsyncCx, Child, Children,
-        Color, Component, ComponentElement, Context, DialogAnswer, EdgeInsets, Element,
-        Environment, Event, EventKind, EventPayload, FluentBuilder, FontWeight, Interactive,
-        IntoElement, Items, JsObject, JsValue, Length, Listener, Method, ModuleCx, NoEvent,
-        ParentElement, PointerEvents, Position, PropEnum, Props, RenderCx, SharedString, Slot,
-        Styled, Task, Theme, WeakComponent, image, methods, module, px, relative, rgb, rgba, text,
+        AccessibilityRole,
+        AccessibilityState,
+        Accessible,
+        AdaptiveColor,
+        AsyncCx,
+        // Host elements.
+        CanvasView,
+        Child,
+        Children,
+        Color,
+        Component,
+        ComponentElement,
+        Context,
+        DialogAnswer,
+        EdgeInsets,
+        Element,
+        Environment,
+        Event,
+        EventKind,
+        EventPayload,
+        FluentBuilder,
+        FontWeight,
+        // Typed events.
+        GestureEvent,
+        Input,
+        Interactive,
+        IntoElement,
+        Items,
+        JsObject,
+        JsValue,
+        Length,
+        Listener,
+        Method,
+        Modal,
+        ModuleCx,
+        NativeEvent,
+        NativeView,
+        NoEvent,
+        Painter,
+        PanEvent,
+        ParentElement,
+        PointerEvents,
+        Position,
+        PropEnum,
+        Props,
+        RenderCx,
+        Scroll,
+        ScrollEvent,
+        ScrollOffset,
+        Selection,
+        SharedString,
+        Slot,
+        Styled,
+        Task,
+        Theme,
+        Video,
+        VideoInfo,
+        VideoProgress,
+        WeakComponent,
+        WebNavigation,
+        WebView,
+        canvas,
+        image,
+        input,
+        methods,
+        modal,
+        module,
+        native,
+        px,
+        relative,
+        rgb,
+        rgba,
+        scroll,
+        text,
+        video,
         view,
+        web_view,
     };
 }
 

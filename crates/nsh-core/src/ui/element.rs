@@ -8,6 +8,7 @@ use std::{
     future::Future,
     marker::PhantomData,
     rc::Rc,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -16,6 +17,7 @@ use rustc_hash::FxHashMap;
 use super::{
     Component, Event, JsValue, PropError, SharedString, Theme,
     env::{self, Environment},
+    events::{self, GestureEvent, PanEvent},
     status_bar::{StatusBarEntry, StatusBars},
     style::{StyleRefinement, Styled, Variant},
     task::{self, Action, AsyncCx, DialogAnswer, Executor, Task, WeakComponent},
@@ -23,7 +25,7 @@ use super::{
 use crate::{
     AccessibilityProp, AccessibilityRole, AccessibilityState, Command, Dialog, EdgeInsets,
     EventKind, EventPayload, ImageSource, JsonValue, LayoutAnimation, ListContentStyle, NativeProp,
-    NodeId, PointerEvents, Prop, Size, StatusBarSetting, Tag,
+    NodeId, PointerEvents, Prop, Rect, Size, StatusBarSetting, Tag, TouchEvent, style::Color,
 };
 
 /// A handler of `E` on an element, made by [`RenderCx::listener`]: it runs
@@ -33,6 +35,13 @@ pub struct Listener<E: ?Sized>(pub(crate) Rc<ErasedListener<E>>);
 /// A listener with the component's type erased (it downcasts the state).
 /// It gets the component's state and props.
 pub(crate) type ErasedListener<E> = dyn Fn(&mut dyn Any, &dyn Any, &E, &mut ErasedCx);
+
+impl<E: ?Sized + 'static> Listener<E> {
+    /// A listener that does nothing (the element still listens).
+    pub(crate) fn noop() -> Self {
+        Self(Rc::new(|_, _, _, _| {}))
+    }
+}
 
 impl<E: ?Sized> Clone for Listener<E> {
     fn clone(&self) -> Self {
@@ -157,6 +166,13 @@ impl<'a, C: Component> RenderCx<'a, C> {
     /// follow it without this; read it for anything else.
     pub fn dark(&self) -> bool {
         self.read(env::APPEARANCE).dark
+    }
+
+    /// `color` for the appearance now (props that take a [`Color`], such as
+    /// an input's placeholder color; styles take theme colors as they are).
+    pub fn color(&self, color: impl Into<super::AdaptiveColor>) -> Color {
+        let color = color.into();
+        if self.dark() { color.dark } else { color.light }
     }
 
     /// The user's text size relative to the default (Solid: `fontScale()`).
@@ -359,6 +375,11 @@ pub struct Attrs {
     pub(crate) inset_margin: Option<EdgeInsets>,
     /// An inline style from JS (a `StyleProp` prop), over the styles.
     pub(crate) inline: Option<JsonValue>,
+    /// The props of host elements (inputs, scroll views, ...), one per
+    /// property ([`super::host`]).
+    pub(crate) props: Vec<Prop>,
+    /// A canvas's drawing.
+    pub(crate) drawing: Option<Arc<crate::canvas::Drawing>>,
 }
 
 impl Attrs {
@@ -407,6 +428,20 @@ impl Attrs {
         }
         if self.inset_margin != old.inset_margin {
             out.push(Prop::InsetMargin(self.inset_margin.unwrap_or_default()));
+        }
+        // Host props: the ones no longer set go back to their defaults,
+        // then the new and changed ones.
+        for prop in &old.props {
+            if !self.props.iter().any(|p| super::host::same_kind(p, prop))
+                && let Some(reset) = super::host::reset(prop)
+            {
+                out.push(reset);
+            }
+        }
+        for prop in &self.props {
+            if !old.props.contains(prop) {
+                out.push(prop.clone());
+            }
         }
     }
 }
@@ -551,7 +586,7 @@ impl ElNode {
         Self::new(Tag::View)
     }
 
-    fn new(tag: Tag) -> Self {
+    pub(crate) fn new(tag: Tag) -> Self {
         Self {
             tag,
             key: None,
@@ -786,13 +821,130 @@ pub trait Accessible: Element {
 /// Elements that take touches.
 pub trait Interactive: Element {
     /// Handles presses.
-    fn on_press(self, listener: Listener<EventPayload>) -> Self {
-        self.on(EventKind::Press, listener)
+    fn on_press(self, listener: Listener<()>) -> Self {
+        self.on(EventKind::Press, events::typed(listener, events::unit))
     }
 
-    /// Handles native event `kind` (the element listens to it).
+    /// Handles presses held for about half a second.
+    fn on_long_press(self, listener: Listener<()>) -> Self {
+        self.on(EventKind::LongPress, events::typed(listener, events::unit))
+    }
+
+    /// A finger went down on the element.
+    fn on_press_in(self, listener: Listener<()>) -> Self {
+        self.on(EventKind::PressIn, events::typed(listener, events::unit))
+    }
+
+    /// The press ended, inside or outside the element.
+    fn on_press_out(self, listener: Listener<()>) -> Self {
+        self.on(EventKind::PressOut, events::typed(listener, events::unit))
+    }
+
+    /// Its frame changed (relative to its parent).
+    fn on_layout(self, listener: Listener<Rect>) -> Self {
+        self.on(EventKind::Layout, events::typed(listener, events::layout))
+    }
+
+    /// Touches on it or inside it, every phase (custom gestures).
+    fn on_touch(self, listener: Listener<TouchEvent>) -> Self {
+        self.on(EventKind::Touch, events::typed(listener, events::touch))
+    }
+
+    /// A drag started on it (the platform recognizes it).
+    fn on_pan_start(self, listener: Listener<PanEvent>) -> Self {
+        self.on(EventKind::PanStart, events::typed(listener, events::pan))
+    }
+
+    /// The drag ended, with its velocity.
+    fn on_pan_end(self, listener: Listener<PanEvent>) -> Self {
+        self.on(EventKind::PanEnd, events::typed(listener, events::pan))
+    }
+
+    /// A pinch started (its scale).
+    fn on_pinch_start(self, listener: Listener<GestureEvent>) -> Self {
+        self.on(
+            EventKind::PinchStart,
+            events::typed(listener, events::pinch),
+        )
+    }
+
+    /// The pinch ended.
+    fn on_pinch_end(self, listener: Listener<GestureEvent>) -> Self {
+        self.on(EventKind::PinchEnd, events::typed(listener, events::pinch))
+    }
+
+    /// A two-finger rotation started (radians).
+    fn on_rotation_start(self, listener: Listener<GestureEvent>) -> Self {
+        self.on(
+            EventKind::RotationStart,
+            events::typed(listener, events::rotation),
+        )
+    }
+
+    /// The rotation ended.
+    fn on_rotation_end(self, listener: Listener<GestureEvent>) -> Self {
+        self.on(
+            EventKind::RotationEnd,
+            events::typed(listener, events::rotation),
+        )
+    }
+
+    /// An assistive technology performed an action (its name).
+    fn on_accessibility_action(self, listener: Listener<str>) -> Self {
+        self.on(
+            EventKind::AccessibilityAction,
+            events::typed(listener, events::action),
+        )
+    }
+
+    /// Handles native event `kind` with its raw payload (the element
+    /// listens to it).
     fn on(mut self, kind: EventKind, listener: Listener<EventPayload>) -> Self {
         self.node().handlers.push((kind, listener));
+        self
+    }
+
+    /// Presses also count this far outside it.
+    fn hit_slop(mut self, insets: EdgeInsets) -> Self {
+        super::host::set(self.node(), Prop::HitSlop(insets));
+        self
+    }
+
+    /// How long a press must last to be a long press, in milliseconds.
+    fn long_press_delay(mut self, ms: f32) -> Self {
+        super::host::set(self.node(), Prop::LongPressDelay(Some(ms)));
+        self
+    }
+
+    /// Shows `color` as the background while pressed, fading the children
+    /// to `opacity`.
+    fn underlay(mut self, color: Color, opacity: f32) -> Self {
+        super::host::set(self.node(), Prop::UnderlayColor(Some(color)));
+        super::host::set(self.node(), Prop::UnderlayOpacity(opacity));
+        self
+    }
+
+    /// The press ripple (Android).
+    fn ripple(mut self, ripple: crate::props::Ripple) -> Self {
+        super::host::set(self.node(), Prop::Ripple(Some(ripple)));
+        self
+    }
+
+    /// The elevation shadow (Android).
+    fn elevation(mut self, elevation: f32) -> Self {
+        super::host::set(self.node(), Prop::Elevation(elevation));
+        self
+    }
+
+    /// The id UI tests find it by.
+    fn test_id(mut self, id: &str) -> Self {
+        super::host::set(self.node(), Prop::TestId(Some(id.into())));
+        self
+    }
+
+    /// The id inputs name an input accessory by (`nativeID`).
+    fn native_id(mut self, id: &str) -> Self {
+        super::host::set(self.node(), Prop::NativeId(Some(id.into())));
         self
     }
 
@@ -889,12 +1041,91 @@ element! {
 impl Interactive for View {}
 impl ParentElement for View {}
 impl Interactive for SlotElement {}
+impl Interactive for Text {}
+impl Interactive for Image {}
 
 impl Text {
     /// At most `lines` lines (0: no limit), the last one truncated.
     pub fn number_of_lines(mut self, lines: u32) -> Self {
         self.0.attrs.number_of_lines = lines;
         self
+    }
+
+    /// Where a truncated line is cut.
+    pub fn ellipsize_mode(mut self, mode: crate::EllipsizeMode) -> Self {
+        super::host::set(&mut self.0, Prop::EllipsizeMode(mode));
+        self
+    }
+
+    /// The user can select and copy it.
+    pub fn selectable(mut self, selectable: bool) -> Self {
+        super::host::set(&mut self.0, Prop::Selectable(selectable));
+        self
+    }
+
+    /// Shrinks the font, down to `min_scale` of it, to fit its lines.
+    pub fn shrink_to_fit(mut self, min_scale: f32) -> Self {
+        super::host::set(&mut self.0, Prop::AdjustsFontSizeToFit(true));
+        super::host::set(&mut self.0, Prop::MinimumFontScale(min_scale));
+        self
+    }
+}
+
+impl Image {
+    /// How it fits its box (default: cover).
+    pub fn resize_mode(mut self, mode: crate::ResizeMode) -> Self {
+        super::host::set(&mut self.0, Prop::ResizeMode(mode));
+        self
+    }
+
+    /// Shown until it loads (a URL or an asset).
+    pub fn placeholder(mut self, src: &str) -> Self {
+        super::host::set(
+            &mut self.0,
+            Prop::Image(crate::ImageProp::DefaultSource(Some(ImageSource {
+                uri: src.into(),
+                size: None,
+            }))),
+        );
+        self
+    }
+
+    /// Blurs it (points).
+    pub fn blur_radius(mut self, radius: f32) -> Self {
+        super::host::set(
+            &mut self.0,
+            Prop::Image(crate::ImageProp::BlurRadius(radius)),
+        );
+        self
+    }
+
+    /// Fades it in over `ms` milliseconds once loaded.
+    pub fn fade_duration(mut self, ms: f32) -> Self {
+        super::host::set(
+            &mut self.0,
+            Prop::Image(crate::ImageProp::FadeDuration(Some(ms))),
+        );
+        self
+    }
+
+    /// It loaded: its size in pixels.
+    pub fn on_load(self, listener: Listener<Size>) -> Self {
+        self.on(EventKind::Load, events::typed(listener, events::size))
+    }
+
+    /// It failed to load (the message).
+    pub fn on_error(self, listener: Listener<str>) -> Self {
+        self.on(EventKind::Error, events::typed(listener, events::message))
+    }
+
+    /// It started loading.
+    pub fn on_load_start(self, listener: Listener<()>) -> Self {
+        self.on(EventKind::LoadStart, events::typed(listener, events::unit))
+    }
+
+    /// It finished loading, or failed.
+    pub fn on_load_end(self, listener: Listener<()>) -> Self {
+        self.on(EventKind::LoadEnd, events::typed(listener, events::unit))
     }
 }
 
