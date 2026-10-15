@@ -27,6 +27,7 @@
 
 mod component;
 mod element;
+mod element_ref;
 pub(crate) mod env;
 mod events;
 pub(crate) mod host;
@@ -54,6 +55,7 @@ pub use self::{
         FluentBuilder, Image, Interactive, IntoElement, Items, ListElement, Listener,
         ParentElement, Position, RenderCx, Slot, SlotElement, Style, Text, View, image, text, view,
     },
+    element_ref::ElementRef,
     env::Environment,
     events::{
         GestureEvent, NativeEvent, PanEvent, ScrollEvent, ScrollOffset, Selection, VideoInfo,
@@ -98,6 +100,7 @@ pub mod prelude {
         DialogAnswer,
         EdgeInsets,
         Element,
+        ElementRef,
         Environment,
         Event,
         EventKind,

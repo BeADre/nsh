@@ -1000,6 +1000,14 @@ impl<M: TextEngine> Core<M> {
     }
 
     fn apply_attrs(&mut self, id: NodeId, new: &Attrs, old: &Attrs) {
+        if old.element_ref != new.element_ref
+            && let Some(r) = &old.element_ref
+        {
+            r.detach(id);
+        }
+        if let Some(r) = &new.element_ref {
+            r.attach(id);
+        }
         let mut props = std::mem::take(&mut self.components.props);
         new.changes(old, &mut props);
         for prop in props.drain(..) {
@@ -1443,6 +1451,9 @@ impl<M: TextEngine> Core<M> {
             Part::Component(_) => self.release_instance(e.id),
             Part::Node => {}
         }
+        if let Some(r) = &e.attrs.element_ref {
+            r.detach(e.id);
+        }
         for c in e.children {
             self.release_expanded(c);
         }
@@ -1473,6 +1484,9 @@ impl<M: TextEngine> Core<M> {
             self.detach_id(node);
         }
         if let Some(root) = inst.root {
+            if let Some(r) = &root.attrs.element_ref {
+                r.detach(host);
+            }
             for c in root.children {
                 self.release_expanded(c);
             }
@@ -1677,6 +1691,11 @@ impl<M: TextEngine> Core<M> {
             self.components.mark(host);
         }
         for action in cx.actions {
+            self.apply_action(action);
+        }
+        // What handles (element refs, native values) asked for meanwhile,
+        // in order with the rest.
+        for action in self.components.executor.take_actions() {
             self.apply_action(action);
         }
         for event in cx.emits {

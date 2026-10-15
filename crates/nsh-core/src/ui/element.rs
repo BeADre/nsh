@@ -304,6 +304,13 @@ impl<'a, C: Component> Context<'a, C> {
         ));
     }
 
+    /// A handle for an element of the render (Solid: `ref`): keep it in a
+    /// field, put it on the element with [`Element::element_ref`], call its
+    /// commands from listeners and tasks.
+    pub fn element_ref(&self) -> super::ElementRef {
+        super::ElementRef::new(&self.inner.executor)
+    }
+
     /// Starts a task: `f(this, cx)` builds a future run on the engine
     /// thread, which changes the component with `this.update(..)` and waits
     /// with `cx.timer(..)` or for any other future. Dropping the [`Task`]
@@ -380,6 +387,8 @@ pub struct Attrs {
     pub(crate) props: Vec<Prop>,
     /// A canvas's drawing.
     pub(crate) drawing: Option<Arc<crate::canvas::Drawing>>,
+    /// The handle the render put on the element (not a prop).
+    pub(crate) element_ref: Option<super::ElementRef>,
 }
 
 impl Attrs {
@@ -667,6 +676,13 @@ pub trait Element: IntoElement + Sized {
     /// their order changes).
     fn key(mut self, key: impl Into<SharedString>) -> Self {
         self.node().key = Some(key.into());
+        self
+    }
+
+    /// Puts `handle` on this element: its commands (`focus`, `scroll_to`)
+    /// go here.
+    fn element_ref(mut self, handle: &super::ElementRef) -> Self {
+        self.node().attrs.element_ref = Some(handle.clone());
         self
     }
 

@@ -3763,6 +3763,7 @@ mod components {
     struct Form {
         name: String,
         focused: bool,
+        field: Option<ElementRef>,
     }
 
     impl Component for Form {
@@ -3770,12 +3771,17 @@ mod components {
         type Props = FormProps;
         type Event = NoEvent;
 
+        fn setup(&mut self, _: &FormProps, cx: &mut Context<'_, Self>) {
+            self.field = Some(cx.element_ref());
+        }
+
         fn render(&self, _: &FormProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
             let len = self.name.len() as f32;
             view()
                 .child(
                     scroll().bounces(false).child(
                         input()
+                            .element_ref(self.field.as_ref().unwrap())
                             .value(self.name.clone())
                             .when(self.name.is_empty(), |i| i.placeholder("Name"))
                             .on_change_text(cx.listener(|this: &mut Self, text: &str, cx| {
@@ -3795,6 +3801,12 @@ mod components {
                         .child(text(format!("Hi {}", self.name)))
                 }))
                 .child(text(if self.focused { "focused" } else { "idle" }))
+                // Back to the field: focus it, the caret at the end.
+                .child(view().on_press(cx.listener(|this: &mut Self, _, _| {
+                    let field = this.field.as_ref().unwrap();
+                    field.focus();
+                    field.set_selection(3, 3);
+                })))
         }
     }
 
@@ -3833,6 +3845,14 @@ mod components {
             })
         };
         let input = created(&batch, ViewKind::Input).expect("an input");
+        let button = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Events { id, events } if events.contains(EventKind::Press) => Some(*id),
+                _ => None,
+            })
+            .expect("the button listens to presses");
         assert!(created(&batch, ViewKind::Scroll).is_some());
         assert!(created(&batch, ViewKind::Modal).is_none(), "no modal yet");
         let placeholder = |batch: &MountBatch| {
@@ -3879,5 +3899,24 @@ mod components {
                 .any(|i| matches!(i, MountItem::InputValue { .. }))
         );
         assert_eq!(texts(&batch), ["Hi Ada", "focused"]);
+
+        // The ref's commands reach the input it is on, in the next batch.
+        assert!(c.component_event(button, EventKind::Press, &EventPayload::None));
+        let batch = c.commit().unwrap();
+        let commands: Vec<_> = batch
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                MountItem::Command { id, command } => Some((*id, command.clone())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            commands,
+            [
+                (input, Command::Focus),
+                (input, Command::SetSelection { start: 3, end: 3 })
+            ]
+        );
     }
 }

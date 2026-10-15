@@ -103,6 +103,7 @@ impl Component for Button {
   | `windowSize()`, `safeArea()`, `keyboard()`, `colorScheme()`, ... | `cx.window()`, `cx.safe_area()`, `cx.keyboard_height()`, `cx.dark()`, ... in the render: reading subscribes |
   | an effect on the environment | `fn environment_changed(&mut self, props, old, new, cx)` |
   | `useSafeAreaInsets()` | `cx.insets()` in the render: the insets where the component renders (the nearest screen's or modal's, else the surface's safe area) |
+  | `ref={el}`, `el.focus()` | `cx.element_ref()` (in `setup`, kept in a field), `.element_ref(&self.field)` on the element each render, `self.field.focus()` / `.scroll_to(..)` / `.seek(..)` / `.command(..)` from listeners and tasks |
 
   `render(&self)` cannot change state. Timers are tasks: a `tokio::time` sleep, then an update.
 - **Platform services** are on `Context` (setup, listeners, updates, methods), `ModuleCx` and `AsyncCx`:
@@ -110,6 +111,9 @@ impl Component for Button {
   answer is the root's `Dialog` event, which the core resolves; JS never sees it);
   `dismiss_keyboard()`, `animate_layout(..)`, and the status bar (below). `cx.update_global::<G, _>(|g, cx| ..)` is
   state the surface's components and modules share.
+- **Element refs** (`ui/element_ref.rs`) hold the node of the element that carries them, set when the render is
+  applied and cleared when the element goes; their commands go out through the executor, and an event's handling
+  applies them right after its own changes, so they keep their order.
 - **Element attributes for system UI**: `.inset_padding(insets)` / `.inset_margin(insets)` add to the padding /
   margin the styles resolve to (what `SafeAreaView` and `KeyboardAvoidingView` use, so the app's own padding stays),
   `.inline_style(&style)` applies a `ui::Style` prop (`KeyboardAvoidingView`'s `contentContainerStyle`).
