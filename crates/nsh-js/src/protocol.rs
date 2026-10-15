@@ -10,7 +10,7 @@ use nsh_anim::{
 };
 // The op buffer's codes, shared with the generated `protocol.gen.ts`.
 use nsh_core::js::{
-    host::{HostCx, HostInput, HostProps},
+    host::{HostCx, HostInput, HostList, HostProps},
     protocol::*,
 };
 use nsh_core::{
@@ -174,7 +174,10 @@ pub(crate) fn decode<'js>(
                         shared.stop(reason.clone());
                         return Err(rquickjs::Exception::throw_range(ctx, &reason));
                     }
-                    Some(list) => crate::canvas::decode(ctx, list, 0, list.len())?,
+                    Some(list) => {
+                        nsh_core::js::canvas::decode(&JsList(list.clone()), 0, list.len())
+                            .map_err(|e| Exception::throw_type(ctx, &format!("nsh canvas: {e}")))?
+                    }
                     None => Default::default(),
                 };
                 Op::Draw {
@@ -371,7 +374,24 @@ fn decode_layout_animation(config: &Value<'_>) -> rquickjs::Result<LayoutAnimati
 /// A QuickJS value as host props read it.
 struct Js<'js>(Value<'js>);
 
-impl HostInput for Js<'_> {
+/// A QuickJS array, read by index.
+struct JsList<'js>(Array<'js>);
+
+impl<'js> HostList for JsList<'js> {
+    type Item = Js<'js>;
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline]
+    fn item(&self, index: usize) -> Option<Js<'js>> {
+        self.0.get::<Value>(index).ok().map(Js)
+    }
+}
+
+impl<'js> HostInput for Js<'js> {
     #[inline]
     fn is_nullish(&self) -> bool {
         self.0.is_null() || self.0.is_undefined()
@@ -402,11 +422,11 @@ impl HostInput for Js<'_> {
         (!value.is_undefined()).then_some(Js(value))
     }
 
-    fn items(&self) -> Vec<Self> {
-        match self.0.as_array() {
-            Some(a) => a.iter::<Value>().filter_map(|v| v.ok()).map(Js).collect(),
-            None => Vec::new(),
-        }
+    type List = JsList<'js>;
+
+    #[inline]
+    fn as_list(&self) -> Option<JsList<'js>> {
+        self.0.as_array().cloned().map(JsList)
     }
 
     fn entries(&self) -> Vec<(String, Self)> {
@@ -1009,4 +1029,37 @@ fn json<'js>(
         }
         _ => J::Null,
     })
+}
+
+#[cfg(test)]
+mod decode_bench {
+    use rquickjs::{Array, Context, Runtime};
+
+    /// The drawing of `docs/dev/performance.md`'s canvas recording (17 500
+    /// calls), decoded.
+    #[test]
+    #[ignore]
+    fn bench_canvas_decode() {
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        ctx.with(|ctx| {
+            // beginPath, moveTo, lineTo, lineWidth =, strokeStyle =, stroke,
+            // fillRect.
+            let list: Array = ctx
+                .eval(
+                    "const out = []; for (let i = 0; i < 2500; i++) { out.push(7, 8, i, 2, 9, i + 1, 3, 26, 2, \
+                     25, '#ff0000', 19, null, 21, 0, i, 4, 4); } out",
+                )
+                .unwrap();
+            let mut best = std::time::Duration::MAX;
+            for _ in 0..200 {
+                let t = std::time::Instant::now();
+                let drawing =
+                    nsh_core::js::canvas::decode(&super::JsList(list.clone()), 0, list.len()).unwrap();
+                std::hint::black_box(drawing);
+                best = best.min(t.elapsed());
+            }
+            eprintln!("decode 17500 calls: best {best:?}");
+        });
+    }
 }

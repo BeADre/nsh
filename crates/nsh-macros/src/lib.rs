@@ -16,6 +16,7 @@
 //! internal to `nsh-core`: the spacing and sizing methods of `Styled`.
 
 mod host_props;
+mod js_ops;
 
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
@@ -42,6 +43,47 @@ fn docs(attrs: &[Attribute]) -> String {
     }
     // Rustdoc links (`[`Button`]`) read as code spans in TypeScript.
     lines.join(" ").trim().replace("[`", "`").replace("`]", "`")
+}
+
+/// A variant's doc for TypeScript: its first paragraph (the others are for
+/// Rust), without the leading JS name (`` `pagingEnabled`: stops at … ``
+/// documents `pagingEnabled` as "Stops at …").
+fn ts_doc(attrs: &[Attribute]) -> String {
+    let mut lines = Vec::new();
+    for attr in attrs {
+        if !attr.path().is_ident("doc") {
+            continue;
+        }
+        if let syn::Meta::NameValue(nv) = &attr.meta
+            && let Expr::Lit(lit) = &nv.value
+            && let syn::Lit::Str(s) = &lit.lit
+        {
+            let line = s.value().trim().to_owned();
+            if line.is_empty() {
+                break;
+            }
+            lines.push(line);
+        }
+    }
+    let doc = lines.join(" ").replace("[`", "`").replace("`]", "`");
+    if !doc.starts_with('`') {
+        return doc;
+    }
+    // `name`. names the prop and nothing more.
+    if doc.ends_with('`') || (doc.ends_with("`.") && doc[1..doc.len() - 2].find('`').is_none()) {
+        return String::new();
+    }
+    // `name` (iOS): … / `a` / `b`: …
+    match doc.split_once(": ") {
+        Some((name, text)) if !name.contains(". ") => {
+            let mut chars = text.chars();
+            chars
+                .next()
+                .map(|c| c.to_uppercase().chain(chars).collect())
+                .unwrap_or_default()
+        }
+        _ => doc,
+    }
 }
 
 /// `accessibility_label` / `AccessibilityLabel` -> `accessibilityLabel`.
@@ -331,6 +373,22 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
             }
         }
     })
+}
+
+/// `#[derive(JsOps)]` on an enum of operations JS records into flat lists
+/// (`nsh_core::js::ops`): `#[op(code = CV_…)]` on a variant reads its
+/// fields in order after that code (each an `OpArg`; `min` / `max` clamp,
+/// `with = path` reads the whole variant), `nested` delegates to another
+/// enum of operations. `method = "name", params = "x, y = 0"` describes the
+/// generated method recording it as is, `property = "name", initial =
+/// "…"` (and `ts = "…"`) the property; their docs are the variant's.
+/// `#[ops(cx = Type)]` on the enum is what reading needs.
+#[proc_macro_derive(JsOps, attributes(op, ops))]
+pub fn derive_js_ops(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    js_ops::js_ops(input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
 }
 
 /// `#[derive(HostProps)]` on an enum of host element props

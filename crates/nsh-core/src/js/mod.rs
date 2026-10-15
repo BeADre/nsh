@@ -1,6 +1,7 @@
 //! What parts of the JS runtime are generated from, so the two sides of the
 //! op buffer cannot drift apart: its codes ([`protocol`]), the canvas API
-//! that records drawing operations ([`canvas`]), the style types
+//! that records drawing operations and their decoding ([`canvas`], with
+//! [`ops`]' `#[derive(JsOps)]`), the style types
 //! ([`style`]) and the host elements' props ([`host`]: their decoding and
 //! types, from `#[derive(HostProps)]` on [`crate::Prop`]). The bundler
 //! embeds each generator's output as an internal module of `js/runtime`
@@ -25,6 +26,7 @@ macro_rules! codes {
 pub mod canvas;
 pub mod host;
 pub(crate) mod host_values;
+pub mod ops;
 pub mod protocol;
 pub mod style;
 
@@ -46,6 +48,8 @@ mod tests {
         assert!(canvas.contains("counterclockwise = false) {"));
         assert!(canvas.contains("      this.out.push(26, v);"));
         assert!(canvas.contains("  lineCap: \"butt\","));
+        assert!(canvas.contains("  lineCap: LineCap;"));
+        assert!(canvas.contains("export type LineCap = \"butt\" | \"round\" | \"square\";"));
         let style = super::style::typescript();
         // Every property the core parses has a type, in its interface.
         for (name, ts) in [

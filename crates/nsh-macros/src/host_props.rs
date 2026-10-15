@@ -5,6 +5,8 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{Data, DeriveInput, Expr, Fields, LitStr, spanned::Spanned};
 
+use crate::ts_doc;
+
 /// One JS name of a variant.
 struct Name {
     name: String,
@@ -72,47 +74,6 @@ fn variant_attrs(attrs: &[syn::Attribute]) -> syn::Result<VariantAttrs> {
         })?;
     }
     Ok(out)
-}
-
-/// A variant's doc for TypeScript: its first paragraph (the others are for
-/// Rust), without the leading JS name (`` `pagingEnabled`: stops at … ``
-/// documents `pagingEnabled` as "Stops at …").
-fn ts_doc(attrs: &[syn::Attribute]) -> String {
-    let mut lines = Vec::new();
-    for attr in attrs {
-        if !attr.path().is_ident("doc") {
-            continue;
-        }
-        if let syn::Meta::NameValue(nv) = &attr.meta
-            && let Expr::Lit(lit) = &nv.value
-            && let syn::Lit::Str(s) = &lit.lit
-        {
-            let line = s.value().trim().to_owned();
-            if line.is_empty() {
-                break;
-            }
-            lines.push(line);
-        }
-    }
-    let doc = lines.join(" ").replace("[`", "`").replace("`]", "`");
-    if !doc.starts_with('`') {
-        return doc;
-    }
-    // `name`. names the prop and nothing more.
-    if doc.ends_with('`') || (doc.ends_with("`.") && doc[1..doc.len() - 2].find('`').is_none()) {
-        return String::new();
-    }
-    // `name` (iOS): … / `a` / `b`: …
-    match doc.split_once(": ") {
-        Some((name, text)) if !name.contains(". ") => {
-            let mut chars = text.chars();
-            chars
-                .next()
-                .map(|c| c.to_uppercase().chain(chars).collect())
-                .unwrap_or_default()
-        }
-        _ => doc,
-    }
 }
 
 pub(crate) fn host_props(input: DeriveInput) -> syn::Result<TokenStream2> {

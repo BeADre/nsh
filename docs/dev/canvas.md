@@ -10,10 +10,13 @@
   gradients, `drawImage` (all three forms, images by URI or asset). Any number argument and colors may be native values
   (`createNativeValue`, `interpolate`, ...): those become slots bound like style values (`AnimProp::CanvasArg`) and the
   platform redraws on its own while they animate, without JS. Drawings travel in their own op (`OP_DRAW`), recorded into a
-  separate array: creating native values while drawing pushes ops of its own. The codes and the methods and properties
-  that only record (`moveTo`, `fillRect`, `lineWidth`, ...) are generated from `nsh_core::js::canvas`'s tables into
-  `canvas.gen.ts`, which `canvas.ts` takes into its classes' prototypes; what has logic (overloads, `roundRect`'s radii,
-  `save` / `restore`, gradients, images) is written in `canvas.ts`. The calls cost what hand-written ones did
+  separate array: creating native values while drawing pushes ops of its own. Each operation is one variant of
+  `CanvasOp` / `PathOp` with `#[derive(JsOps)]` (`nsh_core::js::ops`): `#[op(code = CV_…)]` reads its fields in order
+  (`OpArg`: numbers or native values, paints, `Path2D` lists, string unions; an invalid color or font drops the
+  operation, as in HTML Canvas), and `method = …, params = …` / `property = …, initial = …` generate the methods and
+  properties that only record (`moveTo`, `fillRect`, `lineWidth`, ...) into `canvas.gen.ts`, which `canvas.ts` takes into
+  its classes' prototypes; what has logic (overloads, `roundRect`'s radii, `save` / `restore`, gradients, images) is
+  written in `canvas.ts`. The core reads drawings straight from QuickJS values (`nsh_core::js::canvas::decode`). The calls cost what hand-written ones did
   (`docs/dev/performance.md`). iOS replays into the `drawRect:` context,
   keeping its own transform and path in view space; Android `CanvasBox.java` interprets an `int[]` (`encode.rs`). Not
   supported: `getImageData` / `putImageData`, filters, `isPointInPath`, SVG images.

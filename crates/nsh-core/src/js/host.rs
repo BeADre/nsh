@@ -27,7 +27,16 @@ pub trait HostInput: Sized {
     /// Field `key` of an object (`None`: not an object, or no such field).
     fn field(&self, key: &str) -> Option<Self>;
     /// The items of an array (empty for anything else).
-    fn items(&self) -> Vec<Self>;
+    fn items(&self) -> Vec<Self> {
+        match self.as_list() {
+            Some(list) => (0..list.len()).filter_map(|i| list.item(i)).collect(),
+            None => Vec::new(),
+        }
+    }
+    /// An array, to read by index (checked once, not per item).
+    fn as_list(&self) -> Option<Self::List>;
+    /// What [`HostInput::as_list`] gives.
+    type List: HostList<Item = Self>;
     /// The fields of an object (empty for anything else).
     fn entries(&self) -> Vec<(String, Self)>;
     /// Truthy, as JS sees it.
@@ -38,6 +47,20 @@ pub trait HostInput: Sized {
             .and_then(|v| v.as_number())
             .map(|n| n as nsh_anim::NodeId)
     }
+}
+
+/// A JS array, read by index.
+pub trait HostList {
+    /// Its items.
+    type Item;
+    /// Its length.
+    fn len(&self) -> usize;
+    /// Whether it is empty.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    /// Item `index`.
+    fn item(&self, index: usize) -> Option<Self::Item>;
 }
 
 /// Where decoding reports what it could not take.

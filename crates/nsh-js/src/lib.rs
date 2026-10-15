@@ -10,7 +10,6 @@
 //! thread.
 
 mod bytecode;
-mod canvas;
 mod console;
 mod env;
 mod error;

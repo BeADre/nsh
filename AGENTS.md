@@ -18,7 +18,7 @@ crates/
                        Rust components (`ui/`: elements, typed styles, the theme; `core/components.rs`); the runtime's Rust
                        modules (`runtime/`: `nsh/android`'s Toast, `nsh/image`, ...; their JS is generated)
   nsh-macros/          Derives of Rust components (`Props`, `PropEnum`, `Event`, `JsObject`), `#[methods]`, `#[module]`, `Styled`'s spacing methods;
-                       `HostProps` (the host elements' props: decoding, defaults and TS)
+                       `HostProps` (the host elements' props: decoding, defaults and TS), `JsOps` (recorded operations: canvas)
   nsh-ui-mobile/       The components and modules of `nsh/ui/mobile` (Button, SafeAreaView, StatusBar, Alert, ...), written in Rust; their JS glue is generated
   nsh-anim/            Native animation graph (pure Rust): value / interpolate / math nodes, timing / spring / decay drivers
   nsh-js/              QuickJS host: console / timers / op bridge, op buffer decoding, bytecode compilation and loading
@@ -138,7 +138,8 @@ host it is an empty crate, so always run clippy on platform code with the Cataly
   trusted as the app. QuickJS bytecode is trusted input (`Bundle::bytecode` is `unsafe`): it only loads from the app's
   own resources, the dev server and verified packages (`docs/dev/signed-packages.md`).
 - **Generated, never hand-copied**: the op buffer's codes (`OP_*`, `ANIM_*`, `CV_*`), the canvas's recording methods
-  and properties, the style types and the host elements' props come from `crates/nsh-core/src/js/` (`protocol.gen.ts`,
+  and properties (and their decoding: `CanvasOp`'s `#[derive(JsOps)]`), the style types and the host elements' props
+  come from `crates/nsh-core/src/js/` (`protocol.gen.ts`,
   `canvas.gen.ts`, `style.gen.ts`, `elements.gen.ts`); a new style property is one line of `style_keys!` (`style.rs`)
   with its TS type, a new host prop one variant of `Prop` with `#[prop(js = …)]` (`docs/dev/elements.md`).
 - **Keep in sync**: the event handlers in `types.ts` ↔ the payloads of `nsh-js`'s `dispatch_event`; the order of `EventKind` ↔

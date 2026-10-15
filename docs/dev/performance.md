@@ -42,5 +42,8 @@ after `nsh trace` timings and item counts. Current baselines (Apple Silicon):
   `lineWidth =`, `strokeStyle =`, `stroke`, `fillRect` (17 500 calls) record in ~1.4ms, the same with the generated
   methods (`canvas.gen.ts`, taken into the prototypes) as with the hand-written class: an A/B of the two mechanisms in
   one QuickJS run measures 4.16 vs 4.22ms (medians within 1%) for 80 000 calls.
+  Decoding that drawing in the core (`nsh_core::js::canvas::decode`, from the QuickJS array) takes ~0.52–0.57ms
+  (`cargo test --release -p nsh-js --lib bench_canvas_decode -- --ignored --nocapture`), as the hand-written decoder
+  it replaced did (0.57ms).
 
 The dev profile builds `rquickjs-sys` and `taffy` with `opt-level = 3`, so debug timings are meaningful too; release uses fat LTO.
