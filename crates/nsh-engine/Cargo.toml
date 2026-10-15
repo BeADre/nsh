@@ -24,6 +24,7 @@ crossbeam-channel.workspace = true
 libc.workspace = true
 
 [dev-dependencies]
+nsh-ui-mobile.workspace = true
 nsh-bundler.workspace = true
 nsh-js.workspace = true
 crossbeam-channel.workspace = true

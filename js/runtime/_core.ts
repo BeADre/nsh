@@ -384,21 +384,32 @@ const eventHandler = (event: string): string => "on" + event.charAt(0).toUpperCa
  * The JS face of Rust component `name` (generated from its spec,
  * `nsh_core::component::typescript`): a host node naming the component, its
  * own `props` sent as `$name` when they change, its `events` delivered to
- * the `on<Event>` handlers, its JSX children inserted when it takes some.
+ * the `on<Event>` handlers, its JSX children inserted when it takes some, and
+ * one node per named slot holding the JSX passed in that prop (the
+ * component's render decides where it goes).
  */
 export function component<P>(
   name: string,
   props: readonly string[],
   events: readonly string[],
   children: boolean,
+  slots: readonly string[],
 ): (p: P) => any {
   const own: string[] = [...props];
   const handlers: string[] = events.map(eventHandler);
-  const split: string[] = children ? ["children"] : [];
+  const split: string[] = children ? ["children", ...slots] : [...slots];
   return (p: P) => {
     const node = createElement("view");
     setProp(node, "component", name);
     const [mine, on, kids, host] = splitProps(p as any, own, handlers, split);
+    let anchor: YNode | undefined;
+    for (const slot of slots) {
+      const holder = createElement("view");
+      setProp(holder, "componentSlot", slot);
+      insert(holder, () => kids[slot]);
+      insertNode(node, holder);
+      anchor ??= holder;
+    }
     const values: Record<string, unknown> = {};
     for (const key of own) {
       Object.defineProperty(values, "$" + key, { enumerable: true, get: () => mine[key] });
@@ -408,7 +419,8 @@ export function component<P>(
         ? { onNativeEvent: (e: { name: string; data: unknown }) => on[eventHandler(e.name)]?.(e.data) }
         : {};
     spread(node, mergeSolidProps(host, values, listener), true);
-    if (children) insert(node, () => kids.children);
+    // Before the slots' nodes: clearing the children must not remove them.
+    if (children) insert(node, () => kids.children, anchor);
     return node;
   };
 }

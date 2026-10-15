@@ -1510,6 +1510,10 @@ impl<M: TextEngine> Core<M> {
                 self.create_instance(id, name);
                 return Ok(());
             }
+            Prop::ComponentSlot(name) => {
+                self.set_slot_name(id, name);
+                return Ok(());
+            }
             Prop::ComponentProp(name, value) if self.components.instances.contains_key(&id) => {
                 self.set_component_prop(id, name, value);
                 return Ok(());

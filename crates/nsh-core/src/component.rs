@@ -69,6 +69,16 @@ pub struct EventSpec {
     pub doc: &'static str,
 }
 
+/// A named slot of a component: JSX the app passes in a prop of that name
+/// (`<Card header={…}>`), placed where the render puts [`El::slot`].
+#[derive(Debug, Clone, Copy)]
+pub struct SlotSpec {
+    /// Its name and prop (`header`).
+    pub name: &'static str,
+    /// Documentation.
+    pub doc: &'static str,
+}
+
 /// What a component is, for JS: its name, props, events and whether it takes
 /// children. Its glue and declarations are generated from it
 /// ([`typescript`]).
@@ -86,6 +96,8 @@ pub struct Spec {
     pub events: &'static [EventSpec],
     /// It takes JSX children.
     pub children: bool,
+    /// Its named slots.
+    pub slots: &'static [SlotSpec],
 }
 
 /// A component written in Rust. `Default` makes a new instance.
@@ -180,12 +192,19 @@ impl Props {
 #[derive(Debug, Default)]
 pub struct RenderCx {
     pub(crate) has_children: bool,
+    /// Slots the app filled.
+    pub(crate) filled: Vec<Arc<str>>,
 }
 
 impl RenderCx {
     /// JS gave the component children.
     pub fn has_children(&self) -> bool {
         self.has_children
+    }
+
+    /// The app passed something for slot `name`.
+    pub fn has_slot(&self, name: &str) -> bool {
+        self.filled.iter().any(|s| &**s == name)
     }
 }
 
@@ -245,6 +264,8 @@ pub(crate) struct ElNode {
     pub(crate) holds_children: bool,
     /// A nested component: its name and props.
     pub(crate) component: Option<Nested>,
+    /// This element is slot `name`'s JSX (the glue's node for it).
+    pub(crate) slot: Option<Arc<str>>,
 }
 
 /// An element of a component's render, built with [`view`], [`text`],
@@ -273,6 +294,7 @@ fn el<C>(tag: Tag) -> El<C> {
             children: Vec::new(),
             holds_children: false,
             component: None,
+            slot: None,
         },
         _component: PhantomData,
     }
@@ -430,6 +452,13 @@ impl<C: 'static> El<C> {
     /// own.
     pub fn holds_children(mut self) -> Self {
         self.node.holds_children = true;
+        self
+    }
+
+    /// This element is slot `name`: the JSX the app passed for it (its own
+    /// children). Built on [`view`]; rendered only while the slot exists.
+    pub fn slot(mut self, name: &str) -> Self {
+        self.node.slot = Some(name.into());
         self
     }
 }
@@ -603,25 +632,33 @@ pub fn typescript(specs: &[&Spec]) -> String {
         if spec.children {
             out.push_str("  children?: JSX.Element;\n");
         }
+        for s in spec.slots {
+            if !s.doc.is_empty() {
+                let _ = writeln!(out, "  /** {} */", s.doc);
+            }
+            let _ = writeln!(out, "  {}?: JSX.Element;", s.name);
+        }
         out.push_str("}\n");
         if !spec.doc.is_empty() {
             let _ = writeln!(out, "\n/** {} */", spec.doc);
         }
-        let props: Vec<String> = spec.props.iter().map(|p| format!("{:?}", p.name)).collect();
-        let events: Vec<String> = spec
-            .events
-            .iter()
-            .map(|e| format!("{:?}", e.name))
-            .collect();
+        let list = |names: Vec<&str>| {
+            names
+                .iter()
+                .map(|n| format!("{n:?}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
         let _ = writeln!(
             out,
-            "export const {}: (props: {}Props) => JSX.Element = component({:?}, [{}], [{}], {});",
+            "export const {}: (props: {}Props) => JSX.Element = component({:?}, [{}], [{}], {}, [{}]);",
             spec.export,
             spec.export,
             spec.name,
-            props.join(", "),
-            events.join(", "),
-            spec.children
+            list(spec.props.iter().map(|p| p.name).collect()),
+            list(spec.events.iter().map(|e| e.name).collect()),
+            spec.children,
+            list(spec.slots.iter().map(|s| s.name).collect()),
         );
     }
     out

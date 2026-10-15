@@ -1885,6 +1885,7 @@ dependencies = [
  "nsh-core",
  "nsh-js",
  "nsh-package",
+ "nsh-ui-mobile",
  "oxc_sourcemap 9.0.0",
  "rustc-hash",
  "serde_json",

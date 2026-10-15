@@ -940,6 +940,9 @@ pub enum Prop {
     /// `component`: which registered native component a `<native>`
     /// element is (set once, before it is mounted).
     Component(Arc<str>),
+    /// `componentSlot`: this view holds the JSX a Rust component's host got
+    /// for slot `name` (created by the generated glue).
+    ComponentSlot(Arc<str>),
     /// A property of a registered native component (`$name` from JS):
     /// any JSON value, `None` to remove it.
     ComponentProp(Arc<str>, Option<crate::JsonValue>),

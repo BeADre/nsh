@@ -8,15 +8,16 @@
 //! how to write one.
 
 mod button;
+mod card;
 
 use nsh_core::component::{Registry, Spec};
 
-pub use crate::button::Button;
+pub use crate::{button::Button, card::Card};
 
 /// Every component of the mobile set, for an engine to render.
 pub fn registry() -> Registry {
     let mut registry = Registry::new();
-    registry.register::<Button>();
+    registry.register::<Button>().register::<Card>();
     registry
 }
 

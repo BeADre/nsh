@@ -48,6 +48,7 @@ static SPEC: Spec = Spec {
         doc: "The button was pressed.",
     }],
     children: false,
+    slots: &[],
 };
 
 const BASE: &str = "flex-row items-center justify-center rounded-xl px-4 py-3 disabled:opacity-40";

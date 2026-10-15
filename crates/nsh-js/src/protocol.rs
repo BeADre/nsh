@@ -593,6 +593,7 @@ fn decode_prop<'js>(
     }
     let prop = match name {
         "component" => Prop::Component(string(&value)?.into()),
+        "componentSlot" => Prop::ComponentSlot(string(&value)?.into()),
         "style" => {
             let mut entries = Vec::new();
             style_entries(&value, &mut entries)?;

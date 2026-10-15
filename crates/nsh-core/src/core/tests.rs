@@ -2914,6 +2914,7 @@ mod components {
             doc: "",
         }],
         children: true,
+        slots: &[],
     };
 
     impl Component for Tally {
@@ -3086,6 +3087,249 @@ mod components {
         assert!(deleted.contains(&2) && deleted.contains(&holder));
         assert!(!deleted.contains(&4));
         assert!(c.key(4).is_ok());
+    }
+
+    /// A header slot above its children.
+    #[derive(Default)]
+    struct Card;
+
+    static CARD: Spec = Spec {
+        name: "test.card",
+        export: "Card",
+        doc: "",
+        props: &[],
+        events: &[],
+        children: true,
+        slots: &[crate::component::SlotSpec {
+            name: "header",
+            doc: "",
+        }],
+    };
+
+    impl Component for Card {
+        fn spec() -> &'static Spec {
+            &CARD
+        }
+
+        fn render(&self, _p: &Props, cx: &mut RenderCx) -> El<Self> {
+            view().child(view().class("h-[44px]").slot("header")).child(
+                view()
+                    .class(if cx.has_slot("header") {
+                        "mt-2"
+                    } else {
+                        "mt-0"
+                    })
+                    .holds_children(),
+            )
+        }
+    }
+
+    #[test]
+    fn slots_are_the_glues_nodes_placed_by_the_render() {
+        let mut c = core();
+        let mut registry = Registry::new();
+        registry.register::<Card>();
+        c.set_components(registry);
+        apply(
+            &mut c,
+            vec![
+                Op::Create {
+                    id: 2,
+                    tag: Tag::View,
+                },
+                Op::SetProp {
+                    id: 2,
+                    prop: Prop::Component("test.card".into()),
+                },
+                // The glue's node for `header`, then its JSX.
+                Op::Create {
+                    id: 4,
+                    tag: Tag::View,
+                },
+                Op::SetProp {
+                    id: 4,
+                    prop: Prop::ComponentSlot("header".into()),
+                },
+                Op::Insert {
+                    parent: 2,
+                    child: 4,
+                    before: None,
+                },
+                Op::Create {
+                    id: 6,
+                    tag: Tag::View,
+                },
+                Op::Insert {
+                    parent: 4,
+                    child: 6,
+                    before: None,
+                },
+                // Children go before the slot's node (Solid's anchor).
+                Op::Create {
+                    id: 8,
+                    tag: Tag::View,
+                },
+                style_op(8, &[("height", StyleValue::Number(10.0))]),
+                Op::Insert {
+                    parent: 2,
+                    child: 8,
+                    before: Some(4),
+                },
+                Op::Insert {
+                    parent: ROOT_ID,
+                    child: 2,
+                    before: None,
+                },
+            ],
+        );
+        let batch = c.commit().unwrap();
+        // The slot's node is the header element (in the host, 44pt tall).
+        assert!(batch.items.iter().any(|i| matches!(
+            i,
+            MountItem::Insert {
+                parent: 2,
+                child: 4,
+                ..
+            }
+        )));
+        assert_eq!(frame_of(&batch, 4).map(|f| f.height), Some(44.0));
+        // The children sit below it, after `mt-2` (the slot is filled).
+        let holder = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Insert {
+                    parent, child: 8, ..
+                } => Some(*parent),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(frame_of(&batch, holder).map(|f| f.y), Some(52.0));
+
+        // Emptying the slot renders again: `mt-0`.
+        apply(
+            &mut c,
+            vec![Op::Remove {
+                parent: 4,
+                child: 6,
+            }],
+        );
+        let batch = c.commit().unwrap();
+        assert_eq!(frame_of(&batch, holder).map(|f| f.y), Some(44.0));
+
+        // Without its node the header is not rendered.
+        apply(
+            &mut c,
+            vec![Op::Remove {
+                parent: 2,
+                child: 4,
+            }],
+        );
+        let batch = c.commit().unwrap();
+        assert!(
+            batch
+                .items
+                .iter()
+                .any(|i| matches!(i, MountItem::Remove { id: 4 }))
+        );
+        assert_eq!(frame_of(&batch, holder).map(|f| f.y), Some(0.0));
+    }
+
+    /// Renders a Tally and counts its taps.
+    #[derive(Default)]
+    struct Outer {
+        inner_taps: u32,
+    }
+
+    static OUTER: Spec = Spec {
+        name: "test.outer",
+        export: "Outer",
+        doc: "",
+        props: &[],
+        events: &[],
+        children: false,
+        slots: &[],
+    };
+
+    impl Component for Outer {
+        fn spec() -> &'static Spec {
+            &OUTER
+        }
+
+        fn render(&self, _p: &Props, _cx: &mut RenderCx) -> El<Self> {
+            view()
+                .child(text(format!("outer {}", self.inner_taps)))
+                .child(
+                crate::component::component("test.tally", [("label", json!("In"))]).on(
+                    EventKind::NativeEvent,
+                    |this: &mut Self, payload, cx: &mut EventCx| {
+                        if matches!(payload, EventPayload::Native { name, .. } if &**name == "tap")
+                        {
+                            this.inner_taps += 1;
+                            cx.emit("innerTap", json!(this.inner_taps));
+                            cx.notify();
+                        }
+                    },
+                ),
+            )
+        }
+    }
+
+    #[test]
+    fn nested_components_render_and_report_to_their_parent() {
+        let mut c = core();
+        let mut registry = Registry::new();
+        registry.register::<Tally>().register::<Outer>();
+        c.set_components(registry);
+        apply(
+            &mut c,
+            vec![
+                Op::Create {
+                    id: 2,
+                    tag: Tag::View,
+                },
+                Op::SetProp {
+                    id: 2,
+                    prop: Prop::Component("test.outer".into()),
+                },
+                Op::Insert {
+                    parent: ROOT_ID,
+                    child: 2,
+                    before: None,
+                },
+            ],
+        );
+        let batch = c.commit().unwrap();
+        let mut shown = texts(&batch);
+        shown.sort();
+        assert_eq!(shown, ["In 0", "outer 0"]);
+        // The nested Tally's host: the node listening to presses.
+        let inner = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Events { id, events } if events.contains(EventKind::Press) => Some(*id),
+                _ => None,
+            })
+            .unwrap();
+        assert!(c.component_event(inner, EventKind::Press, &EventPayload::None));
+        let mut events = Vec::new();
+        c.take_events(&mut events);
+        // JS hears the outer component's event, not the inner one.
+        assert_eq!(
+            events,
+            [(
+                2,
+                EventKind::NativeEvent,
+                EventPayload::Native {
+                    name: "innerTap".into(),
+                    data: json!(1)
+                }
+            )]
+        );
+        let mut shown = texts(&c.commit().unwrap());
+        shown.sort();
+        assert_eq!(shown, ["In 1", "outer 1"]);
     }
 
     #[test]
