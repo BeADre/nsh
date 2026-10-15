@@ -9,6 +9,7 @@ import { Gestures } from "./demos/Gestures";
 import { Images } from "./demos/Images";
 import { Lists } from "./demos/Lists";
 import { Media } from "./demos/Media";
+import { MobileUi } from "./demos/MobileUi";
 import { Navigation } from "./demos/Navigation";
 import { Photos } from "./demos/Photos";
 import { Physics } from "./demos/Physics";
@@ -26,6 +27,7 @@ const demos: DemoEntry[] = [
   { name: "Scrolling", detail: "Paging, snapping, zoom, scroll events, prepending, keyboard taps", screen: Scrolling },
   { name: "Navigation", detail: "Header options, modals, the back button, safe areas", screen: Navigation },
   { name: "Form", detail: "Inputs, keyboard types, the keyboard over the content", screen: Form },
+  { name: "Mobile UI", detail: "nsh/ui/mobile in Rust: a ListView and a Group laying out the app's rows", screen: MobileUi },
   { name: "Components", detail: "Press feedback, sheet, layout animation, input accessory, keyboard, modal options, Platform", screen: Components },
   { name: "Gestures", detail: "Pinch, rotate, press states, hit slop, pointer events", screen: Gestures },
   { name: "Physics", detail: "Drags and springs on the UI thread", screen: Physics },

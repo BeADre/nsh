@@ -108,6 +108,7 @@ enum Kind {
     Value,
     Slot,
     Children,
+    Items,
 }
 
 /// `#[derive(Props)]`: a component's props. Every field is a prop named in
@@ -119,6 +120,8 @@ enum Kind {
 ///   JS clearing a prop restores it.
 /// - `Option<Slot>`: a named slot, JSX the app passes in that prop.
 /// - `Children`: the JSX children.
+/// - `Items`: virtualized rows (in JS `each`, a row renderer and `List`'s
+///   data props), at most one, and not with `Children`.
 ///
 /// `#[prop(rename = "…")]` sets the JS name. The struct's doc comment
 /// documents the component in TypeScript, the fields' its props.
@@ -148,6 +151,7 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
     let mut set_arms = Vec::new();
     let mut slot_arms = Vec::new();
     let mut children = None;
+    let mut items: Option<Ident> = None;
     for field in &fields.named {
         let ident = field.ident.as_ref().expect("named");
         let ty = &field.ty;
@@ -163,11 +167,13 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
                 _ => Kind::Value,
             },
             Some((id, _)) if id == "Children" => Kind::Children,
+            Some((id, _)) if id == "Items" => Kind::Items,
             _ => Kind::Value,
         };
         let is_option = matches!(last_segment(ty), Some((id, _)) if id == "Option");
-        let init = match &attr.default {
-            Some(Some(expr)) => quote!(#expr),
+        let init = match (&attr.default, &kind) {
+            (_, Kind::Items) => quote!(#ui::Items::__new(#js)),
+            (Some(Some(expr)), _) => quote!(#expr),
             _ => quote!(::core::default::Default::default()),
         };
         initial.push(quote!(#ident: #init));
@@ -217,9 +223,30 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
                     }
                 });
             }
+            Kind::Items => {
+                if items.is_some() || children.is_some() {
+                    return Err(syn::Error::new(
+                        field.span(),
+                        "one `Items` field at most, and no `Children` with it (the row renderer is the children)",
+                    ));
+                }
+                specs.push(quote! {
+                    #ui::PropSpec {
+                        name: #js,
+                        ts: ::std::string::String::new(),
+                        optional: false,
+                        doc: #field_doc,
+                        kind: #ui::PropKind::Items,
+                    }
+                });
+                items = Some(ident.clone());
+            }
             Kind::Children => {
-                if children.is_some() {
-                    return Err(syn::Error::new(field.span(), "only one `Children` field"));
+                if children.is_some() || items.is_some() {
+                    return Err(syn::Error::new(
+                        field.span(),
+                        "one `Children` field at most, and none with `Items`",
+                    ));
                 }
                 specs.push(quote! {
                     #ui::PropSpec {

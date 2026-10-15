@@ -20,8 +20,11 @@ stays native. JS only gets the events the component emits.
   literals: apps restyle every component with their `nsh.json` theme, and dark appearance switches natively.
 - **What the render knows is plain Rust**: `.when(props.disabled, |v| v.opacity(0.5))`, `match props.variant`.
   Interaction states that change without a render are variants: `.active(..)`, `.hover(..)`, `.focus(..)`.
-- **Slots and children are props**: `header: Option<Slot>` (style and place the slot:
-  `.children(props.header.clone().map(|h| h.px_4()))`), `children: Children` (`.child(props.children)`).
+- **The app's content is props, placed by closures**; the component lays it out, never creates or changes it:
+  `header: Option<Slot>` (`.slot(props.header, |h| h.px_4())`), `children: Children` (`.child(props.children)`, or
+  `.children_each(props.children, |child, i| ..)` to wrap each), `items: Items` for virtualized rows
+  (`.list(props.items, |l| l.estimated_item_size(48.0), |row, i| ..)`; in JS `each` and a row renderer, like `List`).
+  `Group` and `ListView` are the examples.
 - **State** lives in the component's fields; listeners (`cx.listener(|this, event, cx| ..)`) get `&mut Self` and emit
   with `cx.emit(ButtonEvent::Press)`.
 - **Primitives only**, never a platform widget: the look is ours and identical on both platforms.

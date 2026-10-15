@@ -9,8 +9,8 @@ use super::{
     style::{StyleRefinement, Styled, Variant},
 };
 use crate::{
-    AccessibilityProp, AccessibilityRole, AccessibilityState, EventKind, EventPayload, ImageSource,
-    JsonValue, NativeProp, PointerEvents, Prop, Tag,
+    AccessibilityProp, AccessibilityRole, AccessibilityState, EdgeInsets, EventKind, EventPayload,
+    ImageSource, JsonValue, ListContentStyle, NativeProp, NodeId, PointerEvents, Prop, Tag,
 };
 
 /// A handler of `E` on an element, made by [`RenderCx::listener`]: it runs
@@ -207,14 +207,66 @@ impl Clone for ComponentEl {
     }
 }
 
+/// Places one piece of the app's content: a JSX child, or a list row.
+pub(crate) type PlaceFn = Rc<dyn Fn(Child, usize) -> AnyElement>;
+
+/// How a list slot is laid out (each set field is sent to the list).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct ListConfig {
+    pub(crate) estimated: Option<f32>,
+    pub(crate) columns: Option<u32>,
+    pub(crate) horizontal: Option<bool>,
+    pub(crate) inverted: Option<bool>,
+    pub(crate) shows_indicator: Option<bool>,
+    pub(crate) content: Option<ListContentStyle>,
+}
+
+impl ListConfig {
+    /// The props of the fields that differ from `old`.
+    pub(crate) fn changes(&self, old: &ListConfig, out: &mut Vec<Prop>) {
+        if self.estimated != old.estimated {
+            out.push(Prop::EstimatedItemSize(self.estimated.unwrap_or(50.0)));
+        }
+        if self.columns != old.columns {
+            out.push(Prop::Columns(self.columns.unwrap_or(1)));
+        }
+        if self.horizontal != old.horizontal {
+            out.push(Prop::Horizontal(self.horizontal.unwrap_or(false)));
+        }
+        if self.inverted != old.inverted {
+            out.push(Prop::Inverted(self.inverted.unwrap_or(false)));
+        }
+        if self.shows_indicator != old.shows_indicator {
+            out.push(Prop::ShowsIndicator(self.shows_indicator.unwrap_or(true)));
+        }
+        if self.content != old.content {
+            out.push(Prop::ListContent(self.content.unwrap_or_default()));
+        }
+    }
+}
+
+/// A list slot as a render places it.
+#[derive(Clone)]
+pub(crate) struct ListEl {
+    pub(crate) name: &'static str,
+    pub(crate) config: ListConfig,
+    pub(crate) row: PlaceFn,
+}
+
 /// What an element is beyond its tag.
 #[derive(Clone)]
 pub(crate) enum ElKind {
     Plain,
     /// The glue's node of slot `name`.
     Slot(&'static str),
-    /// Where the JSX children go.
+    /// Where the JSX children go (a list row's content, in a row).
     Children,
+    /// One JSX child (in [`ParentElement::children_each`]).
+    JsChild(NodeId),
+    /// Every JSX child, each placed by the function.
+    EachChild(PlaceFn),
+    /// The glue's list of an [`Items`] prop.
+    List(Box<ListEl>),
     Component(ComponentEl),
 }
 
@@ -343,6 +395,53 @@ pub trait ParentElement: Element {
         self.node()
             .children
             .extend(children.into_iter().map(|c| c.into_element().0));
+        self
+    }
+
+    /// Places slot `slot` here when the app passed it, as `place` styles it
+    /// (the closure gets the slot's own node).
+    fn slot(mut self, slot: Option<Slot>, place: impl FnOnce(SlotElement) -> SlotElement) -> Self {
+        if let Some(slot) = slot {
+            let mut node = ElNode::new(Tag::View);
+            node.kind = ElKind::Slot(slot.name);
+            self.node().children.push(place(SlotElement(node)).0);
+        }
+        self
+    }
+
+    /// Places the app's JSX children here one by one: `place(child, index)`
+    /// wraps each (runs again when the children change).
+    fn children_each<R: IntoElement>(
+        mut self,
+        children: Children,
+        place: impl Fn(Child, usize) -> R + 'static,
+    ) -> Self {
+        let _ = children;
+        let mut node = ElNode::new(Tag::View);
+        node.kind = ElKind::EachChild(Rc::new(move |child, index| {
+            place(child, index).into_element()
+        }));
+        self.node().children.push(node);
+        self
+    }
+
+    /// Places the app's virtualized list of `items` here: `config` lays
+    /// the list out (size, columns, padding), `row(content, index)` wraps
+    /// each row the app renders (runs again when a cell shows another
+    /// row). Only rows near the viewport exist; the core recycles them.
+    fn list<R: IntoElement>(
+        mut self,
+        items: Items,
+        config: impl FnOnce(ListElement) -> ListElement,
+        row: impl Fn(Child, usize) -> R + 'static,
+    ) -> Self {
+        let mut node = ElNode::new(Tag::List);
+        node.kind = ElKind::List(Box::new(ListEl {
+            name: items.name,
+            config: ListConfig::default(),
+            row: Rc::new(move |content, index| row(content, index).into_element()),
+        }));
+        self.node().children.push(config(ListElement(node)).0);
         self
     }
 }
@@ -478,15 +577,19 @@ element! {
 }
 
 element! {
-    /// A named slot the app filled (an `Option<Slot>` prop): its JSX,
-    /// placed where the render puts it. Style it like a view; its children
-    /// are the app's.
-    Slot
+    /// A slot's node as a render places it ([`ParentElement::slot`]):
+    /// style it like a view; its children are the app's.
+    SlotElement
+}
+
+element! {
+    /// A list as a render lays it out ([`ParentElement::list`]).
+    ListElement
 }
 
 impl Interactive for View {}
 impl ParentElement for View {}
-impl Interactive for Slot {}
+impl Interactive for SlotElement {}
 
 impl Text {
     /// At most `lines` lines (0: no limit), the last one truncated.
@@ -496,33 +599,144 @@ impl Text {
     }
 }
 
+impl ListElement {
+    fn config(&mut self) -> &mut ListConfig {
+        match &mut self.0.kind {
+            ElKind::List(list) => &mut list.config,
+            _ => unreachable!("a ListElement is a list"),
+        }
+    }
+
+    fn content(&mut self) -> &mut ListContentStyle {
+        self.config().content.get_or_insert_default()
+    }
+
+    /// The size of rows not measured yet, in points (default 50).
+    pub fn estimated_item_size(mut self, points: f32) -> Self {
+        self.config().estimated = Some(points);
+        self
+    }
+
+    /// Rows side by side (vertical lists).
+    pub fn columns(mut self, columns: u32) -> Self {
+        self.config().columns = Some(columns.max(1));
+        self
+    }
+
+    /// Scrolls horizontally.
+    pub fn horizontal(mut self) -> Self {
+        self.config().horizontal = Some(true);
+        self
+    }
+
+    /// Item 0 at the end (chats), starting scrolled to the end.
+    pub fn inverted(mut self) -> Self {
+        self.config().inverted = Some(true);
+        self
+    }
+
+    /// Whether the scroll indicator shows (default yes).
+    pub fn shows_indicator(mut self, shows: bool) -> Self {
+        self.config().shows_indicator = Some(shows);
+        self
+    }
+
+    /// Padding around the rows, in points.
+    pub fn content_padding(mut self, points: f32) -> Self {
+        self.content().padding = EdgeInsets::all(points);
+        self
+    }
+
+    /// Horizontal padding around the rows.
+    pub fn content_padding_x(mut self, points: f32) -> Self {
+        let p = &mut self.content().padding;
+        (p.left, p.right) = (points, points);
+        self
+    }
+
+    /// Vertical padding around the rows.
+    pub fn content_padding_y(mut self, points: f32) -> Self {
+        let p = &mut self.content().padding;
+        (p.top, p.bottom) = (points, points);
+        self
+    }
+
+    /// Space between rows (columns in horizontal lists).
+    pub fn row_gap(mut self, points: f32) -> Self {
+        self.content().row_gap = points;
+        self
+    }
+
+    /// Space between columns ([`Self::columns`]).
+    pub fn column_gap(mut self, points: f32) -> Self {
+        self.content().column_gap = points;
+        self
+    }
+}
+
+/// A named slot (an `Option<Slot>` prop): `Some` while the app passes
+/// content for it. Placed with [`ParentElement::slot`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Slot {
+    name: &'static str,
+}
+
 impl Slot {
     pub(crate) fn new(name: &'static str) -> Self {
-        let mut node = ElNode::new(Tag::View);
-        node.kind = ElKind::Slot(name);
-        Self(node)
+        Self { name }
     }
 
     /// Its name (its prop's, in JS).
     pub fn name(&self) -> &'static str {
-        match self.0.kind {
-            ElKind::Slot(name) => name,
-            _ => "",
-        }
+        self.name
     }
 }
 
-/// Slots are equal when they are the same slot: the app's content is not
-/// a prop value.
-impl PartialEq for Slot {
-    fn eq(&self, other: &Self) -> bool {
-        self.name() == other.name()
+/// The app's virtualized rows (an `Items` prop): in JS the component takes
+/// `each` and a row renderer like `List`. Placed with
+/// [`ParentElement::list`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Items {
+    name: &'static str,
+}
+
+impl Items {
+    #[doc(hidden)]
+    pub const fn __new(name: &'static str) -> Self {
+        Self { name }
     }
 }
 
-impl std::fmt::Debug for Slot {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Slot").field(&self.name()).finish()
+/// A piece of the app's content to place: one JSX child
+/// ([`ParentElement::children_each`]) or a list row's content
+/// ([`ParentElement::list`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Child(ChildRef);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChildRef {
+    Js(NodeId),
+    Row,
+}
+
+impl Child {
+    pub(crate) fn js(id: NodeId) -> Self {
+        Self(ChildRef::Js(id))
+    }
+
+    pub(crate) fn row() -> Self {
+        Self(ChildRef::Row)
+    }
+}
+
+impl IntoElement for Child {
+    fn into_element(self) -> AnyElement {
+        let mut node = ElNode::new(Tag::View);
+        node.kind = match self.0 {
+            ChildRef::Js(id) => ElKind::JsChild(id),
+            ChildRef::Row => ElKind::Children,
+        };
+        AnyElement(node)
     }
 }
 

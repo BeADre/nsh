@@ -388,13 +388,34 @@ const eventHandler = (event: string): string => "on" + event.charAt(0).toUpperCa
  * called once instead). */
 const hostProps = ["class", "classList", "style", "testID", "onLayout"];
 
+/** What the glue hands to the list of a component with rows: `nsh/list`'s
+ * `ListItemsProps` (the data and the rows; the component lays it out). */
+const listItemsProps = [
+  "each",
+  "children",
+  "keyExtractor",
+  "stickyHeaderIndices",
+  "initialScrollIndex",
+  "onViewableItemsChanged",
+  "viewabilityConfig",
+  "refreshing",
+  "onRefresh",
+  "onEndReached",
+  "onEndReachedThreshold",
+  "ListHeaderComponent",
+  "ListFooterComponent",
+  "ListEmptyComponent",
+];
+
 /**
  * The JS face of Rust component `name` (generated from its spec,
  * `nsh_core::component::typescript`): a host node naming the component, its
  * own `props` sent as `$name` when they change, its `events` delivered to
  * the `on<Event>` handlers, its JSX children inserted when it takes some, and
  * one node per named slot the app fills (the component's render decides
- * where it goes).
+ * where it goes). A component with rows (`items`, the name of its `Items`
+ * prop) gets a `List` of the app's data and row renderer as that slot:
+ * the component lays it out and wraps the rows.
  *
  * Built for speed, as it runs for every instance: one effect reads every
  * prop and sends those that changed (no prop splitting or merging proxies),
@@ -406,6 +427,8 @@ export function component<P>(
   events: readonly string[],
   children: boolean,
   slots: readonly string[],
+  items?: string,
+  list?: (props: any) => YNode,
 ): (p: P) => any {
   const keys: string[] = [...props, ...hostProps];
   const wire: string[] = [...props.map((k) => "$" + k), ...hostProps];
@@ -424,6 +447,17 @@ export function component<P>(
       const holder = createElement("view");
       renderer.setProp(holder, "componentSlot", slot);
       insert(holder, () => q[slot]);
+      insertNode(node, holder);
+      anchor ??= holder;
+    }
+    if (items !== undefined && list !== undefined) {
+      // Only what the app passes: `List` checks which slots exist.
+      const forwarded: Record<string, unknown> = {};
+      for (const key of listItemsProps) {
+        if (key in q) Object.defineProperty(forwarded, key, { enumerable: true, get: () => q[key] });
+      }
+      const holder = untrack(() => createComponent(list, forwarded));
+      renderer.setProp(holder, "componentSlot", items);
       insertNode(node, holder);
       anchor ??= holder;
     }

@@ -46,13 +46,13 @@ impl Component for Card {
             .border_1()
             .border_color(theme.border)
             .when(props.variant == CardVariant::Elevated, |v| v.shadow_sm())
-            .children(props.header.clone().map(|header| {
+            .slot(props.header, |header| {
                 header
                     .px_4()
                     .pt_4()
                     .text_size(px(theme.font_size + 1.0))
                     .font_weight(FontWeight::SEMIBOLD)
-            }))
+            })
             .child(
                 view()
                     .gap_2()
@@ -65,7 +65,7 @@ impl Component for Card {
                     })
                     .child(props.children),
             )
-            .children(props.footer.clone().map(|footer| {
+            .slot(props.footer, |footer| {
                 footer
                     .flex_row()
                     .justify_end()
@@ -74,6 +74,6 @@ impl Component for Card {
                     .py_3()
                     .border_t_1()
                     .border_color(theme.border)
-            }))
+            })
     }
 }

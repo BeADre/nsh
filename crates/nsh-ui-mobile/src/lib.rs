@@ -9,6 +9,8 @@
 
 mod button;
 mod card;
+mod group;
+mod list_view;
 
 use std::sync::Arc;
 
@@ -17,12 +19,18 @@ use nsh_core::ui::{ComponentSpec, Registry};
 pub use crate::{
     button::{Button, ButtonEvent, ButtonProps, ButtonVariant},
     card::{Card, CardProps, CardVariant},
+    group::{Group, GroupProps},
+    list_view::{ListView, ListViewProps},
 };
 
 /// Every component of the mobile set, for an engine to render.
 pub fn registry() -> Registry {
     let mut registry = Registry::new();
-    registry.register::<Button>().register::<Card>();
+    registry
+        .register::<Button>()
+        .register::<Card>()
+        .register::<Group>()
+        .register::<ListView>();
     registry
 }
 

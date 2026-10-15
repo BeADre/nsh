@@ -94,6 +94,29 @@ export interface ListProps<T> extends ScrollBehaviorProps {
   children: (item: () => T, index: () => number) => JSX.Element;
 }
 
+/** What an app passes to a Rust component that lays out a list of rows
+ * (an `Items` prop): the data and the rows; the component decides the
+ * layout. */
+export type ListItemsProps<T> = Pick<
+  ListProps<T>,
+  | "each"
+  | "children"
+  | "keyExtractor"
+  | "stickyHeaderIndices"
+  | "initialScrollIndex"
+  | "onViewableItemsChanged"
+  | "viewabilityConfig"
+  | "refreshing"
+  | "onRefresh"
+  | "onEndReached"
+  | "onEndReachedThreshold"
+  | "ListHeaderComponent"
+  | "ListFooterComponent"
+  | "ListEmptyComponent"
+>;
+
+// The component glue forwards these (`listItemsProps` in `_core.ts`).
+
 /** Renders a list slot prop: a component is called, an element used as is. */
 function slot(value: ListSlot): any {
   return typeof value === "function" && !(value instanceof YNode) ? untrack(() => createComponent(value as unknown as (props: {}) => YNode, {})) : value;

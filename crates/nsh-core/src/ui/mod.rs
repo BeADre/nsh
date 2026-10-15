@@ -32,7 +32,7 @@ pub use nsh_macros::{Event, PropEnum, Props};
 
 pub(crate) use self::{
     component::AnyInstance,
-    element::{ElKind, ErasedEventCx},
+    element::{ElKind, ErasedEventCx, ListConfig, PlaceFn},
 };
 pub use self::{
     component::{
@@ -40,9 +40,9 @@ pub use self::{
         typescript,
     },
     element::{
-        Accessible, AnyElement, Attrs, Children, ComponentElement, ElNode, Element, EventCx,
-        FluentBuilder, Image, Interactive, IntoElement, Listener, ParentElement, RenderCx, Slot,
-        Text, View, image, text, view,
+        Accessible, AnyElement, Attrs, Child, Children, ComponentElement, ElNode, Element, EventCx,
+        FluentBuilder, Image, Interactive, IntoElement, Items, ListElement, Listener,
+        ParentElement, RenderCx, Slot, SlotElement, Text, View, image, text, view,
     },
     style::{AdaptiveColor, FontWeight, Length, StyleRefinement, Styled, px, relative, rgb, rgba},
     theme::{Theme, ThemeColors, ThemeError},
@@ -55,9 +55,9 @@ pub use crate::{
 /// Everything a component's module needs: `use nsh_core::ui::prelude::*;`.
 pub mod prelude {
     pub use super::{
-        AccessibilityRole, AccessibilityState, Accessible, AdaptiveColor, Children, Color,
+        AccessibilityRole, AccessibilityState, Accessible, AdaptiveColor, Child, Children, Color,
         Component, ComponentElement, Element, Event, EventCx, EventKind, EventPayload,
-        FluentBuilder, FontWeight, Interactive, IntoElement, Length, Listener, NoEvent,
+        FluentBuilder, FontWeight, Interactive, IntoElement, Items, Length, Listener, NoEvent,
         ParentElement, PointerEvents, PropEnum, Props, RenderCx, SharedString, Slot, Styled, Theme,
         image, px, relative, rgb, rgba, text, view,
     };

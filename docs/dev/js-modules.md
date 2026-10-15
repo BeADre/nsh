@@ -29,7 +29,7 @@ is no catch-all module, and moved APIs get no compatibility re-exports.
 | `nsh/ios` | `isAvailable`, `InputAccessoryView` |
 | `nsh/android` | `isAvailable`, `Toast`, `BackHandler`, `setStatusBarBackgroundColor` |
 | `nsh/renderer` | what compiled JSX calls (`createElement`, `insert`, `spread`, ...; the Solid compiler's `moduleName`) |
-| `nsh/ui/mobile` | `Stack`, `Screen`, `createNavigator`, `Modal`; `SafeAreaView`, `useSafeAreaInsets`, `safeArea()`; `KeyboardAvoidingView`, `keyboard()`, `Keyboard.dismiss`; `StatusBar`, `Alert`, `ActionSheet` (a list dialog on Android); the components of `nsh-ui-mobile` (`Button`, `Card`) |
+| `nsh/ui/mobile` | `Stack`, `Screen`, `createNavigator`, `Modal`; `SafeAreaView`, `useSafeAreaInsets`, `safeArea()`; `KeyboardAvoidingView`, `keyboard()`, `Keyboard.dismiss`; `StatusBar`, `Alert`, `ActionSheet` (a list dialog on Android); the components of `nsh-ui-mobile` (`Button`, `Card`, `Group`, `ListView`) |
 
 - **Platform modules** are importable on both platforms (one bundle runs on both); on the other one their calls do
   nothing and their components render nothing. `isAvailable` tells which.

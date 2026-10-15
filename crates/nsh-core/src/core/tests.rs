@@ -3088,13 +3088,11 @@ mod components {
 
         fn render(&self, props: &CardProps, _cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
             let filled = props.header.is_some();
-            view()
-                .children(props.header.clone().map(|h| h.h(px(44.0))))
-                .child(
-                    view()
-                        .map(|v| if filled { v.mt_2() } else { v.mt_0() })
-                        .child(props.children),
-                )
+            view().slot(props.header, |h| h.h(px(44.0))).child(
+                view()
+                    .map(|v| if filled { v.mt_2() } else { v.mt_0() })
+                    .child(props.children),
+            )
         }
     }
 
@@ -3423,5 +3421,122 @@ mod components {
         c.set_states(2, crate::tailwind::state::PRESSED);
         let batch = c.commit().unwrap();
         assert_eq!(background(&batch), Some(Color(0xff0000ff)));
+    }
+
+    /// Wraps each JS child in a padded row.
+    #[derive(Default)]
+    struct Rows;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct RowsProps {
+        children: Children,
+    }
+
+    impl Component for Rows {
+        const NAME: &'static str = "test.rows";
+        type Props = RowsProps;
+        type Event = NoEvent;
+
+        fn render(&self, props: &RowsProps, _cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            view().children_each(props.children, |child, index| {
+                view().p_1().when(index > 0, |v| v.mt_2()).child(child)
+            })
+        }
+    }
+
+    #[test]
+    fn children_each_wraps_every_js_child_and_follows_changes() {
+        let mut c = core();
+        let mut registry = Registry::new();
+        registry.register::<Rows>();
+        c.set_components(registry);
+        let child = |id: NodeId| {
+            vec![
+                Op::Create { id, tag: Tag::View },
+                style_op(id, &[("height", StyleValue::Number(10.0))]),
+            ]
+        };
+        let mut ops = vec![
+            Op::Create {
+                id: 2,
+                tag: Tag::View,
+            },
+            Op::SetProp {
+                id: 2,
+                prop: Prop::Component("test.rows".into()),
+            },
+        ];
+        ops.extend(child(4));
+        ops.extend(child(6));
+        ops.extend([
+            Op::Insert {
+                parent: 2,
+                child: 4,
+                before: None,
+            },
+            Op::Insert {
+                parent: 2,
+                child: 6,
+                before: None,
+            },
+            Op::Insert {
+                parent: ROOT_ID,
+                child: 2,
+                before: None,
+            },
+        ]);
+        apply(&mut c, ops);
+        let batch = c.commit().unwrap();
+        let wrapper_of = |batch: &MountBatch, id: NodeId| {
+            batch.items.iter().find_map(|i| match i {
+                MountItem::Insert { parent, child, .. } if *child == id => Some(*parent),
+                _ => None,
+            })
+        };
+        let (w4, w6) = (
+            wrapper_of(&batch, 4).unwrap(),
+            wrapper_of(&batch, 6).unwrap(),
+        );
+        assert!(w4 % 2 == 1 && w6 % 2 == 1 && w4 != w6);
+        // 4pt padding, 10pt children, 8pt between the rows.
+        assert_eq!(
+            frame_of(&batch, w4).map(|f| (f.y, f.height)),
+            Some((0.0, 18.0))
+        );
+        assert_eq!(frame_of(&batch, w6).map(|f| f.y), Some(26.0));
+
+        // A child inserted first gets its own wrapper; the others keep theirs
+        // and move down (the second row now has the margin).
+        let mut ops = child(8);
+        ops.push(Op::Insert {
+            parent: 2,
+            child: 8,
+            before: Some(4),
+        });
+        apply(&mut c, ops);
+        let batch = c.commit().unwrap();
+        let w8 = wrapper_of(&batch, 8).unwrap();
+        assert!(![w4, w6].contains(&w8));
+        assert_eq!(frame_of(&batch, w8).map(|f| f.y), Some(0.0));
+        assert_eq!(frame_of(&batch, w4).map(|f| f.y), Some(26.0));
+        assert!(wrapper_of(&batch, 4).is_none() && wrapper_of(&batch, 6).is_none());
+
+        // A child removed takes its wrapper away; the child itself stays JS's.
+        apply(
+            &mut c,
+            vec![Op::Remove {
+                parent: 2,
+                child: 4,
+            }],
+        );
+        let batch = c.commit().unwrap();
+        assert!(
+            batch
+                .items
+                .iter()
+                .any(|i| matches!(i, MountItem::Delete { id } if *id == w4))
+        );
+        assert!(c.key(4).is_ok());
+        assert_eq!(frame_of(&batch, w6).map(|f| f.y), Some(26.0));
     }
 }

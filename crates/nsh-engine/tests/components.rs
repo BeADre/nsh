@@ -1,5 +1,5 @@
 //! Rust components through the generated JS glue: props, events, children,
-//! named slots.
+//! named slots, children placed one by one, and a list of the app's rows.
 
 use std::time::Duration;
 
@@ -34,11 +34,15 @@ function App() {
 render(() => <App />, root);
 "#;
 
-fn start() -> (Engine, Receiver<MountBatch>) {
-    let dir = std::env::temp_dir().join(format!("nsh-components-{}", std::process::id()));
+fn start(app: &str) -> (Engine, Receiver<MountBatch>) {
+    let dir = std::env::temp_dir().join(format!(
+        "nsh-components-{}-{}",
+        std::process::id(),
+        app.len()
+    ));
     std::fs::create_dir_all(&dir).unwrap();
     let entry = dir.join("App.tsx");
-    std::fs::write(&entry, APP).unwrap();
+    std::fs::write(&entry, app).unwrap();
     let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {
         entry,
         minify: false,
@@ -71,7 +75,7 @@ fn text_ids(batch: &MountBatch, wanted: &str) -> Option<u32> {
 
 #[test]
 fn slots_children_and_events_through_the_glue() {
-    let (engine, rx) = start();
+    let (engine, rx) = start(APP);
     let first = rx
         .recv_timeout(Duration::from_secs(5))
         .expect("first frame");
@@ -119,5 +123,73 @@ fn slots_children_and_events_through_the_glue() {
             .items
             .iter()
             .any(|i| matches!(i, MountItem::Remove { id } if *id == title_parent))
+    );
+}
+
+const ROWS: &str = r#"import { render, root } from "nsh";
+import { Group, ListView } from "nsh/ui/mobile";
+
+const rows = Array.from({ length: 100 }, (_, i) => ({ id: i, label: `Row ${i}` }));
+
+render(
+  () => (
+    <ListView
+      each={rows}
+      ListHeaderComponent={() => (
+        <Group>
+          <text>First</text>
+          <text>Second</text>
+        </Group>
+      )}
+    >
+      {(row) => <text>{row().label}</text>}
+    </ListView>
+  ),
+  root,
+);
+"#;
+
+#[test]
+fn components_place_the_apps_children_and_rows() {
+    let (_engine, rx) = start(ROWS);
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    let parent_of = |id| {
+        first.items.iter().find_map(|i| match i {
+            MountItem::Insert { parent, child, .. } if *child == id => Some(*parent),
+            _ => None,
+        })
+    };
+    let frame = |id| {
+        first.items.iter().find_map(|i| match i {
+            MountItem::Frame { id: f, frame } if *f == id => Some(*frame),
+            _ => None,
+        })
+    };
+    let top_border = |id| {
+        first.items.iter().any(|i| {
+            matches!(i, MountItem::ViewStyle { id: v, style } if *v == id && style.borders.widths[0] == 1.0)
+        })
+    };
+    // Each child of the Group in a wrapper of the core's (odd ids), with
+    // a divider above all but the first.
+    let a = parent_of(text_ids(&first, "First").expect("First")).unwrap();
+    let b = parent_of(text_ids(&first, "Second").expect("Second")).unwrap();
+    assert!(a % 2 == 1 && b % 2 == 1 && a != b);
+    assert!(!top_border(a) && top_border(b));
+    // The rows the app renders, recycled by the list, wrapped by the
+    // ListView: 16pt in, dividers between them.
+    let row0 = parent_of(text_ids(&first, "Row 0").expect("Row 0")).unwrap();
+    let row1 = parent_of(text_ids(&first, "Row 1").expect("Row 1")).unwrap();
+    assert!(row0 % 2 == 1 && row1 % 2 == 1);
+    assert_eq!(
+        frame(text_ids(&first, "Row 0").unwrap()).map(|f| f.x),
+        Some(16.0)
+    );
+    assert!(!top_border(row0) && top_border(row1));
+    assert!(
+        text_ids(&first, "Row 99").is_none(),
+        "only rows near the viewport exist"
     );
 }

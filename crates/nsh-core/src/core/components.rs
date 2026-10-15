@@ -19,8 +19,9 @@ use crate::{
     TextEngine,
     tailwind::ClassList,
     ui::{
-        AnyInstance, Attrs, ComponentSpec, ElKind, ElNode, ErasedEventCx, Listener, Registry,
-        SharedString, StyleRefinement, Theme,
+        AnyInstance, Attrs, Child, ComponentSpec, ElKind, ElNode, ErasedEventCx, IntoElement,
+        ListConfig, Listener, ParentElement, PlaceFn, Registry, SharedString, StyleRefinement,
+        Theme, view,
     },
 };
 
@@ -32,10 +33,35 @@ const MAX_RENDERS: u32 = 16;
 /// and over); cleared when full.
 const STYLE_CACHE: usize = 4096;
 
+/// What renders on a host node.
+enum Inner {
+    /// Nothing is registered under the name: renders nothing.
+    Missing,
+    Component(Box<dyn AnyInstance>),
+    /// A list cell of a component's list: the component's row function
+    /// wraps the row the app rendered.
+    Row {
+        place: PlaceFn,
+        index: usize,
+    },
+}
+
+/// Where a host's JS children are.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Placement {
+    /// Out of the tree (the render has no place for them).
+    None,
+    /// In this node, before the rendered node after the render's
+    /// `Children` (their anchor).
+    At(NodeId, Option<NodeId>),
+    /// Each in its own wrapper ([`ParentElement::children_each`]): placed
+    /// by the render.
+    Each,
+}
+
 /// A component instance on its host node.
 pub(super) struct Instance {
-    /// `None` when nothing is registered under the name (renders nothing).
-    inner: Option<Box<dyn AnyInstance>>,
+    inner: Inner,
     spec: Option<Arc<ComponentSpec>>,
     /// The app's `class` and `classList` on the host.
     class: Box<str>,
@@ -49,9 +75,7 @@ pub(super) struct Instance {
     root: Option<Expanded>,
     /// The host's JS children, in order.
     js_children: Vec<NodeId>,
-    /// Where they are: the node holding the render's `Children`, and the
-    /// rendered node after it (their anchor).
-    children_at: Option<(NodeId, Option<NodeId>)>,
+    children_at: Placement,
     /// The glue's node of each slot the app passes.
     slots: Vec<(&'static str, NodeId)>,
     /// The last render's handlers: native events by node, and the events of
@@ -71,6 +95,8 @@ enum Part {
     Children,
     /// A nested component.
     Component(&'static str),
+    /// One of the JS children (no node of its own).
+    JsChild,
 }
 
 /// The node's classes: its styles lowered, and what was merged after them.
@@ -87,14 +113,17 @@ struct Expanded {
     style: StyleRefinement,
     classes: Classes,
     events: EventMask,
+    /// A list's layout.
+    list: ListConfig,
     part: Part,
     children: Vec<Expanded>,
 }
 
 impl Expanded {
-    fn children_placeholder() -> Self {
+    /// A node of JS's in the render (`id` 0: the place of the children).
+    fn js(id: NodeId, part: Part) -> Self {
         Self {
-            id: 0,
+            id,
             tag: Tag::View,
             key: None,
             text: None,
@@ -102,7 +131,8 @@ impl Expanded {
             style: StyleRefinement::default(),
             classes: (None, None),
             events: EventMask::default(),
-            part: Part::Children,
+            list: ListConfig::default(),
+            part,
             children: Vec::new(),
         }
     }
@@ -121,6 +151,9 @@ pub(super) struct Components {
     /// Slot nodes in a host -> the host.
     slot_hosts: FxHashMap<NodeId, NodeId>,
     styles: FxHashMap<StyleRefinement, Arc<ClassList>>,
+    /// The lists components place (the glue's, of `Items` props) -> the
+    /// row function of the component's last render.
+    lists: FxHashMap<NodeId, PlaceFn>,
     next_id: NodeId,
     dirty: Vec<NodeId>,
     /// Reused buffers.
@@ -138,6 +171,7 @@ impl Default for Components {
             slot_names: FxHashMap::default(),
             slot_hosts: FxHashMap::default(),
             styles: FxHashMap::default(),
+            lists: FxHashMap::default(),
             // Odd: JS allocates the even ids (1 is the root).
             next_id: 3,
             dirty: Vec::new(),
@@ -222,11 +256,7 @@ impl<M: TextEngine> Core<M> {
             {
                 let name = self.components.slot_names[&child].clone();
                 let inst = self.components.instances.get_mut(&parent).expect("host");
-                let Some(slot) = inst
-                    .spec
-                    .as_ref()
-                    .and_then(|s| s.slots().find(|s| **s == *name))
-                else {
+                let Some(slot) = inst.spec.as_ref().and_then(|s| s.holder(&name)) else {
                     log::warn!(target: "js", "the component has no slot `{name}`");
                     self.detach_id(child);
                     return Ok(None);
@@ -243,6 +273,21 @@ impl<M: TextEngine> Core<M> {
                 self.unslot(child);
                 self.detach_id(child);
                 Ok(None)
+            }
+            // A component's list gets a cell: the component wraps its rows.
+            Op::Insert { parent, child, .. }
+                if self.components.slot_hosts.contains_key(&parent) && self.is_list(parent) =>
+            {
+                self.apply_op(op)?;
+                if let Some(place) = self.components.lists.get(&parent).cloned() {
+                    self.wrap_row(child, place);
+                }
+                Ok(None)
+            }
+            Op::Remove { parent, .. }
+                if self.components.slot_hosts.contains_key(&parent) && self.is_list(parent) =>
+            {
+                Ok(Some(op))
             }
             // A slot filled or emptied renders its component again.
             Op::Insert { parent, .. } | Op::Remove { parent, .. }
@@ -263,7 +308,22 @@ impl<M: TextEngine> Core<M> {
             Op::Release { id } if self.components.slot_names.contains_key(&id) => {
                 self.unslot(id);
                 self.components.slot_names.remove(&id);
+                self.components.lists.remove(&id);
                 Ok(Some(Op::Release { id }))
+            }
+            // A row cell shows another row: its wrapper renders again.
+            Op::SetProp {
+                id,
+                prop: Prop::CellIndex(index),
+            } if self.is_host(id) => {
+                let inst = self.components.instances.get_mut(&id).expect("host");
+                if let Inner::Row { index: current, .. } = &mut inst.inner
+                    && *current != index as usize
+                {
+                    *current = index as usize;
+                    self.components.mark(id);
+                }
+                Ok(Some(op))
             }
             Op::Insert {
                 parent,
@@ -278,25 +338,27 @@ impl<M: TextEngine> Core<M> {
                 inst.js_children
                     .insert(at.unwrap_or(inst.js_children.len()), child);
                 let place = inst.children_at;
-                if was_empty {
+                if was_empty || place == Placement::Each {
                     self.components.mark(parent);
                 }
                 match place {
                     // Before its next JS sibling, else before what the
                     // render puts after the children.
-                    Some((p, anchor)) => self.apply_op(Op::Insert {
+                    Placement::At(p, anchor) => self.apply_op(Op::Insert {
                         parent: p,
                         child,
                         before: at.and(before).or(anchor),
                     })?,
-                    None => self.detach_id(child),
+                    // Its wrapper is the render's.
+                    Placement::Each => self.detach_id(child),
+                    Placement::None => self.detach_id(child),
                 }
                 Ok(None)
             }
             Op::Remove { parent, child } if self.is_host(parent) => {
                 let inst = self.components.instances.get_mut(&parent).expect("host");
                 inst.js_children.retain(|&c| c != child);
-                if inst.js_children.is_empty() {
+                if inst.js_children.is_empty() || inst.children_at == Placement::Each {
                     self.components.mark(parent);
                 }
                 self.detach_id(child);
@@ -351,6 +413,56 @@ impl<M: TextEngine> Core<M> {
         }
     }
 
+    /// Whether `id` is a list.
+    fn is_list(&self, id: NodeId) -> bool {
+        self.key(id)
+            .is_ok_and(|k| self.nodes[k as usize].list.is_some())
+    }
+
+    /// Item cell `cell` of a component's list: its rows are wrapped by
+    /// `place`, the row function of the component's last render.
+    fn wrap_row(&mut self, cell: NodeId, place: PlaceFn) {
+        let Ok(key) = self.key(cell) else { return };
+        let node = &self.nodes[key as usize];
+        if !matches!(node.slot, Some(crate::CellSlot::Item(_))) {
+            return;
+        }
+        if let Some(inst) = self.components.instances.get_mut(&cell) {
+            if let Inner::Row { place: current, .. } = &mut inst.inner {
+                *current = place;
+            }
+            self.components.mark(cell);
+            return;
+        }
+        // The row's content is already in the cell: it moves into the
+        // wrapper.
+        let js_children = node
+            .children
+            .iter()
+            .map(|&c| self.nodes[c as usize].id)
+            .collect();
+        self.components.instances.insert(
+            cell,
+            Box::new(Instance {
+                inner: Inner::Row { place, index: 0 },
+                spec: None,
+                class: "".into(),
+                class_list: Vec::new(),
+                user: None,
+                js_events: EventMask::default(),
+                root: None,
+                js_children,
+                children_at: Placement::None,
+                slots: Vec::new(),
+                handlers: Vec::new(),
+                event_handlers: Vec::new(),
+                dirty: false,
+                renders: 0,
+            }),
+        );
+        self.components.mark(cell);
+    }
+
     /// The app's classes on `host` changed.
     fn update_user_class(&mut self, host: NodeId) {
         let inst = &self.components.instances[&host];
@@ -394,12 +506,12 @@ impl<M: TextEngine> Core<M> {
             return;
         }
         let (spec, inner) = match self.components.registry.make(&name) {
-            Some((spec, inner)) => (Some(spec), Some(inner)),
+            Some((spec, inner)) => (Some(spec), Inner::Component(inner)),
             None => {
                 self.deny(format!(
                     "no component is registered as `{name}`: it renders nothing"
                 ));
-                (None, None)
+                (None, Inner::Missing)
             }
         };
         self.components.instances.insert(
@@ -413,7 +525,7 @@ impl<M: TextEngine> Core<M> {
                 js_events: EventMask::default(),
                 root: None,
                 js_children: Vec::new(),
-                children_at: None,
+                children_at: Placement::None,
                 slots: Vec::new(),
                 handlers: Vec::new(),
                 event_handlers: Vec::new(),
@@ -434,7 +546,7 @@ impl<M: TextEngine> Core<M> {
         let Some(inst) = self.components.instances.get_mut(&host) else {
             return false;
         };
-        let Some(inner) = inst.inner.as_mut() else {
+        let Inner::Component(inner) = &mut inst.inner else {
             return true;
         };
         match inner.set_prop(&name, value) {
@@ -478,8 +590,8 @@ impl<M: TextEngine> Core<M> {
     }
 
     fn render(&mut self, host: NodeId, inst: &mut Instance) {
-        let mut el = match inst.inner.as_mut() {
-            Some(inner) => {
+        let mut el = match &mut inst.inner {
+            Inner::Component(inner) => {
                 // What the app passed, as props.
                 if let Some(spec) = &inst.spec {
                     for name in spec.slots() {
@@ -495,7 +607,11 @@ impl<M: TextEngine> Core<M> {
                 inner.set_children(!inst.js_children.is_empty());
                 inner.render(&self.components.theme)
             }
-            None => ElNode::empty_view(),
+            // The cell itself stays the list's: the wrapper goes inside.
+            Inner::Row { place, index } => {
+                view().child(place(Child::row(), *index)).into_element().0
+            }
+            Inner::Missing => ElNode::empty_view(),
         };
         if el.tag != Tag::View || !matches!(el.kind, ElKind::Plain) {
             log::error!(target: "js", "a component's root must be a view; it is rendered as one");
@@ -506,7 +622,7 @@ impl<M: TextEngine> Core<M> {
         inst.handlers.clear();
         inst.event_handlers.clear();
         let old = inst.root.take();
-        let old_place = inst.children_at.take();
+        let old_place = std::mem::replace(&mut inst.children_at, Placement::None);
         // The root is the host itself.
         let (old_attrs, old_style, old_classes, old_events, old_children) = match old {
             Some(e) => (e.attrs, e.style, e.classes, e.events, e.children),
@@ -539,11 +655,12 @@ impl<M: TextEngine> Core<M> {
             style: el.style,
             classes,
             events,
+            list: ListConfig::default(),
             part: Part::Node,
             children,
         });
         // No `Children` any more: the JS children leave the tree.
-        if inst.children_at.is_none() && old_place.is_some() {
+        if inst.children_at == Placement::None && old_place != Placement::None {
             for &child in &inst.js_children {
                 self.detach_id(child);
             }
@@ -637,6 +754,29 @@ impl<M: TextEngine> Core<M> {
         if new.is_empty() && old.is_empty() {
             return Vec::new();
         }
+        // `children_each`: one wrapper per JS child, keyed by it.
+        let new = if new.iter().any(|e| matches!(e.kind, ElKind::EachChild(_))) {
+            let mut each = Vec::with_capacity(new.len() + inst.js_children.len());
+            for el in new {
+                let ElKind::EachChild(place) = &el.kind else {
+                    each.push(el);
+                    continue;
+                };
+                if inst.children_at != Placement::None {
+                    log::error!(target: "js", "a render places its children once");
+                    continue;
+                }
+                inst.children_at = Placement::Each;
+                for (i, &child) in inst.js_children.iter().enumerate() {
+                    let mut wrapper = place(Child::js(child), i).0;
+                    wrapper.key = Some(format!("\u{0}{child}").into());
+                    each.push(wrapper);
+                }
+            }
+            each
+        } else {
+            new
+        };
         let mut old: Vec<Option<Expanded>> = old.into_iter().map(Some).collect();
         let mut out = Vec::with_capacity(new.len());
         let mut placeholder = None;
@@ -644,8 +784,8 @@ impl<M: TextEngine> Core<M> {
         // in order: an element that comes or goes (`.children(option)`)
         // does not shift its siblings onto new nodes.
         let mut cursor = 0;
-        for el in new {
-            match el.kind {
+        for mut el in new {
+            match std::mem::replace(&mut el.kind, ElKind::Plain) {
                 ElKind::Slot(name) => {
                     // The slot's own node, while the app passes one.
                     let Some(&(_, node)) = inst.slots.iter().find(|(s, _)| *s == name) else {
@@ -659,7 +799,7 @@ impl<M: TextEngine> Core<M> {
                     out.push(self.reconcile_slot(prev, node, el, host, inst));
                 }
                 ElKind::Children => {
-                    if placeholder.is_some() || inst.children_at.is_some() {
+                    if placeholder.is_some() || inst.children_at != Placement::None {
                         log::error!(target: "js", "a render places its children once");
                         continue;
                     }
@@ -670,9 +810,58 @@ impl<M: TextEngine> Core<M> {
                         old[j] = None;
                     }
                     placeholder = Some(out.len());
-                    out.push(Expanded::children_placeholder());
+                    out.push(Expanded::js(0, Part::Children));
                 }
-                _ => {
+                ElKind::JsChild(id) => {
+                    // Taken over, not released (that would detach it).
+                    if let Some(j) = old.iter().position(|o| {
+                        o.as_ref()
+                            .is_some_and(|o| o.part == Part::JsChild && o.id == id)
+                    }) {
+                        old[j] = None;
+                    }
+                    if inst.js_children.contains(&id) {
+                        out.push(Expanded::js(id, Part::JsChild));
+                    }
+                }
+                // Expanded above.
+                ElKind::EachChild(_) => {}
+                ElKind::List(list) => {
+                    // The glue's list: placed and laid out like a slot,
+                    // its rows wrapped by this render's row function.
+                    let Some(&(_, node)) = inst.slots.iter().find(|(s, _)| *s == list.name) else {
+                        continue;
+                    };
+                    let at = old.iter().position(|o| {
+                        o.as_ref()
+                            .is_some_and(|o| o.part == Part::Slot && o.id == node)
+                    });
+                    let prev = at.and_then(|j| old[j].take());
+                    let old_config = prev.as_ref().map(|p| p.list).unwrap_or_default();
+                    let mut props = std::mem::take(&mut self.components.props);
+                    list.config.changes(&old_config, &mut props);
+                    for prop in props.drain(..) {
+                        let _ = self.apply_op(Op::SetProp { id: node, prop });
+                    }
+                    self.components.props = props;
+                    let mut e = self.reconcile_slot(prev, node, el, host, inst);
+                    e.list = list.config;
+                    self.components.lists.insert(node, list.row.clone());
+                    let cells: Vec<NodeId> = match self.key(node) {
+                        Ok(k) => self.nodes[k as usize]
+                            .children
+                            .iter()
+                            .map(|&c| self.nodes[c as usize].id)
+                            .collect(),
+                        Err(_) => Vec::new(),
+                    };
+                    for cell in cells {
+                        self.wrap_row(cell, list.row.clone());
+                    }
+                    out.push(e);
+                }
+                kind => {
+                    el.kind = kind;
                     let part = match &el.kind {
                         ElKind::Component(c) => Part::Component(c.name),
                         _ => Part::Node,
@@ -705,7 +894,7 @@ impl<M: TextEngine> Core<M> {
             self.release_expanded(o);
         }
         if let Some(at) = placeholder {
-            inst.children_at = Some((parent, out.get(at + 1).map(|e| e.id)));
+            inst.children_at = Placement::At(parent, out.get(at + 1).map(|e| e.id));
         }
         // Order the native children as rendered, the JS children in the
         // placeholder's place (moves only when it changed).
@@ -773,6 +962,7 @@ impl<M: TextEngine> Core<M> {
             style: el.style,
             classes,
             events,
+            list: ListConfig::default(),
             part: Part::Slot,
             children: Vec::new(),
         }
@@ -816,7 +1006,7 @@ impl<M: TextEngine> Core<M> {
             // A nested component: its props, and the styles as the app's
             // classes of its host.
             if let Some(nested) = self.components.instances.get_mut(&id)
-                && let Some(inner) = nested.inner.as_mut()
+                && let Inner::Component(inner) = &mut nested.inner
                 && inner.set_props(c.props.as_any())
             {
                 self.components.mark(id);
@@ -837,6 +1027,7 @@ impl<M: TextEngine> Core<M> {
                 style: el.style,
                 classes: (None, None),
                 events: EventMask::default(),
+                list: ListConfig::default(),
                 part,
                 children: Vec::new(),
             };
@@ -885,6 +1076,7 @@ impl<M: TextEngine> Core<M> {
             style: el.style,
             classes,
             events,
+            list: ListConfig::default(),
             part,
             children,
         }
@@ -906,6 +1098,11 @@ impl<M: TextEngine> Core<M> {
             }
             // The JS children are placed (or detached) by the render.
             Part::Children => return,
+            // A JS child leaves the wrapper being released.
+            Part::JsChild => {
+                self.detach_id(e.id);
+                return;
+            }
             Part::Component(_) => self.release_instance(e.id),
             Part::Node => {}
         }
@@ -972,7 +1169,7 @@ impl<M: TextEngine> Core<M> {
             return false;
         };
         let mut cx = ErasedEventCx::default();
-        if let Some(inner) = inst.inner.as_mut() {
+        if let Inner::Component(inner) = &mut inst.inner {
             (listener.0)(inner.state(), payload, &mut cx);
         }
         self.finish_event(host, cx);
@@ -1002,7 +1199,7 @@ impl<M: TextEngine> Core<M> {
                         continue;
                     };
                     let mut cx = ErasedEventCx::default();
-                    if let Some(inner) = inst.inner.as_mut() {
+                    if let Inner::Component(inner) = &mut inst.inner {
                         (listener.0)(inner.state(), event.as_any(), &mut cx);
                     }
                     self.finish_event(parent, cx);

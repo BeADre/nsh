@@ -61,6 +61,9 @@ pub enum PropKind {
     Slot,
     /// The JSX children.
     Children,
+    /// Virtualized rows: in JS `each`, a row renderer and the data props of
+    /// `List` (the glue makes the list, the component places it).
+    Items,
 }
 
 /// One prop, for the glue and its declarations.
@@ -179,6 +182,22 @@ impl ComponentSpec {
     /// Whether it takes JSX children.
     pub fn takes_children(&self) -> bool {
         self.props.iter().any(|p| p.kind == PropKind::Children)
+    }
+
+    /// Its [`PropKind::Items`] prop (one at most).
+    pub fn items(&self) -> Option<&'static str> {
+        self.props
+            .iter()
+            .find(|p| p.kind == PropKind::Items)
+            .map(|p| p.name)
+    }
+
+    /// The nodes the glue makes for it, by name: slots and the list.
+    pub(crate) fn holder(&self, name: &str) -> Option<&'static str> {
+        self.props
+            .iter()
+            .find(|p| matches!(p.kind, PropKind::Slot | PropKind::Items) && p.name == name)
+            .map(|p| p.name)
     }
 }
 
@@ -315,6 +334,9 @@ pub fn typescript(specs: &[Arc<ComponentSpec>]) -> String {
          import type { JSX } from \"nsh\";\n\
          import { component, type ComponentHostProps } from \"nsh/_core\";\n",
     );
+    if specs.iter().any(|s| s.items().is_some()) {
+        out.push_str("import { List, type ListItemsProps } from \"nsh/list\";\n");
+    }
     let doc = |out: &mut String, indent: &str, doc: &str| {
         if !doc.is_empty() {
             let _ = writeln!(out, "{indent}/** {doc} */");
@@ -328,12 +350,17 @@ pub fn typescript(specs: &[Arc<ComponentSpec>]) -> String {
             .join(", ")
     };
     for spec in specs {
+        // A component with rows is generic over their type, like `List`.
+        let (generic, extends) = match spec.items() {
+            Some(_) => ("<T>", ", ListItemsProps<T>"),
+            None => ("", ""),
+        };
         let _ = write!(
             out,
-            "\nexport interface {}Props extends ComponentHostProps {{\n",
+            "\nexport interface {}Props{generic} extends ComponentHostProps{extends} {{\n",
             spec.export
         );
-        for p in &spec.props {
+        for p in spec.props.iter().filter(|p| p.kind != PropKind::Items) {
             doc(&mut out, "  ", p.doc);
             let optional = if p.optional { "?" } else { "" };
             let _ = writeln!(out, "  {}{optional}: {};", p.name, p.ts);
@@ -350,9 +377,14 @@ pub fn typescript(specs: &[Arc<ComponentSpec>]) -> String {
         }
         out.push_str("}\n\n");
         doc(&mut out, "", spec.doc);
+        let items = match spec.items() {
+            Some(name) => format!(", {name:?}, List"),
+            None => String::new(),
+        };
         let _ = writeln!(
             out,
-            "export const {}: (props: {}Props) => JSX.Element = component({:?}, [{}], [{}], {}, [{}]);",
+            "export const {}: {generic}(props: {}Props{generic}) => JSX.Element = \
+             component({:?}, [{}], [{}], {}, [{}]{items});",
             spec.export,
             spec.export,
             spec.name,
