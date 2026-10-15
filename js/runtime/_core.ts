@@ -381,6 +381,9 @@ function platformProps(node: YNode, name: "ios" | "android" | "desktop", value: 
  * events and the ref (`ref.command(name, args)`). */
 export type ComponentHostProps = Pick<ViewProps, "class" | "classList" | "style" | "testID" | "onLayout" | "ref">;
 
+/** Calls of components' methods JS waits for, numbered. */
+let calls = 0;
+
 /** `press` -> `onPress`. */
 const eventHandler = (event: string): string => "on" + event.charAt(0).toUpperCase() + event.slice(1);
 
@@ -429,6 +432,7 @@ export function component<P>(
   slots: readonly string[],
   items?: string,
   list?: (props: any) => YNode,
+  methods?: readonly (readonly [string, boolean])[],
 ): (p: P) => any {
   const keys: string[] = [...props, ...hostProps];
   const wire: string[] = [...props.map((k) => "$" + k), ...hostProps];
@@ -461,8 +465,33 @@ export function component<P>(
       insertNode(node, holder);
       anchor ??= holder;
     }
-    if (handlerNames.some((h) => h in q)) {
-      renderer.setProp(node, "onNativeEvent", (e: { name: string; data: unknown }) => {
+    // The ref of a component with methods: an object calling them (a call
+    // JS waits for is answered by a `$return` event).
+    let pending: Map<number, [(v: unknown) => void, (e: Error) => void]> | undefined;
+    let api: Record<string, unknown> | undefined;
+    if (methods !== undefined) {
+      api = { node };
+      for (const [m, returns] of methods) {
+        api[m] = returns
+          ? (...a: unknown[]) =>
+              new Promise((resolve, reject) => {
+                const c = ++calls;
+                (pending ??= new Map()).set(c, [resolve, reject]);
+                command(node.id, "native", { name: m, args: { c, a } });
+              })
+          : (...a: unknown[]) => command(node.id, "native", { name: m, args: { c: 0, a } });
+      }
+    }
+    if (handlerNames.some((h) => h in q) || methods?.some(([, returns]) => returns)) {
+      renderer.setProp(node, "onNativeEvent", (e: { name: string; data: any }) => {
+        if (e.name === "$return") {
+          const settle = pending?.get(e.data.c);
+          if (settle === undefined) return;
+          pending!.delete(e.data.c);
+          if ("e" in e.data) settle[1](new Error(e.data.e));
+          else settle[0](e.data.v);
+          return;
+        }
         const h = handlers[e.name];
         if (h !== undefined) q[h]?.(e.data);
       });
@@ -477,7 +506,7 @@ export function component<P>(
         }
       }
     });
-    if (typeof q.ref === "function") q.ref(node);
+    if (typeof q.ref === "function") q.ref(api ?? node);
     // Before the slots' nodes: clearing the children must not remove them.
     if (children && "children" in q) insert(node, () => q.children, anchor);
     return node;

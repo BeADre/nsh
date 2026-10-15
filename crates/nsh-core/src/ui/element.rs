@@ -27,7 +27,8 @@ use crate::{
 pub struct Listener<E: ?Sized>(pub(crate) Rc<ErasedListener<E>>);
 
 /// A listener with the component's type erased (it downcasts the state).
-pub(crate) type ErasedListener<E> = dyn Fn(&mut dyn Any, &E, &mut ErasedCx);
+/// It gets the component's state and props.
+pub(crate) type ErasedListener<E> = dyn Fn(&mut dyn Any, &dyn Any, &E, &mut ErasedCx);
 
 impl<E: ?Sized> Clone for Listener<E> {
     fn clone(&self) -> Self {
@@ -158,9 +159,11 @@ impl<'a, C: Component> RenderCx<'a, C> {
         &self,
         f: impl Fn(&mut C, &E, &mut Context<'_, C>) + 'static,
     ) -> Listener<E> {
-        Listener(Rc::new(move |this, event, cx| {
-            if let Some(this) = this.downcast_mut::<C>() {
-                f(this, event, &mut Context::new(cx));
+        Listener(Rc::new(move |this, props, event, cx| {
+            if let (Some(this), Some(props)) =
+                (this.downcast_mut::<C>(), props.downcast_ref::<C::Props>())
+            {
+                f(this, event, &mut Context::new(cx, props));
             }
         }))
     }
@@ -170,15 +173,17 @@ impl<'a, C: Component> RenderCx<'a, C> {
 /// [`Component::props_changed`], listeners, timers and tasks' updates.
 pub struct Context<'a, C: Component> {
     inner: &'a mut ErasedCx,
-    _component: PhantomData<fn(&mut C)>,
+    props: &'a C::Props,
 }
 
 impl<'a, C: Component> Context<'a, C> {
-    pub(crate) fn new(inner: &'a mut ErasedCx) -> Self {
-        Self {
-            inner,
-            _component: PhantomData,
-        }
+    pub(crate) fn new(inner: &'a mut ErasedCx, props: &'a C::Props) -> Self {
+        Self { inner, props }
+    }
+
+    /// The component's props now (Solid: `props` in the component's body).
+    pub fn props(&self) -> &C::Props {
+        self.props
     }
 
     /// Sends `event` to the app (its `on<Event>` handler), or to the
@@ -981,11 +986,13 @@ impl<C: Component> ComponentElement<C> {
     pub fn on_event(mut self, listener: Listener<C::Event>) -> Self {
         let inner = listener.0;
         if let ElKind::Component(c) = &mut self.node.kind {
-            c.on_event = Some(Listener(Rc::new(move |this, event: &dyn Any, cx| {
-                if let Some(event) = event.downcast_ref::<C::Event>() {
-                    inner(this, event, cx);
-                }
-            })));
+            c.on_event = Some(Listener(Rc::new(
+                move |this, props, event: &dyn Any, cx| {
+                    if let Some(event) = event.downcast_ref::<C::Event>() {
+                        inner(this, props, event, cx);
+                    }
+                },
+            )));
         }
         self
     }

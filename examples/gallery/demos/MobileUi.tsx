@@ -2,7 +2,7 @@
 // `ListView` recycles rows the app renders, a `Group` wraps each child in a
 // row. The app writes the content; the components only place it.
 import { createSignal } from "solid-js";
-import { Button, Group, ListView, Stepper } from "nsh/ui/mobile";
+import { Button, Group, ListView, Stepper, type StepperRef } from "nsh/ui/mobile";
 
 const [inset, setInset] = createSignal(false);
 
@@ -16,6 +16,8 @@ const stocks = Array.from({ length: 300 }, (_, i) => ({
 function Header() {
   const [taps, setTaps] = createSignal(0);
   const [quantity, setQuantity] = createSignal(2);
+  const [asked, setAsked] = createSignal("");
+  let own!: StepperRef;
   return (
     <view style={{ padding: 16, gap: 16 }}>
       <Group header={<text>Group: each child is a row</text>} footer={<text>The rows are JSX; the group adds the box and the dividers.</text>}>
@@ -29,13 +31,22 @@ function Header() {
       <Group header={<text>Stepper: state and timers in Rust (hold a button)</text>}>
         <view style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
           <text>Own value</text>
-          <Stepper defaultValue={5} min={0} max={50} />
+          <Stepper ref={own} defaultValue={5} min={0} max={50} />
         </view>
         <view style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
           <text>{`Controlled: ${quantity()}`}</text>
           <Stepper value={quantity()} min={0} max={10} step={0.5} onChange={setQuantity} />
         </view>
       </Group>
+      <Button
+        title={asked() || "Ask the stepper, then reset it"}
+        variant="secondary"
+        onPress={async () => {
+          // Methods of a Rust component, called from JS.
+          setAsked(`It was ${await own.value()}; reset to 5`);
+          own.setValue(5);
+        }}
+      />
       <Button title="Tap" variant="secondary" onPress={() => setTaps(taps() + 1)} />
       <Button title={inset() ? "Plain rows" : "Inset rows"} variant="plain" onPress={() => setInset(!inset())} />
       <text style={{ fontSize: 13, color: "#57606a" }}>ListView below: 300 rows the app renders, recycled natively.</text>

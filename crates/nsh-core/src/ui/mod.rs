@@ -33,7 +33,7 @@ mod task;
 mod theme;
 mod value;
 
-pub use nsh_macros::{Event, PropEnum, Props};
+pub use nsh_macros::{Event, PropEnum, Props, methods};
 
 pub(crate) use self::{
     component::AnyInstance,
@@ -42,8 +42,8 @@ pub(crate) use self::{
 };
 pub use self::{
     component::{
-        Component, ComponentSpec, Event, EventSpec, NoEvent, PropKind, PropSpec, Props, Registry,
-        typescript,
+        Component, ComponentSpec, Event, EventSpec, Method, MethodSpec, NoEvent, Param, PropKind,
+        PropSpec, Props, Registry, typescript,
     },
     element::{
         Accessible, AnyElement, Attrs, Child, Children, ComponentElement, Context, ElNode, Element,
@@ -65,9 +65,10 @@ pub mod prelude {
     pub use super::{
         AccessibilityRole, AccessibilityState, Accessible, AdaptiveColor, Child, Children, Color,
         Component, ComponentElement, Context, Element, Environment, Event, EventKind, EventPayload,
-        FluentBuilder, FontWeight, Interactive, IntoElement, Items, Length, Listener, NoEvent,
-        ParentElement, PointerEvents, Position, PropEnum, Props, RenderCx, SharedString, Slot,
-        Styled, Task, Theme, WeakComponent, image, px, relative, rgb, rgba, text, view,
+        FluentBuilder, FontWeight, Interactive, IntoElement, Items, Length, Listener, Method,
+        NoEvent, ParentElement, PointerEvents, Position, PropEnum, Props, RenderCx, SharedString,
+        Slot, Styled, Task, Theme, WeakComponent, image, methods, px, relative, rgb, rgba, text,
+        view,
     };
 }
 

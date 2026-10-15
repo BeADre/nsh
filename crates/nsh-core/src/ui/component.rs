@@ -42,6 +42,10 @@ pub trait Component: Default + 'static {
     /// Its events (`#[derive(Event)]`; [`NoEvent`] for none).
     type Event: Event;
 
+    /// The methods of its ref in JS: `Self::JS_METHODS` from `#[methods]`
+    /// on an `impl` block (none by default).
+    const METHODS: &'static [Method<Self>] = &[];
+
     /// Runs once, before the first render, with the first props: what the
     /// body of a Solid component does (state from props, timers).
     fn setup(&mut self, props: &Self::Props, cx: &mut Context<'_, Self>) {
@@ -63,6 +67,38 @@ pub trait Component: Default + 'static {
     fn element(props: Self::Props) -> ComponentElement<Self> {
         ComponentElement::new(props)
     }
+}
+
+/// A method JS calls on a component's ref (`#[methods]` makes them).
+pub struct Method<C: Component> {
+    /// Its JS name (`setValue`).
+    pub name: &'static str,
+    /// Documentation.
+    pub doc: &'static str,
+    /// Its parameters: JS names and TypeScript types.
+    pub params: &'static [Param],
+    /// The TypeScript type of its result (`None`: it returns nothing, and
+    /// JS does not wait for it).
+    pub returns: Option<fn() -> String>,
+    /// Calls it with JS's arguments.
+    #[allow(clippy::type_complexity)]
+    pub call: fn(&mut C, Vec<JsonValue>, &mut Context<'_, C>) -> Result<JsonValue, PropError>,
+}
+
+/// A method's parameter: its JS name, and its TypeScript type.
+pub type Param = (&'static str, fn() -> String);
+
+/// One method, for the glue and its declarations.
+#[derive(Debug, Clone)]
+pub struct MethodSpec {
+    /// Its JS name.
+    pub name: &'static str,
+    /// Documentation.
+    pub doc: &'static str,
+    /// Its parameters: JS names and TypeScript types.
+    pub params: Vec<(&'static str, String)>,
+    /// The TypeScript type of its result; `None`: nothing to wait for.
+    pub returns: Option<String>,
 }
 
 /// What a prop is to the glue.
@@ -171,6 +207,8 @@ pub struct ComponentSpec {
     pub props: Vec<PropSpec>,
     /// Its events.
     pub events: Vec<EventSpec>,
+    /// The methods of its ref.
+    pub methods: Vec<MethodSpec>,
 }
 
 impl ComponentSpec {
@@ -181,6 +219,15 @@ impl ComponentSpec {
             doc: C::Props::doc(),
             props: C::Props::spec(),
             events: C::Event::spec(),
+            methods: C::METHODS
+                .iter()
+                .map(|m| MethodSpec {
+                    name: m.name,
+                    doc: m.doc,
+                    params: m.params.iter().map(|(n, ts)| (*n, ts())).collect(),
+                    returns: m.returns.map(|ts| ts()),
+                })
+                .collect(),
         }
     }
 
@@ -244,7 +291,15 @@ pub(crate) trait AnyInstance {
     fn update(&mut self, cx: &mut ErasedCx);
     /// The tree, and what it read of the environment.
     fn render(&mut self, theme: &Theme, environment: &Environment) -> (ElNode, u16);
-    fn state(&mut self) -> &mut dyn Any;
+    /// The state, and the props.
+    fn parts(&mut self) -> (&mut dyn Any, &dyn Any);
+    /// Method `name` of the ref; `None` when it has none of that name.
+    fn call(
+        &mut self,
+        name: &str,
+        args: Vec<JsonValue>,
+        cx: &mut ErasedCx,
+    ) -> Option<Result<JsonValue, PropError>>;
 }
 
 struct Instance<C: Component> {
@@ -281,12 +336,13 @@ impl<C: Component> AnyInstance for Instance<C> {
     fn update(&mut self, cx: &mut ErasedCx) {
         if !self.set_up {
             self.set_up = true;
-            self.state.setup(&self.props, &mut Context::new(cx));
+            self.state
+                .setup(&self.props, &mut Context::new(cx, &self.props));
         } else if let Some(old) = &self.rendered
             && *old != self.props
         {
             self.state
-                .props_changed(old, &self.props, &mut Context::new(cx));
+                .props_changed(old, &self.props, &mut Context::new(cx, &self.props));
         }
     }
 
@@ -300,8 +356,22 @@ impl<C: Component> AnyInstance for Instance<C> {
         (node, cx.reads.get())
     }
 
-    fn state(&mut self) -> &mut dyn Any {
-        &mut self.state
+    fn parts(&mut self) -> (&mut dyn Any, &dyn Any) {
+        (&mut self.state, &self.props)
+    }
+
+    fn call(
+        &mut self,
+        name: &str,
+        args: Vec<JsonValue>,
+        cx: &mut ErasedCx,
+    ) -> Option<Result<JsonValue, PropError>> {
+        let method = C::METHODS.iter().find(|m| m.name == name)?;
+        Some((method.call)(
+            &mut self.state,
+            args,
+            &mut Context::new(cx, &self.props),
+        ))
     }
 }
 
@@ -369,7 +439,7 @@ pub fn typescript(specs: &[Arc<ComponentSpec>]) -> String {
     use std::fmt::Write as _;
     let mut out = String::from(
         "// Generated from the Rust components (nsh_core::ui::typescript).\n\n\
-         import type { JSX } from \"nsh\";\n\
+         import type { JSX, YNode } from \"nsh\";\n\
          import { component, type ComponentHostProps } from \"nsh/_core\";\n",
     );
     if specs.iter().any(|s| s.items().is_some()) {
@@ -393,11 +463,44 @@ pub fn typescript(specs: &[Arc<ComponentSpec>]) -> String {
             Some(_) => ("<T>", ", ListItemsProps<T>"),
             None => ("", ""),
         };
+        // A component with methods: its ref is an object of them.
+        let host = if spec.methods.is_empty() {
+            "ComponentHostProps"
+        } else {
+            let _ = write!(
+                out,
+                "\n/** The ref of [`{0}`]: its methods. */\nexport interface {0}Ref {{\n  /** The component's host node. */\n  readonly node: YNode;\n",
+                spec.export
+            );
+            for m in &spec.methods {
+                doc(&mut out, "  ", m.doc);
+                let params = m
+                    .params
+                    .iter()
+                    .map(|(n, ts)| format!("{n}: {ts}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let returns = match &m.returns {
+                    Some(ts) => format!("Promise<{ts}>"),
+                    None => "void".to_owned(),
+                };
+                let _ = writeln!(out, "  {}({params}): {returns};", m.name);
+            }
+            out.push_str("}\n");
+            "Omit<ComponentHostProps, \"ref\">"
+        };
         let _ = write!(
             out,
-            "\nexport interface {}Props{generic} extends ComponentHostProps{extends} {{\n",
+            "\nexport interface {}Props{generic} extends {host}{extends} {{\n",
             spec.export
         );
+        if !spec.methods.is_empty() {
+            let _ = writeln!(
+                out,
+                "  ref?: {0}Ref | ((ref: {0}Ref) => void);",
+                spec.export
+            );
+        }
         for p in spec.props.iter().filter(|p| p.kind != PropKind::Items) {
             doc(&mut out, "  ", p.doc);
             let optional = if p.optional { "?" } else { "" };
@@ -415,9 +518,16 @@ pub fn typescript(specs: &[Arc<ComponentSpec>]) -> String {
         }
         out.push_str("}\n\n");
         doc(&mut out, "", spec.doc);
-        let items = match spec.items() {
-            Some(name) => format!(", {name:?}, List"),
-            None => String::new(),
+        let methods = spec
+            .methods
+            .iter()
+            .map(|m| format!("[{:?}, {}]", m.name, m.returns.is_some()))
+            .collect::<Vec<_>>();
+        let items = match (spec.items(), methods.is_empty()) {
+            (Some(name), true) => format!(", {name:?}, List"),
+            (Some(name), false) => format!(", {name:?}, List, [{}]", methods.join(", ")),
+            (None, true) => String::new(),
+            (None, false) => format!(", undefined, undefined, [{}]", methods.join(", ")),
         };
         let _ = writeln!(
             out,
@@ -488,10 +598,23 @@ mod tests {
         Reset,
     }
 
+    #[methods]
+    impl Stepper {
+        /// Jumps to `value`.
+        fn jump_to(&mut self, value: f64, cx: &mut Context<'_, Self>) {
+            let _ = (value, cx);
+        }
+
+        fn value(&self) -> f64 {
+            0.0
+        }
+    }
+
     impl Component for Stepper {
         const NAME: &'static str = "test.number_stepper";
         type Props = StepperProps;
         type Event = StepperEvent;
+        const METHODS: &'static [Method<Self>] = Self::JS_METHODS;
 
         fn render(&self, _props: &StepperProps, _cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
             view()
@@ -504,7 +627,6 @@ mod tests {
         registry.register::<Stepper>();
         let ts = typescript(&registry.specs());
         for line in [
-            "export interface NumberStepperProps extends ComponentHostProps {",
             "  /** The value. */\n  value: number;",
             "  size?: \"regular\" | \"extraLarge\";",
             "  maxValue?: number | null;",
@@ -514,9 +636,14 @@ mod tests {
             "  onLimit?: (data: number) => void;",
             "  onReset?: () => void;",
             "/** Picks a number. */",
+            "export interface NumberStepperRef {",
+            "  /** Jumps to `value`. */\n  jumpTo(value: number): void;",
+            "  value(): Promise<number>;",
+            "export interface NumberStepperProps extends Omit<ComponentHostProps, \"ref\"> {\n  ref?: NumberStepperRef | ((ref: NumberStepperRef) => void);",
             "export const NumberStepper: (props: NumberStepperProps) => JSX.Element = \
              component(\"test.number_stepper\", [\"value\", \"size\", \"maxValue\"], \
-             [\"change\", \"limit\", \"reset\"], true, [\"label\"]);",
+             [\"change\", \"limit\", \"reset\"], true, [\"label\"], undefined, undefined, \
+             [[\"jumpTo\", false], [\"value\", true]]);",
         ] {
             assert!(ts.contains(line), "missing {line:?} in\n{ts}");
         }

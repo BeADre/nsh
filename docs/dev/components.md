@@ -92,6 +92,16 @@ impl Component for Button {
 
   `render(&self)` cannot change state. Timers are tasks: a `tokio::time` sleep, then an update.
 
+## Methods
+
+`#[methods]` on an `impl` block makes its functions methods of the component's ref in JS, with no TS written:
+`const METHODS: &'static [Method<Self>] = Self::JS_METHODS;` lists them, the glue builds the ref (`StepperRef`: `node`
+and the methods, typed from the Rust signatures and docs). A call is a `Command::Native { name, args: { c, a } }` op,
+so it runs in order with the props JS set before it. A method returning nothing is called and forgotten (`c` 0); one
+returning a `JsValue` gives JS a `Promise`, answered by a `$return` event (`{ c, v }` or `{ c, e }` for a refused
+argument) in the same frame's commit rounds. Methods (like listeners, timers and tasks' updates) read the current props
+with `cx.props()`.
+
 ## Tasks
 
 `ui/task.rs`: a small executor of the core runs components' futures on the engine thread, so they may hold the
@@ -157,7 +167,7 @@ never sees the expanded nodes; their events are the component's (below).
   element of the same kind in order, so an element that comes and goes (`.children(option)`) does not move its
   siblings onto new nodes. Attributes are compared field by field (`Attrs`), styles as a whole; native children are
   moved only when their order changed.
-- An unknown name logs a denial and renders nothing. Rust components take no `ref.command(...)`.
+- An unknown name logs a denial and renders nothing.
 
 ## Children, slots and rows
 

@@ -8,6 +8,10 @@
 //! - `#[derive(Event)]` on a component's event enum: the `on<Event>`
 //!   handlers and their data types.
 //!
+//! - `#[methods]` on an `impl` block of a component: its functions become
+//!   methods of the component's ref in JS (`ref.setValue(5)`,
+//!   `await ref.value()`).
+//!
 //! The code they generate names `::nsh_core::ui`. `style_helpers!` is
 //! internal to `nsh-core`: the spacing and sizing methods of `Styled`.
 
@@ -15,9 +19,9 @@ use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
 use syn::{
-    Attribute, Data, DeriveInput, Expr, Fields, GenericArgument, Ident, LitStr, PathArguments,
-    Token, Type, bracketed, parse::Parse, parse_macro_input, punctuated::Punctuated,
-    spanned::Spanned,
+    Attribute, Data, DeriveInput, Expr, Fields, FnArg, GenericArgument, Ident, ImplItem, ItemImpl,
+    LitStr, Pat, PathArguments, ReturnType, Token, Type, bracketed, parse::Parse,
+    parse_macro_input, punctuated::Punctuated, spanned::Spanned,
 };
 
 /// The doc comment of an item, lines joined.
@@ -578,4 +582,147 @@ pub fn style_helpers(input: TokenStream) -> TokenStream {
         }
     }
     out.into()
+}
+
+/// Whether `ty` is `&mut Context<..>` (a method's context parameter).
+fn is_context(ty: &Type) -> bool {
+    match ty {
+        Type::Reference(r) => {
+            r.mutability.is_some()
+                && matches!(last_segment(&r.elem), Some((id, _)) if id == "Context")
+        }
+        _ => false,
+    }
+}
+
+/// `#[methods]` on an `impl` block of a component: each function becomes a
+/// method of the component's ref in JS, named in camel case (`set_value`
+/// is `setValue`), documented by its doc comment. A function takes `&self`
+/// or `&mut self`, then [`JsValue`] parameters, and optionally a last
+/// `cx: &mut Context<Self>`; it returns nothing (JS calls it and moves on;
+/// the call is ordered with the props set before it) or a [`JsValue`] (JS
+/// gets a `Promise`). The block's functions are JS's: keep helpers in
+/// another `impl`. The component lists them with
+/// `const METHODS: &'static [Method<Self>] = Self::JS_METHODS;`.
+#[proc_macro_attribute]
+pub fn methods(attr: TokenStream, item: TokenStream) -> TokenStream {
+    if !attr.is_empty() {
+        return syn::Error::new(Span::call_site(), "`#[methods]` takes no arguments")
+            .into_compile_error()
+            .into();
+    }
+    let item = parse_macro_input!(item as ItemImpl);
+    methods_impl(item)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+fn methods_impl(item: ItemImpl) -> syn::Result<TokenStream2> {
+    let ui = quote!(::nsh_core::ui);
+    let self_ty = &item.self_ty;
+    let (impl_generics, _, where_clause) = item.generics.split_for_impl();
+    let mut entries = Vec::new();
+    for member in &item.items {
+        let ImplItem::Fn(f) = member else { continue };
+        let ident = &f.sig.ident;
+        let js = camel(&ident.to_string());
+        let doc = docs(&f.attrs);
+        let mut inputs = f.sig.inputs.iter();
+        match inputs.next() {
+            Some(FnArg::Receiver(r)) if r.reference.is_some() => {}
+            _ => {
+                return Err(syn::Error::new(
+                    f.sig.span(),
+                    "a JS method takes `&self` or `&mut self`",
+                ));
+            }
+        }
+        let mut params = Vec::new();
+        let mut decode = Vec::new();
+        let mut call_args = Vec::new();
+        let mut takes_cx = false;
+        let typed: Vec<_> = inputs
+            .map(|arg| match arg {
+                FnArg::Typed(t) => Ok(t),
+                FnArg::Receiver(r) => Err(syn::Error::new(r.span(), "one receiver")),
+            })
+            .collect::<syn::Result<_>>()?;
+        for (i, arg) in typed.iter().enumerate() {
+            let ty = &arg.ty;
+            if is_context(ty) {
+                if i + 1 != typed.len() {
+                    return Err(syn::Error::new(
+                        arg.span(),
+                        "the context is the last parameter",
+                    ));
+                }
+                takes_cx = true;
+                continue;
+            }
+            let Pat::Ident(name) = &*arg.pat else {
+                return Err(syn::Error::new(
+                    arg.pat.span(),
+                    "a JS method's parameters are named",
+                ));
+            };
+            let name = camel(&name.ident.to_string());
+            let local = format_ident!("__arg{}", i);
+            params.push(quote!((#name, <#ty as #ui::JsValue>::ts_type)));
+            decode.push(quote! {
+                let #local: #ty = <#ty as #ui::JsValue>::from_json(
+                    args.next().unwrap_or(::nsh_core::JsonValue::Null),
+                )
+                .map_err(|e| #ui::PropError(::std::format!("`{}`: {}", #name, e)))?;
+            });
+            call_args.push(quote!(#local));
+        }
+        if takes_cx {
+            call_args.push(quote!(cx));
+        }
+        let (returns, result) = match &f.sig.output {
+            ReturnType::Default => (
+                quote!(::core::option::Option::None),
+                quote! {
+                    this.#ident(#(#call_args),*);
+                    ::core::result::Result::Ok(::nsh_core::JsonValue::Null)
+                },
+            ),
+            ReturnType::Type(_, ty) => (
+                quote!(::core::option::Option::Some(<#ty as #ui::JsValue>::ts_type)),
+                quote! {
+                    let value: #ty = this.#ident(#(#call_args),*);
+                    ::core::result::Result::Ok(#ui::JsValue::to_json(&value))
+                },
+            ),
+        };
+        let unused_cx = (!takes_cx).then(|| quote!(let _ = cx;));
+        let args_iter = if decode.is_empty() {
+            quote!(let _ = args;)
+        } else {
+            quote!(let mut args = args.into_iter();)
+        };
+        entries.push(quote! {
+            #ui::Method {
+                name: #js,
+                doc: #doc,
+                params: &[#(#params),*],
+                returns: #returns,
+                call: |this, args, cx| {
+                    #unused_cx
+                    #args_iter
+                    #(#decode)*
+                    #result
+                },
+            }
+        });
+    }
+    Ok(quote! {
+        #item
+
+        impl #impl_generics #self_ty #where_clause {
+            /// The methods JS calls on the component's ref (`#[methods]`).
+            #[doc(hidden)]
+            pub const JS_METHODS: &'static [#ui::Method<Self>] = &[#(#entries),*];
+        }
+    })
 }

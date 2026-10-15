@@ -84,22 +84,28 @@ fn decimals(step: f64) -> usize {
 }
 
 impl Stepper {
-    /// One step of `direction` (−1 or 1); stops repeating at a bound.
-    fn step(&mut self, direction: f64, range: Range, cx: &mut Context<'_, Self>) {
-        let next = range.fit(self.value + direction * range.step);
+    /// One step of `direction` (−1 or 1) within the current props; stops
+    /// repeating at a bound.
+    fn step(&mut self, direction: f64, cx: &mut Context<'_, Self>) {
+        let range = Range::of(cx.props());
+        self.change(range.fit(self.value + direction * range.step), cx);
+        if self.value == range.min || self.value == range.max {
+            self.stop();
+        }
+    }
+
+    /// Shows `next` (unless the app controls the value) and reports it.
+    fn change(&mut self, next: f64, cx: &mut Context<'_, Self>) {
         if next == self.value {
             self.stop();
             return;
         }
         // The app's value follows from `onChange` when it controls it.
-        if !range.controlled {
+        if !Range::of(cx.props()).controlled {
             self.value = next;
             cx.notify();
         }
         cx.emit(StepperEvent::Change(next));
-        if next == range.min || next == range.max {
-            self.stop();
-        }
     }
 
     fn stop(&mut self) {
@@ -107,15 +113,15 @@ impl Stepper {
     }
 
     /// A press on − or +: one step now, more while it is held.
-    fn press(&mut self, direction: f64, range: Range, cx: &mut Context<'_, Self>) {
+    fn press(&mut self, direction: f64, cx: &mut Context<'_, Self>) {
         self.stop();
-        self.step(direction, range, cx);
+        self.step(direction, cx);
         // One task: wait for the hold, then step until released.
         self.repeat = Some(cx.spawn(move |this, cx| async move {
             cx.timer(HOLD).await;
             loop {
                 let stepping = this.update(move |this: &mut Self, cx| {
-                    this.step(direction, range, cx);
+                    this.step(direction, cx);
                     this.repeat.is_some()
                 });
                 if stepping.await != Some(true) {
@@ -127,10 +133,27 @@ impl Stepper {
     }
 }
 
+/// What JS calls on a stepper's ref.
+#[methods]
+impl Stepper {
+    /// Sets the value (on the step grid, within the bounds) and reports it
+    /// as a press would.
+    pub fn set_value(&mut self, value: f64, cx: &mut Context<'_, Self>) {
+        let next = Range::of(cx.props()).fit(value);
+        self.change(next, cx);
+    }
+
+    /// The value shown.
+    pub fn value(&self) -> f64 {
+        self.value
+    }
+}
+
 impl Component for Stepper {
     const NAME: &'static str = "nsh.stepper";
     type Props = StepperProps;
     type Event = StepperEvent;
+    const METHODS: &'static [Method<Self>] = Self::JS_METHODS;
 
     fn setup(&mut self, props: &StepperProps, _cx: &mut Context<'_, Self>) {
         self.value = Range::of(props).fit(props.value.unwrap_or(props.default_value));
@@ -174,7 +197,7 @@ impl Component for Stepper {
                 .label(name)
                 .on(
                     EventKind::PressIn,
-                    cx.listener(move |this: &mut Self, _, cx| this.press(direction, range, cx)),
+                    cx.listener(move |this: &mut Self, _, cx| this.press(direction, cx)),
                 )
                 .on(
                     EventKind::PressOut,

@@ -317,3 +317,46 @@ fn a_stateful_component_steps_while_held() {
     // Released: no more steps.
     assert!(rx.recv_timeout(Duration::from_millis(300)).is_err());
 }
+
+const METHODS: &str = r#"import { createSignal } from "solid-js";
+import { render, root } from "nsh";
+import { Stepper, type StepperRef } from "nsh/ui/mobile";
+
+const [shown, setShown] = createSignal("waiting");
+let stepper!: StepperRef;
+setTimeout(async () => {
+  stepper.setValue(42.4);
+  const value = await stepper.value();
+  setShown(`got ${value}`);
+}, 0);
+
+render(
+  () => (
+    <view>
+      <Stepper ref={stepper} defaultValue={1} max={50} />
+      <text>{shown()}</text>
+    </view>
+  ),
+  root,
+);
+"#;
+
+#[test]
+fn js_calls_a_components_methods() {
+    let (_engine, rx) = start(METHODS);
+    let mut shown = Vec::new();
+    while let Ok(batch) = rx.recv_timeout(Duration::from_millis(500)) {
+        for item in batch.items {
+            if let MountItem::Text { text, .. } = item {
+                shown.push(text.text.clone());
+            }
+        }
+        if shown.iter().any(|t| t.starts_with("got")) {
+            break;
+        }
+    }
+    // The call runs in order with the ops before it; the one JS waits for
+    // resolves with the component's answer.
+    assert!(shown.contains(&"42".to_owned()), "{shown:?}");
+    assert!(shown.contains(&"got 42".to_owned()), "{shown:?}");
+}

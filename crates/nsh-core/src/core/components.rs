@@ -20,7 +20,7 @@ use crate::{
     tailwind::ClassList,
     ui::{
         AnyInstance, Attrs, Child, ComponentSpec, ElKind, ElNode, Environment, ErasedCx, Executor,
-        IntoElement, ListConfig, Listener, ParentElement, PlaceFn, Position, Registry,
+        IntoElement, ListConfig, Listener, ParentElement, PlaceFn, Position, PropError, Registry,
         SharedString, StyleRefinement, Theme, view,
     },
 };
@@ -321,7 +321,8 @@ impl<M: TextEngine> Core<M> {
                 };
                 match target {
                     Some(inner) => {
-                        (update.run)(Some((inner.state(), &mut cx)));
+                        let (state, props) = inner.parts();
+                        (update.run)(Some((state, props, &mut cx)));
                         self.finish_event(update.host, cx);
                     }
                     None => (update.run)(None),
@@ -520,11 +521,13 @@ impl<M: TextEngine> Core<M> {
                     enabled: enabled || own,
                 }))
             }
+            // A method of the component's ref: `{ c, a }`, the call (0: no
+            // reply) and the arguments.
             Op::Command {
                 id,
-                command: Command::Native { name, .. },
+                command: Command::Native { name, args },
             } if self.is_host(id) => {
-                log::warn!(target: "js", "Rust components take no commands (`{name}`)");
+                self.call_method(id, &name, args);
                 Ok(None)
             }
             Op::Release { id } if self.is_host(id) => {
@@ -601,6 +604,48 @@ impl<M: TextEngine> Core<M> {
             }),
         );
         self.components.mark(cell);
+    }
+
+    /// Calls method `name` of `host`'s component; a call JS waits for gets
+    /// its result (or error) as a `$return` event.
+    fn call_method(&mut self, host: NodeId, name: &str, args: JsonValue) {
+        let call = args.get("c").and_then(JsonValue::as_u64).unwrap_or(0);
+        let args = match args.get("a") {
+            Some(JsonValue::Array(a)) => a.clone(),
+            _ => Vec::new(),
+        };
+        let mut cx = self.erased_cx(host);
+        let result = match self
+            .components
+            .instances
+            .get_mut(&host)
+            .map(|i| &mut i.inner)
+        {
+            Some(Inner::Component(inner)) => inner
+                .call(name, args, &mut cx)
+                .unwrap_or_else(|| Err(PropError(format!("no method `{name}`")))),
+            _ => Err(PropError(format!("no method `{name}`"))),
+        };
+        self.finish_event(host, cx);
+        if let Err(e) = &result {
+            log::warn!(target: "js", "{name}(): {e}");
+        }
+        if call != 0 {
+            let mut reply = serde_json::Map::new();
+            reply.insert("c".into(), call.into());
+            match result {
+                Ok(value) => reply.insert("v".into(), value),
+                Err(e) => reply.insert("e".into(), JsonValue::String(e.0)),
+            };
+            self.events.push((
+                host,
+                EventKind::NativeEvent,
+                EventPayload::Native {
+                    name: "$return".into(),
+                    data: JsonValue::Object(reply),
+                },
+            ));
+        }
     }
 
     /// The app's classes on `host` changed.
@@ -1326,7 +1371,8 @@ impl<M: TextEngine> Core<M> {
             return false;
         };
         if let Inner::Component(inner) = &mut inst.inner {
-            (listener.0)(inner.state(), payload, &mut cx);
+            let (state, props) = inner.parts();
+            (listener.0)(state, props, payload, &mut cx);
         }
         self.finish_event(host, cx);
         true
@@ -1356,7 +1402,8 @@ impl<M: TextEngine> Core<M> {
                         continue;
                     };
                     if let Inner::Component(inner) = &mut inst.inner {
-                        (listener.0)(inner.state(), event.as_any(), &mut cx);
+                        let (state, props) = inner.parts();
+                        (listener.0)(state, props, event.as_any(), &mut cx);
                     }
                     self.finish_event(parent, cx);
                 }

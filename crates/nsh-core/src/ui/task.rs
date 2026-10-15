@@ -61,7 +61,8 @@ impl Wake for TaskWaker {
 
 /// A change of a component's state a task asked for; `None` when the
 /// component is gone.
-pub(crate) type UpdateFn = Box<dyn for<'a> FnOnce(Option<(&'a mut dyn Any, &'a mut ErasedCx)>)>;
+pub(crate) type UpdateFn =
+    Box<dyn for<'a> FnOnce(Option<(&'a mut dyn Any, &'a dyn Any, &'a mut ErasedCx)>)>;
 
 pub(crate) struct Update {
     pub(crate) host: NodeId,
@@ -329,10 +330,10 @@ impl<C: Component> WeakComponent<C> {
             executor.inner.borrow_mut().updates.push_back(Update {
                 host: self.host,
                 run: Box::new(move |target| {
-                    let value = target.and_then(|(state, cx)| {
-                        state
-                            .downcast_mut::<C>()
-                            .map(|state| f(state, &mut Context::new(cx)))
+                    let value = target.and_then(|(state, props, cx)| {
+                        let props = props.downcast_ref::<C::Props>()?;
+                        let state = state.downcast_mut::<C>()?;
+                        Some(f(state, &mut Context::new(cx, props)))
                     });
                     let mut slot = result.borrow_mut();
                     slot.value = Some(value);
