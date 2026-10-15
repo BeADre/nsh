@@ -339,7 +339,7 @@ pub struct EngineConfig {
     pub limits: Limits,
     /// The Rust components the app can render (`nsh_ui_mobile::registry()`
     /// on mobile).
-    pub components: nsh_core::component::Registry,
+    pub components: nsh_core::ui::Registry,
 }
 
 impl std::fmt::Debug for EngineConfig {

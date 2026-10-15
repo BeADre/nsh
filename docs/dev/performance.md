@@ -22,17 +22,21 @@ after `nsh trace` timings and item counts. Current baselines (Apple Silicon):
   text: `PrecomputedText` ~120µs, measure ~50µs, final layout reused. First gallery frame 20–50ms (noisy on the emulator).
 
 - Rust components vs the same component in TSX (`component_bench`, `examples/bench`, release, minimum of the runs;
-  the TSX Button is the one `nsh/ui/mobile` had before components moved into Rust):
+  `TsButton.tsx` is the TSX Button `nsh/ui/mobile` had before components moved into Rust, restyled to draw exactly
+  like the Rust one):
 
   | | Rust Button: JS / core | TSX Button: JS / core |
   |---|---|---|
-  | first frame, 200 Buttons (ops) | 1.29ms / 0.77ms (1015) | 2.34ms / 0.71ms (2415) |
-  | one update of all 200 titles (ops) | 0.43ms / 0.40ms (200) | 0.76ms / 0.35ms (600) |
-  | scrolling a 1000-row list, per rebinding frame | 8.7µs / 6.2µs | 10.7µs / 5.8µs |
+  | first frame, 200 Buttons (ops) | 1.32ms / 0.77ms (1015) | 2.32ms / 0.70ms (2415) |
+  | one update of all 200 titles (ops) | 0.42ms / 0.42ms (200) | 0.77ms / 0.36ms (600) |
+  | scrolling a 1000-row list, per rebinding frame | 8.3µs / 5.9µs | 10.2µs / 5.4µs |
 
-  JS does half the work or less; the core spends ~10% more expanding renders than decoding the equivalent ops, a net
-  win of ~30% on the first frame and ~25% on updates. The glue must stay one effect per instance reading the props
-  directly: the first version (`splitProps` / `mergeProps` / `spread`) cost 4.0ms of JS for the same first frame,
-  more than the TSX Button.
+  JS does half the work or less, a net win of ~30% on the first frame and ~25% on updates. The core's extra time is
+  not the component code (its renders and diffs are ~15% of a commit) but the allocator: Taffy's compute takes the
+  same samples in both, while its per-layout vectors spend 2.5× longer in `malloc` / `free` / `madvise` after the
+  render trees the components build and drop each update (libmalloc coalesces the freed blocks and returns pages).
+  Pooling the style buffers bought 3%; a different global allocator in the binaries is the lever left. The glue must
+  stay one effect per instance reading the props directly: the first version (`splitProps` / `mergeProps` /
+  `spread`) cost 4.0ms of JS for the same first frame, more than the TSX Button.
 
 The dev profile builds `rquickjs-sys` and `taffy` with `opt-level = 3`, so debug timings are meaningful too; release uses fat LTO.

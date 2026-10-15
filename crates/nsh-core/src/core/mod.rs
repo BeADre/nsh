@@ -1809,6 +1809,10 @@ impl<M: TextEngine> Core<M> {
                 self.set_tailwind_theme(&json);
                 return Ok(());
             }
+            Prop::UiTheme(json) => {
+                self.set_ui_theme(&json);
+                return Ok(());
+            }
             Prop::LayoutDirection(rtl) => {
                 // The surface's direction (the root's): JS's `I18nManager`.
                 if key == self.root && node.direction != Some(rtl) {

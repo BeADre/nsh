@@ -231,6 +231,7 @@ function MobileComponents() {
     <Section title="nsh/ui/mobile">
       <Button title={`Primary (${presses()})`} onPress={() => setPresses(presses() + 1)} />
       <Button title="Secondary" variant="secondary" onPress={() => setPresses(presses() + 1)} />
+      <Button title="Danger" variant="danger" onPress={() => setPresses(presses() + 1)} />
       <Button title="Plain" variant="plain" onPress={() => setPresses(presses() + 1)} />
       <Button title="Disabled" disabled onPress={() => setPresses(presses() + 1)} />
       <Card

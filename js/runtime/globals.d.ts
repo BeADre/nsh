@@ -202,6 +202,11 @@ declare module "nsh:tailwind-theme" {
   const theme: string | null;
   export default theme;
 }
+// The theme of the Rust components from `nsh.json` (JSON), for the runtime.
+declare module "nsh:theme" {
+  const theme: string | null;
+  export default theme;
+}
 declare module "*.png" {
   const asset: { uri: string; width: number; height: number };
   export default asset;

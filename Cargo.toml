@@ -19,6 +19,7 @@ nsh-anim = { path = "crates/nsh-anim" }
 nsh-core = { path = "crates/nsh-core" }
 nsh-package = { path = "crates/nsh-package" }
 nsh-ui-mobile = { path = "crates/nsh-ui-mobile" }
+nsh-macros = { path = "crates/nsh-macros" }
 nsh-js = { path = "crates/nsh-js" }
 nsh-engine = { path = "crates/nsh-engine" }
 nsh-bundler = { path = "crates/nsh-bundler" }
@@ -44,6 +45,9 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "ws"] }
 tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
 rustc-hash = "2.1"
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
 ed25519-dalek = { version = "2.1", default-features = false, features = ["std", "fast", "zeroize"] }
 sha2 = "0.10"
 base64 = "0.22"

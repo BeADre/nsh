@@ -878,6 +878,10 @@ fn decode_prop<'js>(
             Some(s) => Prop::TailwindTheme(s.to_string()?.into()),
             None => return Ok(None),
         },
+        "uiTheme" => match value.as_string() {
+            Some(s) => Prop::UiTheme(s.to_string()?.into()),
+            None => return Ok(None),
+        },
         "elevation" => Prop::Elevation(number(&value).unwrap_or(0.0)),
         "delayLongPress" => Prop::LongPressDelay(number(&value).map(|n| n.max(0.0))),
         "ripple" => Prop::Ripple(match value.as_object() {

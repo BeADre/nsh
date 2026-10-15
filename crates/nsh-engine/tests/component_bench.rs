@@ -200,7 +200,7 @@ fn bench_components() {
 fn profile_components() {
     let entry = std::env::var("NSH_BENCH_ENTRY").unwrap_or_else(|_| "GridRust.tsx".into());
     let code = bytecode(&entry);
-    for _ in 0..200 {
+    for _ in 0..60 {
         let mut app = App::new();
         let items = app.turn(|h| h.eval_bytecode(&code).unwrap());
         let bump = items.iter().find_map(|i| match i {
@@ -208,7 +208,7 @@ fn profile_components() {
             _ => None,
         });
         if let Some(bump) = bump {
-            for _ in 0..30 {
+            for _ in 0..100 {
                 app.turn(|h| h.dispatch_event(bump, EventKind::Press, &EventPayload::None));
             }
         }

@@ -15,7 +15,8 @@ the module docs of the code (`//!`, Javadoc), which are the reference for how a 
 crates/
   nsh-core/            Platform-independent core: shadow tree, styles (RN semantics), Taffy layout (flex + grid), text merging, list virtualization,
                        mount items; CSS values (`css.rs`: colors, lengths, shadows, gradients, filters), effects (`effects.rs`), Tailwind (`tailwind/`);
-                       Rust components (`component.rs`, `core/components.rs`)
+                       Rust components (`ui/`: elements, typed styles, the theme; `core/components.rs`)
+  nsh-macros/          Derives of Rust components (`Props`, `PropEnum`, `Event`) and `Styled`'s spacing methods
   nsh-ui-mobile/       The components of `nsh/ui/mobile` (Button, Card, ...), written in Rust; their JS glue is generated
   nsh-anim/            Native animation graph (pure Rust): value / interpolate / math nodes, timing / spring / decay drivers
   nsh-js/              QuickJS host: console / timers / op bridge, op buffer decoding, bytecode compilation and loading
@@ -123,8 +124,9 @@ host it is an empty crate, so always run clippy on platform code with the Cataly
   set and look the same on iOS and Android; no platform-styled widgets. React Native is a reference for which
   capabilities exist, not an API to be compatible with.
 - **Components are Rust.** A UI set's components live in its crate (`crates/nsh-ui-mobile`), run in the core and
-  render primitives; JS is generated glue (`components.gen.ts`), never hand-written per component. JS allocates even
-  node ids, the core odd ones for what components expand (`docs/dev/components.md`).
+  render primitives with typed styles (GPUI-style `Styled` methods, never class strings) and theme colors (gpui-kit's
+  fields); props and events are derived types, JS is generated glue (`components.gen.ts`), never hand-written per
+  component. JS allocates even node ids, the core odd ones for what components expand (`docs/dev/components.md`).
 - **The main thread never waits for JS.** Callbacks the system wants answered on the spot (may this text change, may
   the back button pop, may the sheet close, ...) are answered natively from props mounted beforehand; events tell JS
   afterwards (`docs/dev/elements.md`).

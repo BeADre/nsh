@@ -129,24 +129,34 @@ pub fn capabilities(
         .transpose()
 }
 
-/// The `"tailwind"` object of the `nsh.json` next to the entry, checked.
-fn tailwind_setup(dir: &std::path::Path) -> Result<Arc<plugin::TailwindSetup>, BundleError> {
+/// The `"tailwind"` and `"theme"` of the `nsh.json` next to the entry,
+/// checked. `"theme"` is a gpui-kit theme file's path (relative to
+/// `nsh.json`) or its content.
+fn tailwind_setup(dir: &std::path::Path) -> Result<Arc<plugin::ThemeSetup>, BundleError> {
     let path = dir.join("nsh.json");
     let Ok(text) = std::fs::read_to_string(&path) else {
         return Ok(Arc::default());
     };
     let config: serde_json::Value =
         serde_json::from_str(&text).map_err(|e| BundleError::other(format!("nsh.json: {e}")))?;
-    let Some(tailwind) = config.get("tailwind") else {
-        return Ok(Arc::default());
-    };
-    let json = tailwind.to_string();
-    let theme = nsh_core::tailwind::Theme::from_json(&json)
-        .map_err(|e| BundleError::other(format!("nsh.json: tailwind: {e}")))?;
-    Ok(Arc::new(plugin::TailwindSetup {
-        json: Some(json),
-        theme,
-    }))
+    let mut setup = plugin::ThemeSetup::default();
+    if let Some(tailwind) = config.get("tailwind") {
+        let json = tailwind.to_string();
+        setup.theme = nsh_core::tailwind::Theme::from_json(&json)
+            .map_err(|e| BundleError::other(format!("nsh.json: tailwind: {e}")))?;
+        setup.json = Some(json);
+    }
+    if let Some(theme) = config.get("theme") {
+        let json = match theme {
+            serde_json::Value::String(file) => std::fs::read_to_string(dir.join(file))
+                .map_err(|e| BundleError::other(format!("nsh.json: theme: {file}: {e}")))?,
+            v => v.to_string(),
+        };
+        nsh_core::ui::Theme::from_json(&json)
+            .map_err(|e| BundleError::other(format!("nsh.json: theme: {e}")))?;
+        setup.ui = Some(json);
+    }
+    Ok(Arc::new(setup))
 }
 
 /// Bundles an app, blocking the current thread.

@@ -1059,6 +1059,9 @@ pub enum Prop {
     ClassList(Vec<Box<str>>),
     /// The app's Tailwind theme (JSON, on the root).
     TailwindTheme(Box<str>),
+    /// The theme of Rust components (`nsh.json` `theme`, JSON), on the
+    /// root.
+    UiTheme(Box<str>),
     /// An image option.
     Image(ImageProp),
     /// `delayLongPress`: milliseconds before a press becomes a long press.

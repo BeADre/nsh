@@ -1,16 +1,15 @@
-//! Rust components in the core ([`crate::component`]): creating instances,
+//! Rust components in the core ([`crate::ui`]): creating instances,
 //! expanding their renders into nodes, diffing renders, placing JS children
-//! and routing events and commands.
+//! and slots, and routing events.
 //!
 //! A component's host node is the root of its expansion: the root element's
-//! props apply to it, its other elements become nodes with odd ids (JS uses
-//! even ones) owned by the host. Ops from JS on a host are intercepted
-//! ([`Core::apply`]): its `class` is appended to the root's, its children are
-//! placed where the render holds them, `ref.command` reaches the component.
-//! Renders run at the start of a commit, so props set in one JS turn render
-//! once.
+//! props and styles apply to it, its other elements become nodes with odd
+//! ids (JS uses even ones) owned by the host. Ops from JS on a host are
+//! intercepted ([`Core::apply`]): its `class` goes after the root's styles,
+//! its children are placed where the render's `Children` is. Renders run at
+//! the start of a commit, so props set in one JS turn render once.
 
-use std::sync::Arc;
+use std::{any::Any, sync::Arc};
 
 use rustc_hash::FxHashMap;
 
@@ -18,8 +17,10 @@ use super::{Core, NO_KEY};
 use crate::{
     ApplyError, Command, EventKind, EventMask, EventPayload, JsonValue, NodeId, Op, Prop, Tag,
     TextEngine,
-    component::{
-        AnyComponent, Attrs, ClassStr, ElNode, EventCx, Handler, Props, Registry, RenderCx,
+    tailwind::ClassList,
+    ui::{
+        AnyInstance, Attrs, ComponentSpec, ElKind, ElNode, ErasedEventCx, Listener, Registry,
+        SharedString, StyleRefinement, Theme,
     },
 };
 
@@ -27,49 +28,90 @@ use crate::{
 /// keeps asking for another one is cut off).
 const MAX_RENDERS: u32 = 16;
 
+/// Lowered styles kept for reuse (components render the same styles over
+/// and over); cleared when full.
+const STYLE_CACHE: usize = 4096;
+
 /// A component instance on its host node.
 pub(super) struct Instance {
     /// `None` when nothing is registered under the name (renders nothing).
-    component: Option<Box<dyn AnyComponent>>,
-    props: Props,
-    /// The app's `class`, appended to the root's.
-    user_class: Option<Arc<str>>,
+    inner: Option<Box<dyn AnyInstance>>,
+    spec: Option<Arc<ComponentSpec>>,
+    /// The app's `class` and `classList` on the host.
+    class: Box<str>,
+    class_list: Vec<Box<str>>,
+    /// The app's classes, or the styles of the component rendering this
+    /// one: applied after the root's own.
+    user: Option<Arc<ClassList>>,
     /// Events JS listens to on the host.
     js_events: EventMask,
     /// The last render, expanded (its root is the host).
     root: Option<Expanded>,
     /// The host's JS children, in order.
     js_children: Vec<NodeId>,
-    /// Where they are placed (the element holding them).
-    children_parent: Option<NodeId>,
-    /// The glue's node of each named slot (it holds the slot's JSX).
-    slots: FxHashMap<Arc<str>, NodeId>,
-    /// The last render's handlers, by node and event (a handful: a list
-    /// beats a map).
-    handlers: Vec<(NodeId, EventKind, Handler)>,
+    /// Where they are: the node holding the render's `Children`, and the
+    /// rendered node after it (their anchor).
+    children_at: Option<(NodeId, Option<NodeId>)>,
+    /// The glue's node of each slot the app passes.
+    slots: Vec<(&'static str, NodeId)>,
+    /// The last render's handlers: native events by node, and the events of
+    /// nested components by their host (a handful: lists beat maps).
+    handlers: Vec<(NodeId, EventKind, Listener<EventPayload>)>,
+    event_handlers: Vec<(NodeId, Listener<dyn Any>)>,
     dirty: bool,
     renders: u32,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Part {
+    Node,
+    /// A slot's node: JS's, never released by the core.
+    Slot,
+    /// Where the JS children are (no node of its own).
+    Children,
+    /// A nested component.
+    Component(&'static str),
+}
+
+/// The node's classes: its styles lowered, and what was merged after them.
+type Classes = (Option<Arc<ClassList>>, Option<Arc<ClassList>>);
 
 /// An element of a render, as it was applied.
 struct Expanded {
     id: NodeId,
     tag: Tag,
-    key: Option<Arc<str>>,
+    key: Option<SharedString>,
     /// A text's content and its raw text node.
-    text: Option<(Arc<str>, NodeId)>,
+    text: Option<(SharedString, NodeId)>,
     attrs: Attrs,
+    style: StyleRefinement,
+    classes: Classes,
     events: EventMask,
-    /// A nested component's name.
-    component: Option<Arc<str>>,
-    /// A slot's node: JS's, never released by the core.
-    slot: bool,
+    part: Part,
     children: Vec<Expanded>,
+}
+
+impl Expanded {
+    fn children_placeholder() -> Self {
+        Self {
+            id: 0,
+            tag: Tag::View,
+            key: None,
+            text: None,
+            attrs: Attrs::default(),
+            style: StyleRefinement::default(),
+            classes: (None, None),
+            events: EventMask::default(),
+            part: Part::Children,
+            children: Vec::new(),
+        }
+    }
 }
 
 /// The core's component state.
 pub(super) struct Components {
     registry: Registry,
+    theme: Arc<Theme>,
     /// Boxed: a render takes its instance out of the map and back.
     pub(super) instances: FxHashMap<NodeId, Box<Instance>>,
     /// Expanded node -> the host of the component that rendered it.
@@ -78,6 +120,7 @@ pub(super) struct Components {
     slot_names: FxHashMap<NodeId, Arc<str>>,
     /// Slot nodes in a host -> the host.
     slot_hosts: FxHashMap<NodeId, NodeId>,
+    styles: FxHashMap<StyleRefinement, Arc<ClassList>>,
     next_id: NodeId,
     dirty: Vec<NodeId>,
     /// Reused buffers.
@@ -89,10 +132,12 @@ impl Default for Components {
     fn default() -> Self {
         Self {
             registry: Registry::default(),
+            theme: Arc::new(Theme::default()),
             instances: FxHashMap::default(),
             owners: FxHashMap::default(),
             slot_names: FxHashMap::default(),
             slot_hosts: FxHashMap::default(),
+            styles: FxHashMap::default(),
             // Odd: JS allocates the even ids (1 is the root).
             next_id: 3,
             dirty: Vec::new(),
@@ -117,11 +162,27 @@ impl Components {
             self.dirty.push(host);
         }
     }
+
+    /// `style` as rules, shared between the elements that have it.
+    fn lowered(&mut self, style: &StyleRefinement) -> Arc<ClassList> {
+        if let Some(list) = self.styles.get(style) {
+            return list.clone();
+        }
+        if self.styles.len() >= STYLE_CACHE {
+            self.styles.clear();
+        }
+        let list = Arc::new(style.lower());
+        self.styles.insert(style.clone(), list.clone());
+        list
+    }
 }
 
-fn joined(classes: &[Box<str>]) -> Option<Arc<str>> {
-    let joined = classes.join(" ");
-    (!joined.trim().is_empty()).then(|| joined.into())
+fn same(a: &Option<Arc<ClassList>>, b: &Option<Arc<ClassList>>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+        (None, None) => true,
+        _ => false,
+    }
 }
 
 impl<M: TextEngine> Core<M> {
@@ -129,6 +190,21 @@ impl<M: TextEngine> Core<M> {
     /// like); set before the first op.
     pub fn set_components(&mut self, registry: Registry) {
         self.components.registry = registry;
+    }
+
+    /// `uiTheme` on the root: the app's theme (`nsh.json`); every component
+    /// renders again.
+    pub(super) fn set_ui_theme(&mut self, json: &str) {
+        match Theme::from_json(json) {
+            Ok(theme) => {
+                self.components.theme = Arc::new(theme);
+                let hosts: Vec<NodeId> = self.components.instances.keys().copied().collect();
+                for host in hosts {
+                    self.components.mark(host);
+                }
+            }
+            Err(e) => log::warn!("theme: {e}"),
+        }
     }
 
     /// Whether `id` is a component's host.
@@ -139,10 +215,6 @@ impl<M: TextEngine> Core<M> {
     /// Ops from JS on a component's host take its place; others pass
     /// (`Some`).
     pub(super) fn intercept(&mut self, op: Op) -> Result<Option<Op>, ApplyError> {
-        // Apps without components pay one check per op.
-        if self.components.instances.is_empty() && self.components.slot_names.is_empty() {
-            return Ok(Some(op));
-        }
         match op {
             // A slot's node joins its host: the render places it.
             Op::Insert { parent, child, .. }
@@ -150,7 +222,17 @@ impl<M: TextEngine> Core<M> {
             {
                 let name = self.components.slot_names[&child].clone();
                 let inst = self.components.instances.get_mut(&parent).expect("host");
-                inst.slots.insert(name, child);
+                let Some(slot) = inst
+                    .spec
+                    .as_ref()
+                    .and_then(|s| s.slots().find(|s| **s == *name))
+                else {
+                    log::warn!(target: "js", "the component has no slot `{name}`");
+                    self.detach_id(child);
+                    return Ok(None);
+                };
+                inst.slots.retain(|(_, n)| *n != child);
+                inst.slots.push((slot, child));
                 self.components.slot_hosts.insert(child, parent);
                 self.components.mark(parent);
                 Ok(None)
@@ -193,19 +275,19 @@ impl<M: TextEngine> Core<M> {
                 let was_empty = inst.js_children.is_empty();
                 inst.js_children.retain(|&c| c != child);
                 let at = before.and_then(|b| inst.js_children.iter().position(|&c| c == b));
-                // A sibling that is not a child (a slot's node) is no anchor.
-                let before = at.and(before);
                 inst.js_children
                     .insert(at.unwrap_or(inst.js_children.len()), child);
-                let place = inst.children_parent;
+                let place = inst.children_at;
                 if was_empty {
                     self.components.mark(parent);
                 }
                 match place {
-                    Some(p) => self.apply_op(Op::Insert {
+                    // Before its next JS sibling, else before what the
+                    // render puts after the children.
+                    Some((p, anchor)) => self.apply_op(Op::Insert {
                         parent: p,
                         child,
-                        before,
+                        before: at.and(before).or(anchor),
                     })?,
                     None => self.detach_id(child),
                 }
@@ -222,16 +304,20 @@ impl<M: TextEngine> Core<M> {
             }
             Op::SetProp {
                 id,
-                prop: Prop::Class(classes),
+                prop: Prop::Class(class),
             } if self.is_host(id) => {
-                self.set_user_class(id, joined(&[classes]));
+                let inst = self.components.instances.get_mut(&id).expect("host");
+                inst.class = class;
+                self.update_user_class(id);
                 Ok(None)
             }
             Op::SetProp {
                 id,
-                prop: Prop::ClassList(classes),
+                prop: Prop::ClassList(list),
             } if self.is_host(id) => {
-                self.set_user_class(id, joined(&classes));
+                let inst = self.components.instances.get_mut(&id).expect("host");
+                inst.class_list = list;
+                self.update_user_class(id);
                 Ok(None)
             }
             // The component's events come from the core, not from the view.
@@ -252,18 +338,9 @@ impl<M: TextEngine> Core<M> {
             }
             Op::Command {
                 id,
-                command: Command::Native { name, args },
+                command: Command::Native { name, .. },
             } if self.is_host(id) => {
-                let mut cx = EventCx::default();
-                if let Some(c) = self
-                    .components
-                    .instances
-                    .get_mut(&id)
-                    .and_then(|i| i.component.as_mut())
-                {
-                    c.command(&name, &args, &mut cx);
-                }
-                self.finish_event(id, cx);
+                log::warn!(target: "js", "Rust components take no commands (`{name}`)");
                 Ok(None)
             }
             Op::Release { id } if self.is_host(id) => {
@@ -274,11 +351,33 @@ impl<M: TextEngine> Core<M> {
         }
     }
 
+    /// The app's classes on `host` changed.
+    fn update_user_class(&mut self, host: NodeId) {
+        let inst = &self.components.instances[&host];
+        let mut combined = String::with_capacity(inst.class.len() + 16 * inst.class_list.len());
+        combined.push_str(&inst.class);
+        for name in &inst.class_list {
+            combined.push(' ');
+            combined.push_str(name);
+        }
+        let user = (!combined.trim().is_empty()).then(|| self.tailwind.get(&combined).0);
+        self.set_user(host, user);
+    }
+
+    /// What goes after `host`'s own styles.
+    fn set_user(&mut self, host: NodeId, user: Option<Arc<ClassList>>) {
+        let inst = self.components.instances.get_mut(&host).expect("host");
+        if !same(&inst.user, &user) {
+            inst.user = user;
+            self.components.mark(host);
+        }
+    }
+
     /// Slot node `id` leaves its host.
     fn unslot(&mut self, id: NodeId) {
         if let Some(host) = self.components.slot_hosts.remove(&id) {
             if let Some(inst) = self.components.instances.get_mut(&host) {
-                inst.slots.retain(|_, &mut n| n != id);
+                inst.slots.retain(|(_, n)| *n != id);
             }
             self.components.mark(host);
         }
@@ -289,40 +388,35 @@ impl<M: TextEngine> Core<M> {
         self.components.slot_names.insert(id, name);
     }
 
-    fn set_user_class(&mut self, host: NodeId, class: Option<Arc<str>>) {
-        let inst = self.components.instances.get_mut(&host).expect("host");
-        if inst.user_class != class {
-            inst.user_class = class;
-            self.components.mark(host);
-        }
-    }
-
     /// `Prop::Component` on a view: it becomes the host of component `name`.
     pub(super) fn create_instance(&mut self, host: NodeId, name: Arc<str>) {
         if self.is_host(host) {
             return;
         }
-        let (props, component) = match self.components.registry.make(&name) {
-            Some((props, c)) => (props, Some(c)),
+        let (spec, inner) = match self.components.registry.make(&name) {
+            Some((spec, inner)) => (Some(spec), Some(inner)),
             None => {
                 self.deny(format!(
                     "no component is registered as `{name}`: it renders nothing"
                 ));
-                (Props::new(None, Default::default()), None)
+                (None, None)
             }
         };
         self.components.instances.insert(
             host,
             Box::new(Instance {
-                component,
-                props,
-                user_class: None,
+                inner,
+                spec,
+                class: "".into(),
+                class_list: Vec::new(),
+                user: None,
                 js_events: EventMask::default(),
                 root: None,
                 js_children: Vec::new(),
-                children_parent: None,
-                slots: FxHashMap::default(),
+                children_at: None,
+                slots: Vec::new(),
                 handlers: Vec::new(),
+                event_handlers: Vec::new(),
                 dirty: false,
                 renders: 0,
             }),
@@ -340,8 +434,16 @@ impl<M: TextEngine> Core<M> {
         let Some(inst) = self.components.instances.get_mut(&host) else {
             return false;
         };
-        if inst.props.set(&name, value) {
-            self.components.mark(host);
+        let Some(inner) = inst.inner.as_mut() else {
+            return true;
+        };
+        match inner.set_prop(&name, value) {
+            Ok(true) => self.components.mark(host),
+            Ok(false) => {}
+            Err(e) => {
+                let component = inst.spec.as_ref().map_or("", |s| s.name);
+                log::warn!(target: "js", "{component}: {e}");
+            }
         }
         true
     }
@@ -376,41 +478,49 @@ impl<M: TextEngine> Core<M> {
     }
 
     fn render(&mut self, host: NodeId, inst: &mut Instance) {
-        let filled = inst
-            .slots
-            .iter()
-            .filter(|&(_, &node)| {
-                self.key(node)
-                    .is_ok_and(|k| !self.nodes[k as usize].children.is_empty())
-            })
-            .map(|(name, _)| name.clone())
-            .collect();
-        let mut cx = RenderCx {
-            has_children: !inst.js_children.is_empty(),
-            filled,
+        let mut el = match inst.inner.as_mut() {
+            Some(inner) => {
+                // What the app passed, as props.
+                if let Some(spec) = &inst.spec {
+                    for name in spec.slots() {
+                        let filled = inst.slots.iter().any(|(s, node)| {
+                            *s == name
+                                && self
+                                    .key(*node)
+                                    .is_ok_and(|k| !self.nodes[k as usize].children.is_empty())
+                        });
+                        inner.set_slot(name, filled);
+                    }
+                }
+                inner.set_children(!inst.js_children.is_empty());
+                inner.render(&self.components.theme)
+            }
+            None => ElNode::empty_view(),
         };
-        let mut el = match &inst.component {
-            Some(c) => c.render(&inst.props, &mut cx),
-            None => crate::component::view::<()>().node,
-        };
-        if el.tag != Tag::View || el.component.is_some() {
+        if el.tag != Tag::View || !matches!(el.kind, ElKind::Plain) {
             log::error!(target: "js", "a component's root must be a view; it is rendered as one");
             el.tag = Tag::View;
-            el.component = None;
+            el.kind = ElKind::Plain;
             el.text = None;
         }
-        if let Some(user) = &inst.user_class {
-            el.attrs.class.push(ClassStr::Shared(user.clone()));
-        }
         inst.handlers.clear();
+        inst.event_handlers.clear();
         let old = inst.root.take();
-        let old_parent = inst.children_parent.take();
+        let old_place = inst.children_at.take();
         // The root is the host itself.
-        let (old_attrs, old_events, old_children) = match old {
-            Some(e) => (e.attrs, e.events, e.children),
-            None => (Attrs::default(), EventMask::default(), Vec::new()),
+        let (old_attrs, old_style, old_classes, old_events, old_children) = match old {
+            Some(e) => (e.attrs, e.style, e.classes, e.events, e.children),
+            None => (
+                Attrs::default(),
+                StyleRefinement::default(),
+                (None, None),
+                EventMask::default(),
+                Vec::new(),
+            ),
         };
         self.apply_attrs(host, &el.attrs, &old_attrs);
+        let user = inst.user.clone();
+        let classes = self.apply_styles(host, &el.style, &old_style, old_classes, user);
         // The host listens to its component's events and to JS's.
         let js = inst.js_events;
         self.apply_handlers(host, &el, old_events | js, js, inst);
@@ -418,50 +528,24 @@ impl<M: TextEngine> Core<M> {
         for (kind, _) in &el.handlers {
             events.set(*kind, true);
         }
-        let children = if el.holds_children {
-            for e in old_children {
-                self.release_expanded(e);
-            }
-            inst.children_parent = Some(host);
-            Vec::new()
-        } else {
-            self.reconcile_children(
-                host,
-                old_children,
-                std::mem::take(&mut el.children),
-                host,
-                inst,
-            )
-        };
+        let new_children = std::mem::take(&mut el.children);
+        let children = self.reconcile_children(host, old_children, new_children, host, inst);
         inst.root = Some(Expanded {
             id: host,
             tag: Tag::View,
             key: None,
             text: None,
             attrs: el.attrs,
+            style: el.style,
+            classes,
             events,
-            component: None,
-            slot: false,
+            part: Part::Node,
             children,
         });
-        if inst.children_parent != old_parent {
-            self.place_children(inst);
-        }
-    }
-
-    /// Moves the JS children where the render holds them (or out of the
-    /// tree when it does not).
-    fn place_children(&mut self, inst: &Instance) {
-        for &child in &inst.js_children {
-            match inst.children_parent {
-                Some(parent) => {
-                    let _ = self.apply_op(Op::Insert {
-                        parent,
-                        child,
-                        before: None,
-                    });
-                }
-                None => self.detach_id(child),
+        // No `Children` any more: the JS children leave the tree.
+        if inst.children_at.is_none() && old_place.is_some() {
+            for &child in &inst.js_children {
+                self.detach_id(child);
             }
         }
     }
@@ -481,6 +565,36 @@ impl<M: TextEngine> Core<M> {
             let _ = self.apply_op(Op::SetProp { id, prop });
         }
         self.components.props = props;
+    }
+
+    /// Sets node `id`'s classes: `style` lowered, then `user` (a host's).
+    fn apply_styles(
+        &mut self,
+        id: NodeId,
+        style: &StyleRefinement,
+        old_style: &StyleRefinement,
+        old: Classes,
+        user: Option<Arc<ClassList>>,
+    ) -> Classes {
+        let own = if style == old_style {
+            old.0.clone()
+        } else if style.is_empty() {
+            None
+        } else {
+            Some(self.components.lowered(style))
+        };
+        if !same(&own, &old.0) || !same(&user, &old.1) {
+            let list = match (&own, &user) {
+                (Some(a), Some(b)) => Some(Arc::new(a.merged(b))),
+                (Some(a), None) => Some(a.clone()),
+                (None, Some(b)) => Some(b.clone()),
+                (None, None) => None,
+            };
+            if let Ok(key) = self.key(id) {
+                self.set_class_list(key, list);
+            }
+        }
+        (own, user)
     }
 
     /// Registers `el`'s handlers for node `id` and listens to their events
@@ -520,55 +634,105 @@ impl<M: TextEngine> Core<M> {
         host: NodeId,
         inst: &mut Instance,
     ) -> Vec<Expanded> {
+        if new.is_empty() && old.is_empty() {
+            return Vec::new();
+        }
         let mut old: Vec<Option<Expanded>> = old.into_iter().map(Some).collect();
         let mut out = Vec::with_capacity(new.len());
-        for (i, el) in new.into_iter().enumerate() {
-            if let Some(name) = &el.slot {
-                // The slot's own node, while the app passes one.
-                let Some(&node) = inst.slots.get(name) else {
-                    continue;
-                };
-                let at = old
-                    .iter()
-                    .position(|o| o.as_ref().is_some_and(|o| o.slot && o.id == node));
-                let prev = at.and_then(|j| old[j].take());
-                out.push(self.reconcile_slot(prev, node, el, host, inst));
-                continue;
+        let mut placeholder = None;
+        // Unkeyed elements take the next unused old element of their kind,
+        // in order: an element that comes or goes (`.children(option)`)
+        // does not shift its siblings onto new nodes.
+        let mut cursor = 0;
+        for el in new {
+            match el.kind {
+                ElKind::Slot(name) => {
+                    // The slot's own node, while the app passes one.
+                    let Some(&(_, node)) = inst.slots.iter().find(|(s, _)| *s == name) else {
+                        continue;
+                    };
+                    let at = old.iter().position(|o| {
+                        o.as_ref()
+                            .is_some_and(|o| o.part == Part::Slot && o.id == node)
+                    });
+                    let prev = at.and_then(|j| old[j].take());
+                    out.push(self.reconcile_slot(prev, node, el, host, inst));
+                }
+                ElKind::Children => {
+                    if placeholder.is_some() || inst.children_at.is_some() {
+                        log::error!(target: "js", "a render places its children once");
+                        continue;
+                    }
+                    if let Some(j) = old
+                        .iter()
+                        .position(|o| o.as_ref().is_some_and(|o| o.part == Part::Children))
+                    {
+                        old[j] = None;
+                    }
+                    placeholder = Some(out.len());
+                    out.push(Expanded::children_placeholder());
+                }
+                _ => {
+                    let part = match &el.kind {
+                        ElKind::Component(c) => Part::Component(c.name),
+                        _ => Part::Node,
+                    };
+                    let matches = |o: &Expanded| o.tag == el.tag && o.part == part;
+                    let at = match &el.key {
+                        Some(k) => old.iter().position(|o| {
+                            o.as_ref()
+                                .is_some_and(|o| o.key.as_ref() == Some(k) && matches(o))
+                        }),
+                        None => {
+                            let at = old[cursor.min(old.len())..]
+                                .iter()
+                                .position(|o| {
+                                    o.as_ref().is_some_and(|o| o.key.is_none() && matches(o))
+                                })
+                                .map(|j| j + cursor);
+                            if let Some(j) = at {
+                                cursor = j + 1;
+                            }
+                            at
+                        }
+                    };
+                    let prev = at.and_then(|j| old[j].take());
+                    out.push(self.reconcile_node(prev, el, part, host, inst));
+                }
             }
-            let same = |o: &Expanded| {
-                o.tag == el.tag && o.component.as_deref() == el.component.as_ref().map(|c| &*c.0)
-            };
-            let at = match &el.key {
-                Some(k) => old.iter().position(|o| {
-                    o.as_ref()
-                        .is_some_and(|o| !o.slot && o.key.as_ref() == Some(k) && same(o))
-                }),
-                None => old
-                    .get(i)
-                    .and_then(|o| o.as_ref())
-                    .is_some_and(|o| !o.slot && o.key.is_none() && same(o))
-                    .then_some(i),
-            };
-            let prev = at.and_then(|j| old[j].take());
-            out.push(self.reconcile_node(prev, el, host, inst));
         }
         for o in old.into_iter().flatten() {
             self.release_expanded(o);
         }
-        // Order the native children as rendered (moves only when it changed).
+        if let Some(at) = placeholder {
+            inst.children_at = Some((parent, out.get(at + 1).map(|e| e.id)));
+        }
+        // Order the native children as rendered, the JS children in the
+        // placeholder's place (moves only when it changed).
+        let js = &inst.js_children;
+        let wanted = || {
+            out.iter().flat_map(move |e| {
+                if e.part == Part::Children {
+                    js.as_slice()
+                } else {
+                    std::slice::from_ref(&e.id)
+                }
+            })
+        };
         let in_order = self.key(parent).is_ok_and(|k| {
             let have = &self.nodes[k as usize].children;
-            have.len() == out.len()
+            have.len() == wanted().count()
                 && have
                     .iter()
-                    .zip(&out)
-                    .all(|(&c, e)| self.nodes[c as usize].id == e.id)
+                    .zip(wanted())
+                    .all(|(&c, &id)| self.nodes[c as usize].id == id)
         });
         if !in_order {
-            for e in &out {
+            let ids: Vec<NodeId> = wanted().copied().collect();
+            for child in ids {
                 let _ = self.apply_op(Op::Insert {
                     parent,
-                    child: e.id,
+                    child,
                     before: None,
                 });
             }
@@ -576,7 +740,7 @@ impl<M: TextEngine> Core<M> {
         out
     }
 
-    /// Slot node `node` as element `el`: its classes, props and handlers
+    /// Slot node `node` as element `el`: its styles, props and handlers
     /// (its children are the app's JSX).
     fn reconcile_slot(
         &mut self,
@@ -586,11 +750,17 @@ impl<M: TextEngine> Core<M> {
         host: NodeId,
         inst: &mut Instance,
     ) -> Expanded {
-        let (old_attrs, old_events) = match prev {
-            Some(p) => (p.attrs, p.events),
-            None => (Attrs::default(), EventMask::default()),
+        let (old_attrs, old_style, old_classes, old_events) = match prev {
+            Some(p) => (p.attrs, p.style, p.classes, p.events),
+            None => (
+                Attrs::default(),
+                StyleRefinement::default(),
+                (None, None),
+                EventMask::default(),
+            ),
         };
         self.apply_attrs(node, &el.attrs, &old_attrs);
+        let classes = self.apply_styles(node, &el.style, &old_style, old_classes, None);
         let events = self.apply_handlers(node, &el, old_events, EventMask::default(), inst);
         // Its events are the component's.
         self.components.owners.insert(node, host);
@@ -600,9 +770,10 @@ impl<M: TextEngine> Core<M> {
             key: None,
             text: None,
             attrs: el.attrs,
+            style: el.style,
+            classes,
             events,
-            component: None,
-            slot: true,
+            part: Part::Slot,
             children: Vec::new(),
         }
     }
@@ -611,42 +782,73 @@ impl<M: TextEngine> Core<M> {
         &mut self,
         prev: Option<Expanded>,
         mut el: ElNode,
+        part: Part,
         host: NodeId,
         inst: &mut Instance,
     ) -> Expanded {
-        let (id, old_attrs, old_events, old_children, old_text) = match prev {
-            Some(p) => (p.id, p.attrs, p.events, p.children, p.text),
+        let (id, old_attrs, old_style, old_classes, old_events, old_children, old_text) = match prev
+        {
+            Some(p) => (
+                p.id, p.attrs, p.style, p.classes, p.events, p.children, p.text,
+            ),
             None => {
                 let id = self.components.alloc();
                 let _ = self.apply_op(Op::Create { id, tag: el.tag });
                 self.components.owners.insert(id, host);
-                if let Some((name, _)) = &el.component {
+                if let Part::Component(name) = part {
                     let _ = self.apply_op(Op::SetProp {
                         id,
-                        prop: Prop::Component(name.clone()),
+                        prop: Prop::Component(name.into()),
                     });
                 }
-                (id, Attrs::default(), EventMask::default(), Vec::new(), None)
+                (
+                    id,
+                    Attrs::default(),
+                    StyleRefinement::default(),
+                    (None, None),
+                    EventMask::default(),
+                    Vec::new(),
+                    None,
+                )
             }
         };
-        let component = el.component.take();
-        let nested = component.as_ref().map(|c| c.0.clone());
-        if let Some((_, props)) = component {
-            // A nested component: its props, and `class` as the app's class.
-            for (name, value) in props {
-                self.set_component_prop(id, name, Some(value));
+        if let ElKind::Component(c) = std::mem::replace(&mut el.kind, ElKind::Plain) {
+            // A nested component: its props, and the styles as the app's
+            // classes of its host.
+            if let Some(nested) = self.components.instances.get_mut(&id)
+                && let Some(inner) = nested.inner.as_mut()
+                && inner.set_props(c.props.as_any())
+            {
+                self.components.mark(id);
             }
-            let class = (!el.attrs.class.is_empty()).then(|| el.attrs.class.joined().into());
-            self.set_user_class(id, class);
-        } else {
-            self.apply_attrs(id, &el.attrs, &old_attrs);
+            if self.is_host(id) {
+                let user = (!el.style.is_empty()).then(|| self.components.lowered(&el.style));
+                self.set_user(id, user);
+            }
+            if let Some(listener) = c.on_event {
+                inst.event_handlers.push((id, listener));
+            }
+            return Expanded {
+                id,
+                tag: el.tag,
+                key: el.key,
+                text: None,
+                attrs: Attrs::default(),
+                style: el.style,
+                classes: (None, None),
+                events: EventMask::default(),
+                part,
+                children: Vec::new(),
+            };
         }
+        self.apply_attrs(id, &el.attrs, &old_attrs);
+        let classes = self.apply_styles(id, &el.style, &old_style, old_classes, None);
         let text = match (el.text.take(), old_text) {
             (Some(content), Some((old, raw))) => {
                 if content != old {
                     let _ = self.apply_op(Op::SetText {
                         id: raw,
-                        text: content.to_string(),
+                        text: content.as_str().to_owned(),
                     });
                 }
                 Some((content, raw))
@@ -655,7 +857,7 @@ impl<M: TextEngine> Core<M> {
                 let raw = self.components.alloc();
                 let _ = self.apply_op(Op::CreateText {
                     id: raw,
-                    text: content.to_string(),
+                    text: content.as_str().to_owned(),
                 });
                 self.components.owners.insert(raw, host);
                 let _ = self.apply_op(Op::Insert {
@@ -672,32 +874,18 @@ impl<M: TextEngine> Core<M> {
             (None, None) => None,
         };
         let events = self.apply_handlers(id, &el, old_events, EventMask::default(), inst);
-        let children = if el.holds_children {
-            for e in old_children {
-                self.release_expanded(e);
-            }
-            inst.children_parent = Some(id);
-            Vec::new()
-        } else if el.children.is_empty() && old_children.is_empty() {
-            Vec::new()
-        } else {
-            self.reconcile_children(
-                id,
-                old_children,
-                std::mem::take(&mut el.children),
-                host,
-                inst,
-            )
-        };
+        let new_children = std::mem::take(&mut el.children);
+        let children = self.reconcile_children(id, old_children, new_children, host, inst);
         Expanded {
             id,
             tag: el.tag,
             key: el.key,
             text,
             attrs: el.attrs,
+            style: el.style,
+            classes,
             events,
-            component: nested,
-            slot: false,
+            part,
             children,
         }
     }
@@ -710,19 +898,22 @@ impl<M: TextEngine> Core<M> {
     /// Frees an expanded element and what it rendered (a slot's node is
     /// JS's: it only leaves the tree).
     fn release_expanded(&mut self, e: Expanded) {
-        if e.slot {
-            self.components.owners.remove(&e.id);
-            self.detach_id(e.id);
-            return;
+        match e.part {
+            Part::Slot => {
+                self.components.owners.remove(&e.id);
+                self.detach_id(e.id);
+                return;
+            }
+            // The JS children are placed (or detached) by the render.
+            Part::Children => return,
+            Part::Component(_) => self.release_instance(e.id),
+            Part::Node => {}
         }
         for c in e.children {
             self.release_expanded(c);
         }
         if let Some((_, raw)) = e.text {
             self.release_id(raw);
-        }
-        if e.component.is_some() {
-            self.release_instance(e.id);
         }
         self.release_id(e.id);
     }
@@ -772,37 +963,58 @@ impl<M: TextEngine> Core<M> {
         let Some(inst) = self.components.instances.get_mut(&host) else {
             return false;
         };
-        let Some(handler) = inst
+        let Some(listener) = inst
             .handlers
             .iter()
             .find(|(n, k, _)| *n == id && *k == kind)
-            .map(|(_, _, h)| h.clone())
+            .map(|(_, _, l)| l.clone())
         else {
             return false;
         };
-        let mut cx = EventCx::default();
-        if let Some(c) = inst.component.as_mut() {
-            handler(c.as_any(), payload, &mut cx);
+        let mut cx = ErasedEventCx::default();
+        if let Some(inner) = inst.inner.as_mut() {
+            (listener.0)(inner.state(), payload, &mut cx);
         }
         self.finish_event(host, cx);
         true
     }
 
-    /// Applies what a handler or command did: a new render, events for JS
-    /// (or for the component that rendered this one).
-    fn finish_event(&mut self, host: NodeId, cx: EventCx) {
+    /// Applies what a handler did: a new render, events for JS (or for the
+    /// component that rendered this one).
+    fn finish_event(&mut self, host: NodeId, cx: ErasedEventCx) {
         if cx.notify {
             self.components.mark(host);
         }
-        for (name, data) in cx.emits {
-            let payload = EventPayload::Native { name, data };
+        for event in cx.emits {
             match self.components.owners.get(&host).copied() {
                 // A nested component: the component that rendered it gets
-                // the event, on the nested host.
+                // the event, if it handles it.
                 Some(parent) => {
-                    self.handle(parent, host, EventKind::NativeEvent, &payload);
+                    let Some(inst) = self.components.instances.get_mut(&parent) else {
+                        continue;
+                    };
+                    let Some(listener) = inst
+                        .event_handlers
+                        .iter()
+                        .find(|(n, _)| *n == host)
+                        .map(|(_, l)| l.clone())
+                    else {
+                        continue;
+                    };
+                    let mut cx = ErasedEventCx::default();
+                    if let Some(inner) = inst.inner.as_mut() {
+                        (listener.0)(inner.state(), event.as_any(), &mut cx);
+                    }
+                    self.finish_event(parent, cx);
                 }
-                None => self.events.push((host, EventKind::NativeEvent, payload)),
+                None => self.events.push((
+                    host,
+                    EventKind::NativeEvent,
+                    EventPayload::Native {
+                        name: event.name().into(),
+                        data: event.data(),
+                    },
+                )),
             }
         }
     }

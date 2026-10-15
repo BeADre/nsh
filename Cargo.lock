@@ -1854,6 +1854,7 @@ version = "0.1.0"
 dependencies = [
  "log",
  "nsh-anim",
+ "nsh-macros",
  "rustc-hash",
  "serde_json",
  "slab",
@@ -1921,6 +1922,15 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "url",
+]
+
+[[package]]
+name = "nsh-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

@@ -1,5 +1,6 @@
-// The Button of `nsh/ui/mobile` as it was written in TSX before components
-// moved into Rust (commit 8ac6eb7): the baseline of the component benchmarks.
+// The Button of `nsh/ui/mobile` written in TSX, as it was before components
+// moved into Rust (commit 8ac6eb7), restyled to draw exactly like the Rust
+// one with the default theme: the baseline of the component benchmarks.
 
 import type { JSX, StyleProp, ViewStyle } from "nsh";
 
@@ -7,8 +8,8 @@ export interface ButtonProps {
   /** The label. */
   title: string;
   onPress?: () => void;
-  /** `primary` (default): filled; `secondary`: tinted; `plain`: text only. */
-  variant?: "primary" | "secondary" | "plain";
+  /** `primary` (default): filled; `secondary`: tinted; `danger`: destructive; `plain`: text only. */
+  variant?: "primary" | "secondary" | "danger" | "plain";
   /** No presses, no feedback, dimmed. */
   disabled?: boolean;
   /** Classes appended to the button's own: they win over them. */
@@ -19,12 +20,16 @@ export interface ButtonProps {
   testID?: string;
 }
 
-const base = "flex-row items-center justify-center rounded-xl px-4 py-3 disabled:opacity-40";
+const base = "flex-row items-center justify-center rounded-xl px-4 py-3 disabled:opacity-50";
 
+// The default theme's colors (`nsh_core::ui::Theme`).
 const variants: Record<NonNullable<ButtonProps["variant"]>, string> = {
-  primary: "bg-blue-600 active:bg-blue-700 text-white",
-  secondary: "bg-blue-100 active:bg-blue-200 text-blue-700 dark:bg-blue-950 dark:active:bg-blue-900 dark:text-blue-300",
-  plain: "active:opacity-60 text-blue-600 dark:text-blue-400",
+  primary:
+    "bg-neutral-900 active:bg-neutral-950 text-neutral-50 dark:bg-neutral-50 dark:active:bg-neutral-200 dark:text-neutral-900",
+  secondary:
+    "bg-neutral-200 active:bg-neutral-300 text-neutral-900 dark:bg-neutral-800 dark:active:bg-[#212121] dark:text-neutral-50",
+  danger: "bg-red-500 active:bg-red-600 text-neutral-50 dark:bg-red-400 dark:active:bg-red-500 dark:text-red-600",
+  plain: "active:bg-neutral-100 text-neutral-950 dark:active:bg-neutral-800 dark:text-neutral-50",
 };
 
 /** A button drawn with nsh's primitives: the feedback is native (`active:`),
@@ -41,7 +46,7 @@ export function Button(props: ButtonProps): JSX.Element {
       class={`${base} ${variants[props.variant ?? "primary"]} ${props.class ?? ""}`}
       style={props.style}
     >
-      <text class="text-[17px] font-semibold">{props.title}</text>
+      <text class="text-[16px] font-semibold">{props.title}</text>
     </view>
   );
 }

@@ -20,6 +20,8 @@ import {
 import { createRenderer } from "solid-js/universal";
 // The app's Tailwind theme (`nsh.json`), JSON or null.
 import tailwindTheme from "nsh:tailwind-theme";
+// The theme of the Rust components (`nsh.json`), JSON or null.
+import uiTheme from "nsh:theme";
 import type { GestureResponderEvent, TouchPoint, ViewProps } from "./types";
 
 export const OP_CREATE = 0; // id, tag
@@ -204,6 +206,10 @@ export const root: YNode = new YNode(1, false);
 // Before anything renders: classes resolve against it.
 if (tailwindTheme) {
   ops.push(OP_SET_PROP, 1, "tailwindTheme", tailwindTheme);
+  schedule();
+}
+if (uiTheme) {
+  ops.push(OP_SET_PROP, 1, "uiTheme", uiTheme);
   schedule();
 }
 

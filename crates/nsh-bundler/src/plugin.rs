@@ -40,22 +40,26 @@ pub(crate) struct NshPlugin {
     /// Development bundle with hot module replacement: components and
     /// contexts of app modules are registered with the hot runtime.
     pub(crate) hot: bool,
-    /// The app's Tailwind theme (`nsh.json`).
-    pub(crate) tailwind: Arc<TailwindSetup>,
+    /// The app's themes (`nsh.json`).
+    pub(crate) tailwind: Arc<ThemeSetup>,
 }
 
-/// The `"tailwind"` object of the app's `nsh.json`.
+/// The `"tailwind"` and `"theme"` of the app's `nsh.json`.
 #[derive(Debug, Default)]
-pub(crate) struct TailwindSetup {
-    /// As JSON, for the runtime (`None`: the default theme).
+pub(crate) struct ThemeSetup {
+    /// The Tailwind theme as JSON, for the runtime (`None`: the default).
     pub(crate) json: Option<String>,
     /// Parsed, to check classes at build time.
     pub(crate) theme: nsh_core::tailwind::Theme,
+    /// The theme of the Rust components (a gpui-kit theme file), checked.
+    pub(crate) ui: Option<String>,
 }
 
-/// Virtual module with the app's theme, imported by the runtime.
+/// Virtual modules with the app's themes, imported by the runtime.
 const THEME_SPECIFIER: &str = "nsh:tailwind-theme";
 const THEME_ID: &str = "\0nsh:tailwind-theme";
+const UI_THEME_SPECIFIER: &str = "nsh:theme";
+const UI_THEME_ID: &str = "\0nsh:theme";
 
 /// File types imported as image assets.
 const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "heic"];
@@ -125,13 +129,21 @@ impl Plugin for NshPlugin {
         if args.specifier == THEME_SPECIFIER {
             return Ok(Some(HookResolveIdOutput::from_id(THEME_ID)));
         }
+        if args.specifier == UI_THEME_SPECIFIER {
+            return Ok(Some(HookResolveIdOutput::from_id(UI_THEME_ID)));
+        }
         Ok(embedded::resolve(args.specifier, args.importer)
             .map(|m| HookResolveIdOutput::from_id(m.id)))
     }
 
     async fn load(&self, _ctx: SharedLoadPluginContext, args: &HookLoadArgs<'_>) -> HookLoadReturn {
-        if args.id == THEME_ID {
-            let code = match &self.tailwind.json {
+        if args.id == THEME_ID || args.id == UI_THEME_ID {
+            let json = if args.id == THEME_ID {
+                &self.tailwind.json
+            } else {
+                &self.tailwind.ui
+            };
+            let code = match json {
                 Some(json) => format!(
                     "export default {};",
                     serde_json::Value::String(json.clone())

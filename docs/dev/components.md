@@ -7,7 +7,8 @@ back. One implementation draws the same on iOS and Android, is laid out in the s
 
 | Where | What |
 |---|---|
-| `crates/nsh-core/src/component.rs` | The API: `Component`, `Spec`, `Props`, `El` builders, `Registry`, the glue generator `typescript` |
+| `crates/nsh-core/src/ui/` | The API (`nsh_core::ui`, `prelude`): `Component`, elements, `Styled`, `Theme`, `Registry`, the glue generator `typescript` |
+| `crates/nsh-macros` | `#[derive(Props)]`, `#[derive(PropEnum)]`, `#[derive(Event)]`; `style_helpers!` (the spacing methods of `Styled`) |
 | `crates/nsh-core/src/core/components.rs` | The core side: instances, expansion, diffing, children and slots, events |
 | `crates/nsh-ui-mobile` | The mobile set's components, one file each (`README.md`: how to write one) |
 | `crates/nsh-bundler/src/embedded.rs` | `ui/mobile/components.gen.ts`, generated from `nsh_ui_mobile::specs()`, re-exported by `nsh/ui/mobile` |
@@ -15,6 +16,90 @@ back. One implementation draws the same on iOS and Android, is laid out in the s
 | `nsh_engine::EngineConfig::components` | The registry a surface renders from (the platforms and `nsh trace` pass `nsh_ui_mobile::registry()`) |
 
 A desktop set will be a crate of its own (`nsh-ui-desktop`, on GPUI), not an abstraction over both.
+
+## The API
+
+```rust
+#[derive(Default)]
+pub struct Button;                       // the component's state
+
+/// A press target with a label.         // the TypeScript doc of `Button`
+#[derive(Clone, PartialEq, Props)]
+pub struct ButtonProps {
+    /// The label.
+    pub title: SharedString,             // required in TS
+    #[prop(default)]
+    pub variant: ButtonVariant,          // #[derive(PropEnum)]: "primary" | "secondary" | ...
+    pub accessibility_label: Option<SharedString>,   // `accessibilityLabel?`
+}
+
+#[derive(Event)]
+pub enum ButtonEvent {
+    /// The button was pressed.
+    Press,                               // `onPress?: () => void`
+}
+
+impl Component for Button {
+    const NAME: &'static str = "nsh.button";       // JS export: `Button`
+    type Props = ButtonProps;
+    type Event = ButtonEvent;
+
+    fn render(&self, props: &ButtonProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        view()
+            .px_4()
+            .py_3()
+            .rounded(px(theme.radius))
+            .bg(theme.primary)
+            .active(|s| s.bg(theme.primary_active))
+            .on_press(cx.listener(|_this, _, cx| cx.emit(ButtonEvent::Press)))
+            .child(text(props.title.clone()).text_color(theme.primary_foreground))
+    }
+}
+```
+
+- **Props** are a struct, **events** an enum; the derives produce the decoding of `$name` values from JS, defaults,
+  and the TypeScript types (doc comments included). Field and variant names become camel case in JS. Value types
+  implement `JsValue` (numbers, `bool`, strings, `Color`, `Option`, `Vec`, `JsonValue`, `PropEnum`s). A prop JS sends
+  with the wrong type is refused with a warning and nothing renders; clearing a prop restores its default.
+- **Slots and children are props too**: `header: Option<Slot>` is `Some` while the app passes non-empty JSX for it, and
+  the `Slot` is an element to style and place (`.children(props.header.clone().map(|h| h.px_4()))`); `children:
+  Children` goes where the render puts it (`.child(props.children)`), among the render's own children.
+- **Elements** are `view()`, `text(..)`, `image(..)`, strings (as texts) and other components (`Button::element(props)`,
+  whose `.on_event(cx.listener(..))` handles their typed events instead of the app). Their abilities are traits:
+  `Styled`, `Accessible`, `Interactive` (`on_press`, `active` / `hover` / `focus` styles, `disabled`), `ParentElement`,
+  `FluentBuilder` (`when`, `when_some`, `map`).
+- **State** is `Self`; listeners (`cx.listener(|this, event, cx| ..)`) get `&mut Self`, emit with `cx.emit(..)` and
+  render again with `cx.notify()`. `render(&self)` cannot change state.
+
+## Styles
+
+`Styled` methods are named as in GPUI and Tailwind (`.flex_row()`, `.items_center()`, `.p_4()` = 16pt, `.gap(px(6.0))`,
+`.rounded_xl()`, `.border_1()`, `.shadow_md()`, `.text_sm()`, `.font_weight(FontWeight::SEMIBOLD)`, ...); spacing steps
+follow Tailwind's default scale, independent of the app's Tailwind theme. A render records declarations
+(`StyleRefinement`); the core lowers them into the same rules Tailwind classes compile to (`ClassList`), cached and
+shared between elements with the same styles, and only when an element's styles changed. There is no string to
+parse and no `.class()`.
+
+- Theme colors are `AdaptiveColor`s (a light and a dark value) and lower into one declaration that picks by
+  appearance (`Decl::Adaptive`): the platform's appearance switch restyles natively, without a render, and the app's
+  plain classes still win over it.
+- `.active(|s| ..)`, `.hover(..)`, `.focus(..)` lower into rules on the view's interaction states (Tailwind's ranks):
+  press feedback is native.
+- What a render knows (a variant, `disabled`) is plain Rust: `.when(props.disabled, |v| v.opacity(0.5))`.
+- The app's `class` / `classList` on a component (Tailwind) is merged after the root's rules; at equal rank it wins.
+  The styles of a nested component element merge the same way.
+
+## The theme
+
+`Theme` (`ui/theme.rs`) has gpui-kit's semantic colors (`primary`, `primary_active`, `primary_foreground`,
+`secondary`, `danger`, `muted`, `border`, `group_box`, `list_*`, `switch*`, `tab*`, ...: the fields mobile components
+use) plus `radius`, `radius_lg` and `font_size`, and derefs to its colors (`theme.primary`). The default
+(`default-theme.json`) is gpui-kit's default theme with mobile radii. An app sets its own in `nsh.json`: `"theme":
+"brand.json"` (a gpui-kit theme file, relative to `nsh.json`) or the same JSON inline. Keys only desktop components
+use are ignored; a pressed color the theme leaves out is derived from its base; colors are CSS colors or Tailwind
+palette names. The bundler checks the theme and serves it as `nsh:theme`; `_core.ts` sends it to the root
+(`uiTheme`) before anything renders; a new theme renders every component again.
 
 ## The host node and ids
 
@@ -26,45 +111,39 @@ without components pay one check per op.
 JS allocates even node ids (from 2), the core odd ones (from 3), so both id spaces stay dense and never collide. JS
 never sees the expanded nodes; their events are the component's (below).
 
-## Props and renders
+## Renders and diffing
 
-- Own props arrive as `$name` (`Prop::ComponentProp`, any JSON value; `undefined` clears). `Props` stores them by
-  their index in the spec, with the spec's defaults parsed once per registered component; strings are shared, so
-  reading one in a render is a reference count bump.
 - A prop change marks the instance; **renders run at the start of `commit`**, so props set in one JS turn render once.
-  A component that keeps asking for renders (`notify` from a render's side effects) is cut off after 16 per commit.
-- The render is diffed against the previous one: elements match by key, else by position and type; attributes field by
-  field (`Attrs`), so only changed props become ops; native children are moved only when their order changed. Class
-  runs (`.class("px-4 py-3")`) are kept as static strings and joined only when they change.
-- The app's `class` / `classList` on a component is appended to the root's classes (it wins); `style`, `testID` and
-  `onLayout` apply to the host as on any view; `ref` gets the host (`ref.command(name, args)` reaches `command`).
-- An unknown name logs a denial and renders nothing.
+  A component that keeps asking for renders is cut off after 16 per commit.
+- The render is diffed against the previous one: keyed elements match by key; unkeyed ones take the next unused old
+  element of the same kind in order, so an element that comes and goes (`.children(option)`) does not move its
+  siblings onto new nodes. Attributes are compared field by field (`Attrs`), styles as a whole; native children are
+  moved only when their order changed.
+- An unknown name logs a denial and renders nothing. Rust components take no `ref.command(...)`.
 
 ## Children and slots
 
-- `.holds_children()` marks where JSX children go. JS inserts them into the host; the core places them into that
-  element (or keeps them out of the tree while the render has no such element).
-- Named slots (`Spec::slots`, `<Card header={…}>`): the glue creates one holder view per slot **the app passes**
-  (`componentSlot`), filled with that prop's JSX. The render's `.slot(name)` element *is* that holder: its classes and
-  handlers apply to it, the core places it but never releases it (it is JS's). `cx.has_slot(name)` tells whether the
-  app passed one with content; filling or emptying a holder renders the component again.
+- JS inserts a component's children into the host; the core places them where the render's `Children` is, before the
+  rendered node that follows it (or keeps them out of the tree while the render has none).
+- Named slots: the glue creates one holder view per slot **the app passes** (`componentSlot`), filled with that prop's
+  JSX. The render's `Slot` element *is* that holder: its styles and handlers apply to it, the core places it but never
+  releases it (it is JS's). Filling or emptying a holder renders the component again.
 
 ## Events
 
-- Handlers sit on the elements (`.on_press(…)`, `.on(kind, …)`); the native event of an expanded node, or of the host,
-  goes to the component first (`Core::component_event`, called by the engine before JS). Events of expanded nodes never
-  reach JS.
-- `cx.emit(name, data)` sends a `NativeEvent` on the host; the glue calls the app's `on<Name>(data)`. A nested
-  component's emits go to the component that rendered it instead. `cx.notify()` renders again.
+- Handlers sit on the elements; the native event of an expanded node, or of the host, goes to the component first
+  (`Core::component_event`, called by the engine before JS). Events of expanded nodes never reach JS.
+- `cx.emit(event)` sends a `NativeEvent` on the host (`{ name, data }`, from the `Event` derive); the glue calls the
+  app's `on<Name>(data)`. A nested component's events go to the `on_event` listener of the component that rendered it,
+  typed, instead.
 
 ## The glue
 
-`nsh_core::component::typescript(specs)` writes `components.gen.ts`: the props interfaces (from `PropType`, docs from
-the spec) and one `component(...)` call per spec. That helper runs for every instance, so it is kept minimal: **one
-render effect reading every prop directly** and sending the ones that changed, no `splitProps` / `mergeProps` /
-`spread` (their proxies made the first version cost more JS than the TSX component it replaced), no node for an
-absent slot, no event listener when no handler is passed. Benchmarks against the TSX Button: `docs/dev/performance.md`
-(`examples/bench`, `component_bench`).
+`nsh_core::ui::typescript(specs)` writes `components.gen.ts`: the props interfaces and one `component(...)` call per
+component. That helper runs for every instance, so it is kept minimal: **one render effect reading every prop
+directly** and sending the ones that changed, no `splitProps` / `mergeProps` / `spread` (their proxies made the first
+version cost more JS than the TSX component it replaced), no node for an absent slot, no event listener when no handler
+is passed. Benchmarks against the same Button in TSX: `docs/dev/performance.md` (`examples/bench`, `component_bench`).
 
 ## Native components of the embedder
 

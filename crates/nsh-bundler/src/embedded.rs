@@ -122,7 +122,7 @@ const UI_MOBILE: &[EmbeddedFile] = embedded! { "ui/mobile":
 fn generated() -> &'static [EmbeddedFile] {
     static FILES: std::sync::OnceLock<[EmbeddedFile; 1]> = std::sync::OnceLock::new();
     FILES.get_or_init(|| {
-        let source = nsh_core::component::typescript(&nsh_ui_mobile::specs());
+        let source = nsh_core::ui::typescript(&nsh_ui_mobile::specs());
         [EmbeddedFile {
             root: "ui/mobile",
             path: "components.gen.ts",

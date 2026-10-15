@@ -2887,9 +2887,8 @@ mod components {
     use serde_json::json;
 
     use super::*;
-    use crate::component::{
-        Component, El, EventCx, EventSpec, PropSpec, PropType, Props, Registry, RenderCx, Spec,
-        text, view,
+    use crate::ui::{
+        Children, Component, Event, NoEvent, Props, Registry, RenderCx, Slot, prelude::*,
     };
 
     /// Counts taps; shows `label` and the count; holds its JSX children.
@@ -2898,47 +2897,33 @@ mod components {
         taps: u32,
     }
 
-    static TALLY: Spec = Spec {
-        name: "test.tally",
-        export: "Tally",
-        doc: "",
-        props: &[PropSpec {
-            name: "label",
-            ty: PropType::String,
-            default: Some("\"Taps\""),
-            doc: "",
-        }],
-        events: &[EventSpec {
-            name: "tap",
-            data: "{ count: number }",
-            doc: "",
-        }],
-        children: true,
-        slots: &[],
-    };
+    #[derive(Clone, PartialEq, Props)]
+    struct TallyProps {
+        #[prop(default = "Taps".into())]
+        label: SharedString,
+        children: Children,
+    }
+
+    #[derive(Event)]
+    enum TallyEvent {
+        Tap { count: u32 },
+    }
 
     impl Component for Tally {
-        fn spec() -> &'static Spec {
-            &TALLY
-        }
+        const NAME: &'static str = "test.tally";
+        type Props = TallyProps;
+        type Event = TallyEvent;
 
-        fn render(&self, p: &Props, _cx: &mut RenderCx) -> El<Self> {
+        fn render(&self, props: &TallyProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
             view()
-                .class("p-2")
-                .on_press(|this: &mut Self, cx: &mut EventCx| {
+                .p_2()
+                .on_press(cx.listener(|this: &mut Self, _, cx| {
                     this.taps += 1;
-                    cx.emit("tap", json!({ "count": this.taps }));
+                    cx.emit(TallyEvent::Tap { count: this.taps });
                     cx.notify();
-                })
-                .child(text(format!("{} {}", p.str("label"), self.taps)))
-                .child(view().class("gap-1").holds_children())
-        }
-
-        fn command(&mut self, name: &str, _args: &crate::JsonValue, cx: &mut EventCx) {
-            if name == "reset" {
-                self.taps = 0;
-                cx.notify();
-            }
+                }))
+                .child(text(format!("{} {}", props.label, self.taps)))
+                .child(view().gap_1().child(props.children))
         }
     }
 
@@ -2998,8 +2983,8 @@ mod components {
         );
         let batch = c.commit().unwrap();
         assert_eq!(texts(&batch), ["Hits 0"]);
-        // Expanded nodes have odd ids; the JS child sits in the element that
-        // holds children, not in the host.
+        // Expanded nodes have odd ids; the JS child sits where the render
+        // put `Children`, not in the host.
         let holder = batch
             .items
             .iter()
@@ -3037,8 +3022,15 @@ mod components {
         let batch = c.commit().unwrap();
         assert_eq!(texts(&batch), ["Hits 1"]);
 
-        // A prop change renders again; only what changed is sent.
-        apply(&mut c, vec![prop("label", json!("Taps"))]);
+        // A prop change renders again; only what changed is sent. Clearing
+        // a prop restores its default.
+        apply(
+            &mut c,
+            vec![Op::SetProp {
+                id: 2,
+                prop: Prop::ComponentProp("label".into(), None),
+            }],
+        );
         let batch = c.commit().unwrap();
         assert_eq!(texts(&batch), ["Taps 1"]);
         assert!(
@@ -3047,19 +3039,9 @@ mod components {
                 .iter()
                 .any(|i| matches!(i, MountItem::Create { .. }))
         );
-
-        // Commands reach the component.
-        apply(
-            &mut c,
-            vec![Op::Command {
-                id: 2,
-                command: Command::Native {
-                    name: "reset".into(),
-                    args: json!(null),
-                },
-            }],
-        );
-        assert_eq!(texts(&c.commit().unwrap()), ["Taps 0"]);
+        // A value of the wrong type is refused (and logged), nothing renders.
+        apply(&mut c, vec![prop("label", json!(3))]);
+        assert!(c.commit().is_none());
 
         // Unknown events on the host (no handler) are JS's.
         assert!(!c.component_event(2, EventKind::Layout, &EventPayload::None));
@@ -3093,34 +3075,26 @@ mod components {
     #[derive(Default)]
     struct Card;
 
-    static CARD: Spec = Spec {
-        name: "test.card",
-        export: "Card",
-        doc: "",
-        props: &[],
-        events: &[],
-        children: true,
-        slots: &[crate::component::SlotSpec {
-            name: "header",
-            doc: "",
-        }],
-    };
+    #[derive(Clone, PartialEq, Props)]
+    struct CardProps {
+        header: Option<Slot>,
+        children: Children,
+    }
 
     impl Component for Card {
-        fn spec() -> &'static Spec {
-            &CARD
-        }
+        const NAME: &'static str = "test.card";
+        type Props = CardProps;
+        type Event = NoEvent;
 
-        fn render(&self, _p: &Props, cx: &mut RenderCx) -> El<Self> {
-            view().child(view().class("h-[44px]").slot("header")).child(
-                view()
-                    .class(if cx.has_slot("header") {
-                        "mt-2"
-                    } else {
-                        "mt-0"
-                    })
-                    .holds_children(),
-            )
+        fn render(&self, props: &CardProps, _cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            let filled = props.header.is_some();
+            view()
+                .children(props.header.clone().map(|h| h.h(px(44.0))))
+                .child(
+                    view()
+                        .map(|v| if filled { v.mt_2() } else { v.mt_0() })
+                        .child(props.children),
+                )
         }
     }
 
@@ -3193,7 +3167,7 @@ mod components {
             }
         )));
         assert_eq!(frame_of(&batch, 4).map(|f| f.height), Some(44.0));
-        // The children sit below it, after `mt-2` (the slot is filled).
+        // The children sit below it, after `mt_2` (the slot is filled).
         let holder = batch
             .items
             .iter()
@@ -3206,23 +3180,12 @@ mod components {
             .unwrap();
         assert_eq!(frame_of(&batch, holder).map(|f| f.y), Some(52.0));
 
-        // Emptying the slot renders again: `mt-0`.
+        // Emptying the slot renders again: no header, `mt_0`.
         apply(
             &mut c,
             vec![Op::Remove {
                 parent: 4,
                 child: 6,
-            }],
-        );
-        let batch = c.commit().unwrap();
-        assert_eq!(frame_of(&batch, holder).map(|f| f.y), Some(44.0));
-
-        // Without its node the header is not rendered.
-        apply(
-            &mut c,
-            vec![Op::Remove {
-                parent: 2,
-                child: 4,
             }],
         );
         let batch = c.commit().unwrap();
@@ -3241,37 +3204,36 @@ mod components {
         inner_taps: u32,
     }
 
-    static OUTER: Spec = Spec {
-        name: "test.outer",
-        export: "Outer",
-        doc: "",
-        props: &[],
-        events: &[],
-        children: false,
-        slots: &[],
-    };
+    #[derive(Clone, PartialEq, Props)]
+    struct OuterProps {}
+
+    #[derive(Event)]
+    enum OuterEvent {
+        InnerTap(u32),
+    }
 
     impl Component for Outer {
-        fn spec() -> &'static Spec {
-            &OUTER
-        }
+        const NAME: &'static str = "test.outer";
+        type Props = OuterProps;
+        type Event = OuterEvent;
 
-        fn render(&self, _p: &Props, _cx: &mut RenderCx) -> El<Self> {
+        fn render(&self, _props: &OuterProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
             view()
                 .child(text(format!("outer {}", self.inner_taps)))
                 .child(
-                crate::component::component("test.tally", [("label", json!("In"))]).on(
-                    EventKind::NativeEvent,
-                    |this: &mut Self, payload, cx: &mut EventCx| {
-                        if matches!(payload, EventPayload::Native { name, .. } if &**name == "tap")
-                        {
+                    Tally::element(TallyProps {
+                        label: "In".into(),
+                        ..TallyProps::initial()
+                    })
+                    .on_event(cx.listener(
+                        |this: &mut Self, event: &TallyEvent, cx| {
+                            let TallyEvent::Tap { .. } = event;
                             this.inner_taps += 1;
-                            cx.emit("innerTap", json!(this.inner_taps));
+                            cx.emit(OuterEvent::InnerTap(this.inner_taps));
                             cx.notify();
-                        }
-                    },
-                ),
-            )
+                        },
+                    )),
+                )
         }
     }
 
@@ -3333,7 +3295,7 @@ mod components {
     }
 
     #[test]
-    fn the_apps_class_is_appended_and_unknown_components_render_nothing() {
+    fn the_apps_class_goes_last_and_unknown_components_render_nothing() {
         let mut c = core_with_tally();
         apply(
             &mut c,
@@ -3371,7 +3333,7 @@ mod components {
             ],
         );
         let batch = c.commit().unwrap();
-        // `p-8` (32pt) wins over the component's `p-2`: the text sits 32pt in.
+        // `p-8` (32pt) wins over the component's `p_2`: the text sits 32pt in.
         let text_id = batch
             .items
             .iter()
@@ -3389,5 +3351,77 @@ mod components {
                 .iter()
                 .any(|i| matches!(i, MountItem::Create { id: 6, .. }))
         );
+    }
+
+    /// A theme-colored swatch that darkens while pressed.
+    #[derive(Default)]
+    struct Swatch;
+
+    #[derive(Clone, PartialEq, Props)]
+    struct SwatchProps {}
+
+    impl Component for Swatch {
+        const NAME: &'static str = "test.swatch";
+        type Props = SwatchProps;
+        type Event = NoEvent;
+
+        fn render(&self, _props: &SwatchProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            let theme = cx.theme();
+            view()
+                .size_10()
+                .bg(theme.primary)
+                .active(|s| s.bg(rgb(0xff0000)))
+        }
+    }
+
+    #[test]
+    fn theme_colors_and_press_styles_switch_natively() {
+        let mut c = core();
+        let mut registry = Registry::new();
+        registry.register::<Swatch>();
+        c.set_components(registry);
+        apply(
+            &mut c,
+            vec![
+                Op::Create {
+                    id: 2,
+                    tag: Tag::View,
+                },
+                Op::SetProp {
+                    id: 2,
+                    prop: Prop::Component("test.swatch".into()),
+                },
+                Op::Insert {
+                    parent: ROOT_ID,
+                    child: 2,
+                    before: None,
+                },
+            ],
+        );
+        let background = |batch: &MountBatch| {
+            batch.items.iter().find_map(|i| match i {
+                MountItem::ViewStyle { id: 2, style } => Some(style.background_color),
+                _ => None,
+            })
+        };
+        let theme = crate::ui::Theme::default();
+        let batch = c.commit().unwrap();
+        assert_eq!(background(&batch), Some(theme.primary.light));
+        assert_eq!(frame_of(&batch, 2).map(|f| f.width), Some(40.0));
+        // The platform reports presses on it (`active`).
+        assert!(batch.items.iter().any(|i| matches!(
+            i,
+            MountItem::TrackStates { id: 2, states } if states & crate::tailwind::state::PRESSED != 0
+        )));
+        // Dark appearance: restyled without a render.
+        c.set_class_environment(crate::tailwind::ClassEnvironment {
+            dark: true,
+            ..Default::default()
+        });
+        let batch = c.commit().unwrap();
+        assert_eq!(background(&batch), Some(theme.primary.dark));
+        c.set_states(2, crate::tailwind::state::PRESSED);
+        let batch = c.commit().unwrap();
+        assert_eq!(background(&batch), Some(Color(0xff0000ff)));
     }
 }

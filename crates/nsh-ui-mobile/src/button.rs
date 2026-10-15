@@ -1,93 +1,93 @@
 //! `Button`: a press target with a label.
 
-use nsh_core::{
-    AccessibilityRole, AccessibilityState, JsonValue,
-    component::{
-        Component, El, EventCx, EventSpec, PropSpec, PropType, Props, RenderCx, Spec, text, view,
-    },
-};
+use nsh_core::ui::prelude::*;
 
-/// A button: `primary` (filled), `secondary` (tinted) or `plain` (text
-/// only); native press feedback, dimmed when disabled.
+/// A press target with a label ([`ButtonProps`]).
 #[derive(Debug, Default)]
 pub struct Button;
 
-static SPEC: Spec = Spec {
-    name: "nsh.button",
-    export: "Button",
-    doc: "A press target with a label, the same on iOS and Android.",
-    props: &[
-        PropSpec {
-            name: "title",
-            ty: PropType::String,
-            default: None,
-            doc: "The label.",
-        },
-        PropSpec {
-            name: "variant",
-            ty: PropType::Enum(&["primary", "secondary", "plain"]),
-            default: Some("\"primary\""),
-            doc: "`primary` (default): filled; `secondary`: tinted; `plain`: text only.",
-        },
-        PropSpec {
-            name: "disabled",
-            ty: PropType::Bool,
-            default: Some("false"),
-            doc: "No presses, no feedback, dimmed.",
-        },
-        PropSpec {
-            name: "accessibilityLabel",
-            ty: PropType::String,
-            default: Some("\"\""),
-            doc: "For screen readers, when `title` is not enough.",
-        },
-    ],
-    events: &[EventSpec {
-        name: "press",
-        data: "void",
-        doc: "The button was pressed.",
-    }],
-    children: false,
-    slots: &[],
-};
+/// A press target with a label, the same on iOS and Android.
+#[derive(Debug, Clone, PartialEq, Props)]
+pub struct ButtonProps {
+    /// The label.
+    pub title: SharedString,
+    /// `primary` (default): filled; `secondary`: tinted; `danger`: a
+    /// destructive action; `plain`: text only.
+    #[prop(default)]
+    pub variant: ButtonVariant,
+    /// No presses, no feedback, dimmed.
+    #[prop(default)]
+    pub disabled: bool,
+    /// For screen readers, when `title` is not enough.
+    pub accessibility_label: Option<SharedString>,
+}
 
-const BASE: &str = "flex-row items-center justify-center rounded-xl px-4 py-3 disabled:opacity-40";
+/// How a [`Button`] looks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PropEnum)]
+pub enum ButtonVariant {
+    /// Filled with the primary color.
+    #[default]
+    Primary,
+    /// Filled with the secondary color.
+    Secondary,
+    /// Filled with the danger color.
+    Danger,
+    /// Text only; a background while pressed.
+    Plain,
+}
 
-fn variant(name: &str) -> &'static str {
-    match name {
-        "secondary" => {
-            "bg-blue-100 active:bg-blue-200 text-blue-700 dark:bg-blue-950 dark:active:bg-blue-900 dark:text-blue-300"
-        }
-        "plain" => "active:opacity-60 text-blue-600 dark:text-blue-400",
-        _ => "bg-blue-600 active:bg-blue-700 text-white",
-    }
+/// The events of a [`Button`].
+#[derive(Debug, Clone, PartialEq, Event)]
+pub enum ButtonEvent {
+    /// The button was pressed.
+    Press,
 }
 
 impl Component for Button {
-    fn spec() -> &'static Spec {
-        &SPEC
-    }
+    const NAME: &'static str = "nsh.button";
+    type Props = ButtonProps;
+    type Event = ButtonEvent;
 
-    fn render(&self, p: &Props, _cx: &mut RenderCx) -> El<Self> {
-        let title = p.str("title");
-        let label = p.str("accessibilityLabel");
-        let disabled = p.bool("disabled");
+    fn render(&self, props: &ButtonProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let (bg, pressed, fg) = match props.variant {
+            ButtonVariant::Primary => (
+                theme.primary,
+                theme.primary_active,
+                theme.primary_foreground,
+            ),
+            ButtonVariant::Secondary => (
+                theme.secondary,
+                theme.secondary_active,
+                theme.secondary_foreground,
+            ),
+            ButtonVariant::Danger => (theme.danger, theme.danger_active, theme.danger_foreground),
+            ButtonVariant::Plain => (AdaptiveColor::TRANSPARENT, theme.accent, theme.foreground),
+        };
         view()
-            .class(BASE)
-            .class(variant(&p.str("variant")))
-            .disabled(disabled)
+            .flex_row()
+            .items_center()
+            .justify_center()
+            .px_4()
+            .py_3()
+            .rounded(px(theme.radius))
+            .bg(bg)
+            .active(|s| s.bg(pressed))
+            .when(props.disabled, |v| v.opacity(0.5))
+            .disabled(props.disabled)
             .role(AccessibilityRole::Button)
-            .label(if label.is_empty() {
-                title.clone()
-            } else {
-                label
-            })
-            .state(AccessibilityState {
-                disabled,
-                ..AccessibilityState::default()
-            })
-            .on_press(|_: &mut Self, cx: &mut EventCx| cx.emit("press", JsonValue::Null))
-            // The label inherits the button's text classes.
-            .child(text(title).class("text-[17px] font-semibold"))
+            .label(
+                props
+                    .accessibility_label
+                    .clone()
+                    .unwrap_or_else(|| props.title.clone()),
+            )
+            .on_press(cx.listener(|_, _, cx| cx.emit(ButtonEvent::Press)))
+            .child(
+                text(props.title.clone())
+                    .text_size(px(theme.font_size))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(fg),
+            )
     }
 }

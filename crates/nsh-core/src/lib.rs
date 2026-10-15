@@ -10,7 +10,6 @@
 
 pub mod access;
 pub mod canvas;
-pub mod component;
 mod core;
 mod css;
 mod css_named;
@@ -26,6 +25,10 @@ mod style;
 pub mod tailwind;
 mod text;
 mod transform;
+pub mod ui;
+
+// The derive macros name `::nsh_core`, also in this crate's own tests.
+extern crate self as nsh_core;
 
 pub use nsh_anim;
 /// The values registered native components take and emit (props, events,
