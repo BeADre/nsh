@@ -42,7 +42,7 @@ pub use nsh_macros::{Event, JsObject, PropEnum, Props, methods, module};
 
 pub(crate) use self::{
     component::AnyInstance,
-    element::{ElKind, ErasedCx, Globals, ListConfig, PlaceFn},
+    element::{ElKind, ErasedCx, Globals, ListConfig, PlaceFn, Provided, RenderReads, RenderScope},
     task::{Action, AnswerSlot, Executor},
 };
 pub use self::{

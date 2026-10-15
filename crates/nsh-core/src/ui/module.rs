@@ -139,6 +139,9 @@ impl<'a> ModuleCx<'a> {
             .unwrap_or_default();
         let result = f(&mut global, self);
         self.inner.globals.borrow_mut().insert(id, global);
+        if !self.inner.changed_globals.contains(&id) {
+            self.inner.changed_globals.push(id);
+        }
         result
     }
 

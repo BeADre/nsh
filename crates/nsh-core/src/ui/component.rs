@@ -7,11 +7,11 @@ use std::{any::Any, fmt, sync::Arc};
 use rustc_hash::FxHashMap;
 
 use super::{
-    Children, Context, Environment, IntoElement, PropError, Slot, Theme, TsType, TsTypes,
-    element::{ComponentElement, ElNode, ErasedCx, RenderCx},
+    Children, Context, Environment, IntoElement, PropError, Slot, TsType, TsTypes,
+    element::{ComponentElement, ElNode, ErasedCx, RenderCx, RenderReads, RenderScope},
     module::{Function, FunctionSpec, Module, ModuleSpec},
 };
-use crate::{EdgeInsets, JsonValue};
+use crate::JsonValue;
 
 /// A component written in Rust. Its state is `Self` (`Default` makes a new
 /// one, [`Component::setup`] sets it up from the first props); its props
@@ -326,12 +326,7 @@ pub(crate) trait AnyInstance {
     /// What the last render read of the environment changed.
     fn environment_changed(&mut self, old: &Environment, new: &Environment, cx: &mut ErasedCx);
     /// The tree, and what it read of the environment.
-    fn render(
-        &mut self,
-        theme: &Theme,
-        environment: &Environment,
-        insets: EdgeInsets,
-    ) -> (ElNode, u16);
+    fn render(&mut self, scope: &RenderScope<'_>) -> (ElNode, RenderReads);
     /// The state, and the props.
     fn parts(&mut self) -> (&mut dyn Any, &dyn Any);
     /// Method `name` of the ref; `None` when it has none of that name.
@@ -405,19 +400,14 @@ impl<C: Component> AnyInstance for Instance<C> {
         }
     }
 
-    fn render(
-        &mut self,
-        theme: &Theme,
-        environment: &Environment,
-        insets: EdgeInsets,
-    ) -> (ElNode, u16) {
-        let mut cx = RenderCx::new(theme, environment, insets);
+    fn render(&mut self, scope: &RenderScope<'_>) -> (ElNode, RenderReads) {
+        let mut cx = RenderCx::new(scope);
         let node = self.state.render(&self.props, &mut cx).into_element().0;
         match &mut self.rendered {
             Some(old) if *old == self.props => {}
             rendered => *rendered = Some(self.props.clone()),
         }
-        (node, cx.reads.get())
+        (node, cx.reads.into_inner())
     }
 
     fn parts(&mut self) -> (&mut dyn Any, &dyn Any) {

@@ -9,7 +9,11 @@
 //! its children are placed where the render's `Children` is. Renders run at
 //! the start of a commit, so props set in one JS turn render once.
 
-use std::{any::Any, rc::Rc, sync::Arc};
+use std::{
+    any::{Any, TypeId},
+    rc::Rc,
+    sync::Arc,
+};
 
 use rustc_hash::FxHashMap;
 
@@ -21,8 +25,8 @@ use crate::{
     ui::{
         Action, AnswerSlot, AnyInstance, AsyncCx, Attrs, Child, ComponentSpec, ElKind, ElNode,
         Environment, ErasedCx, Executor, Function, FunctionCall, Globals, ImageSize, IntoElement,
-        ListConfig, Listener, ModuleCx, ParentElement, PlaceFn, Position, PropError, Registry,
-        SharedString, StyleRefinement, Theme, view,
+        ListConfig, Listener, ModuleCx, ParentElement, PlaceFn, Position, PropError, Provided,
+        Registry, RenderReads, RenderScope, SharedString, StyleRefinement, Theme, view,
     },
 };
 
@@ -87,7 +91,7 @@ pub(super) struct Instance {
     handlers: Vec<(NodeId, EventKind, Listener<EventPayload>)>,
     event_handlers: Vec<(NodeId, Listener<dyn Any>)>,
     /// What the last render read of the environment.
-    reads: u16,
+    reads: RenderReads,
     dirty: bool,
     renders: u32,
 }
@@ -325,7 +329,7 @@ impl<M: TextEngine> Core<M> {
             .components
             .instances
             .iter()
-            .filter(|(_, i)| i.reads & changed != 0)
+            .filter(|(_, i)| i.reads.env & changed != 0)
             .map(|(&h, _)| h)
             .collect();
         for host in hosts {
@@ -673,7 +677,7 @@ impl<M: TextEngine> Core<M> {
                 slots: Vec::new(),
                 handlers: Vec::new(),
                 event_handlers: Vec::new(),
-                reads: 0,
+                reads: RenderReads::default(),
                 dirty: false,
                 renders: 0,
             }),
@@ -840,7 +844,7 @@ impl<M: TextEngine> Core<M> {
                 slots: Vec::new(),
                 handlers: Vec::new(),
                 event_handlers: Vec::new(),
-                reads: 0,
+                reads: RenderReads::default(),
                 dirty: false,
                 renders: 0,
             }),
@@ -920,10 +924,17 @@ impl<M: TextEngine> Core<M> {
                 // The setup the first time, else what changed in the props.
                 let mut cx = self.erased_cx(host);
                 inner.update(&mut cx);
-                let insets = self.insets_of(host);
-                let (el, reads) =
-                    inner.render(&self.components.theme, &self.components.environment, insets);
-                inst.reads = reads;
+                let context = |type_id| self.provided_above(host, type_id);
+                let scope = RenderScope {
+                    theme: &self.components.theme,
+                    environment: &self.components.environment,
+                    insets: self.insets_of(host),
+                    globals: &self.components.globals,
+                    context: &context,
+                };
+                let (el, reads) = inner.render(&scope);
+                let old = std::mem::replace(&mut inst.reads, reads);
+                self.provided_changed(host, &old.provided, &inst.reads.provided);
                 self.finish_event(host, cx);
                 el
             }
@@ -1651,13 +1662,77 @@ impl<M: TextEngine> Core<M> {
         }
     }
 
+    /// The nearest `type_id` provided by a component above `host` (through
+    /// the app's nodes too).
+    fn provided_above(&self, host: NodeId, type_id: TypeId) -> Option<Rc<dyn Any>> {
+        let mut key = self.key(host).ok()?;
+        loop {
+            key = self.nodes[key as usize].parent;
+            if key == NO_KEY {
+                return None;
+            }
+            let id = self.nodes[key as usize].id;
+            if let Some(p) = self
+                .components
+                .instances
+                .get(&id)
+                .and_then(|i| i.reads.provided.iter().find(|p| p.type_id == type_id))
+            {
+                return Some(p.value.clone());
+            }
+        }
+    }
+
+    /// `host` provides `new` instead of `old`: the components reading a
+    /// value that changed render again.
+    fn provided_changed(&mut self, host: NodeId, old: &[Provided], new: &[Provided]) {
+        let mut changed: Vec<TypeId> = Vec::new();
+        for p in new {
+            if !old.iter().any(|o| o.same(p)) {
+                changed.push(p.type_id);
+            }
+        }
+        for o in old {
+            if !new.iter().any(|p| p.type_id == o.type_id) {
+                changed.push(o.type_id);
+            }
+        }
+        if changed.is_empty() {
+            return;
+        }
+        let readers: Vec<NodeId> = self
+            .components
+            .instances
+            .iter()
+            .filter(|(id, i)| **id != host && i.reads.contexts.iter().any(|t| changed.contains(t)))
+            .map(|(&id, _)| id)
+            .collect();
+        for id in readers {
+            self.components.mark(id);
+        }
+    }
+
+    /// Renders again the components that read globals of these types.
+    fn mark_global_readers(&mut self, changed: &[TypeId]) {
+        let readers: Vec<NodeId> = self
+            .components
+            .instances
+            .iter()
+            .filter(|(_, i)| i.reads.globals.iter().any(|t| changed.contains(t)))
+            .map(|(&id, _)| id)
+            .collect();
+        for id in readers {
+            self.components.mark(id);
+        }
+    }
+
     /// Renders again the components that read `what` of the environment.
     fn mark_readers(&mut self, what: u16) {
         let hosts: Vec<NodeId> = self
             .components
             .instances
             .iter()
-            .filter(|(_, i)| i.reads & what != 0)
+            .filter(|(_, i)| i.reads.env & what != 0)
             .map(|(&h, _)| h)
             .collect();
         for host in hosts {
@@ -1689,6 +1764,9 @@ impl<M: TextEngine> Core<M> {
     fn finish_event(&mut self, host: NodeId, cx: ErasedCx) {
         if cx.notify {
             self.components.mark(host);
+        }
+        if !cx.changed_globals.is_empty() {
+            self.mark_global_readers(&cx.changed_globals);
         }
         for action in cx.actions {
             self.apply_action(action);

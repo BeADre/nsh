@@ -3919,4 +3919,106 @@ mod components {
             ]
         );
     }
+
+    /// Provides an accent to what is below it, through the app's JSX.
+    #[derive(Default)]
+    struct Theming {
+        accent: u32,
+    }
+
+    #[derive(Clone, PartialEq, Debug)]
+    struct Accent(u32);
+
+    #[derive(Default)]
+    struct Clicks(u32);
+
+    #[derive(Clone, PartialEq, Props)]
+    struct WithChildren {
+        children: Children,
+    }
+
+    impl Component for Theming {
+        const NAME: &'static str = "test.theming";
+        type Props = WithChildren;
+        type Event = NoEvent;
+
+        fn render(&self, props: &WithChildren, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            cx.provide(Accent(self.accent));
+            view()
+                .on_press(cx.listener(|this: &mut Self, _, cx| {
+                    this.accent += 1;
+                    cx.notify();
+                }))
+                .child(props.children)
+        }
+    }
+
+    /// Shows the accent above it and the surface's clicks; a press counts
+    /// one.
+    #[derive(Default)]
+    struct AccentSwatch;
+
+    impl Component for AccentSwatch {
+        const NAME: &'static str = "test.accent_swatch";
+        type Props = FormProps;
+        type Event = NoEvent;
+
+        fn render(&self, _: &FormProps, cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+            let accent = cx.context::<Accent>().map_or(0, |a| a.0);
+            let clicks = cx.global::<Clicks>().0;
+            view()
+                .on_press(cx.listener(|_: &mut Self, _, cx| {
+                    cx.update_global(|c: &mut Clicks, _| c.0 += 1);
+                }))
+                .child(text(format!("accent {accent} clicks {clicks}")))
+        }
+    }
+
+    #[test]
+    fn context_flows_down_and_globals_render_their_readers() {
+        let mut c = core();
+        let mut registry = Registry::new();
+        registry.register::<Theming>().register::<AccentSwatch>();
+        c.set_components(registry);
+        // <Theming><view><Swatch/></view></Theming> and a second Swatch
+        // outside it.
+        let host = |id, name: &str| {
+            vec![
+                Op::Create { id, tag: Tag::View },
+                Op::SetProp {
+                    id,
+                    prop: Prop::Component(name.into()),
+                },
+            ]
+        };
+        let mut ops = host(2, "test.theming");
+        ops.push(Op::Create {
+            id: 4,
+            tag: Tag::View,
+        });
+        ops.extend(host(6, "test.accent_swatch"));
+        ops.extend(host(8, "test.accent_swatch"));
+        for (parent, child) in [(4, 6), (2, 4), (ROOT_ID, 2), (ROOT_ID, 8)] {
+            ops.push(Op::Insert {
+                parent,
+                child,
+                before: None,
+            });
+        }
+        apply(&mut c, ops);
+        let batch = c.commit().unwrap();
+        let mut shown = texts(&batch);
+        shown.sort();
+        assert_eq!(shown, ["accent 0 clicks 0", "accent 0 clicks 0"]);
+
+        // A new value: only the swatch below the provider renders again.
+        assert!(c.component_event(2, EventKind::Press, &EventPayload::None));
+        assert_eq!(texts(&c.commit().unwrap()), ["accent 1 clicks 0"]);
+
+        // A global changed by one swatch renders both.
+        assert!(c.component_event(8, EventKind::Press, &EventPayload::None));
+        let mut shown = texts(&c.commit().unwrap());
+        shown.sort();
+        assert_eq!(shown, ["accent 0 clicks 1", "accent 1 clicks 1"]);
+    }
 }

@@ -4,7 +4,7 @@
 
 use std::{
     any::{Any, TypeId},
-    cell::{Cell, RefCell},
+    cell::RefCell,
     future::Future,
     marker::PhantomData,
     rc::Rc,
@@ -84,6 +84,8 @@ pub(crate) struct ErasedCx {
     pub(crate) executor: Rc<Executor>,
     pub(crate) globals: Globals,
     pub(crate) actions: Vec<Action>,
+    /// The globals `update_global` changed (their readers render again).
+    pub(crate) changed_globals: Vec<TypeId>,
 }
 
 impl ErasedCx {
@@ -101,6 +103,7 @@ impl ErasedCx {
             executor,
             globals,
             actions: Vec::new(),
+            changed_globals: Vec::new(),
         }
     }
 }
@@ -109,32 +112,115 @@ impl ErasedCx {
 /// the component renders again when what it read changes, as Solid's
 /// accessors do), and listeners for the elements.
 pub struct RenderCx<'a, C> {
-    theme: &'a Theme,
-    environment: &'a Environment,
-    insets: EdgeInsets,
-    pub(crate) reads: Cell<u16>,
+    scope: &'a RenderScope<'a>,
+    pub(crate) reads: RefCell<RenderReads>,
     _component: PhantomData<fn(&mut C)>,
 }
 
+/// What a render can read, from the core.
+pub(crate) struct RenderScope<'a> {
+    pub(crate) theme: &'a Theme,
+    pub(crate) environment: &'a Environment,
+    pub(crate) insets: EdgeInsets,
+    pub(crate) globals: &'a Globals,
+    /// The nearest provided value of a type above the component.
+    pub(crate) context: &'a dyn Fn(TypeId) -> Option<Rc<dyn Any>>,
+}
+
+/// A value a render provides to the components below it.
+#[derive(Clone)]
+pub(crate) struct Provided {
+    pub(crate) type_id: TypeId,
+    pub(crate) value: Rc<dyn Any>,
+    pub(crate) eq: fn(&dyn Any, &dyn Any) -> bool,
+}
+
+impl Provided {
+    /// Whether `other` provides the same value.
+    pub(crate) fn same(&self, other: &Provided) -> bool {
+        self.type_id == other.type_id && (self.eq)(&*self.value, &*other.value)
+    }
+}
+
+/// What a render read (it renders again when one changes) and provided.
+#[derive(Clone, Default)]
+pub(crate) struct RenderReads {
+    /// Parts of the environment ([`env`] bits).
+    pub(crate) env: u16,
+    pub(crate) globals: Vec<TypeId>,
+    pub(crate) contexts: Vec<TypeId>,
+    pub(crate) provided: Vec<Provided>,
+}
+
 impl<'a, C: Component> RenderCx<'a, C> {
-    pub(crate) fn new(theme: &'a Theme, environment: &'a Environment, insets: EdgeInsets) -> Self {
+    pub(crate) fn new(scope: &'a RenderScope<'a>) -> Self {
         Self {
-            theme,
-            environment,
-            insets,
-            reads: Cell::new(0),
+            scope,
+            reads: RefCell::new(RenderReads::default()),
             _component: PhantomData,
         }
     }
 
     fn read(&self, what: u16) -> &'a Environment {
-        self.reads.set(self.reads.get() | what);
-        self.environment
+        self.reads.borrow_mut().env |= what;
+        self.scope.environment
+    }
+
+    /// The surface's `G` (made with `Default` the first time; Solid: a
+    /// signal or store at module level). Reading subscribes: the component
+    /// renders again when a listener, task or module changes `G` with
+    /// `update_global`.
+    pub fn global<G: Default + 'static>(&self) -> std::cell::Ref<'a, G> {
+        let id = TypeId::of::<G>();
+        {
+            let mut reads = self.reads.borrow_mut();
+            if !reads.globals.contains(&id) {
+                reads.globals.push(id);
+            }
+        }
+        let globals = self.scope.globals;
+        if !globals.borrow().contains_key(&id) {
+            globals.borrow_mut().insert(id, Box::new(G::default()));
+        }
+        std::cell::Ref::map(globals.borrow(), |g| {
+            g[&id].downcast_ref::<G>().expect("keyed by its type")
+        })
+    }
+
+    /// Provides `value` to the components rendered below this one (Solid:
+    /// a context provider): their [`Self::context`] finds it. A new value
+    /// renders the components that read it again.
+    pub fn provide<T: PartialEq + 'static>(&self, value: T) {
+        fn eq<T: PartialEq + 'static>(a: &dyn Any, b: &dyn Any) -> bool {
+            matches!((a.downcast_ref::<T>(), b.downcast_ref::<T>()), (Some(a), Some(b)) if a == b)
+        }
+        let provided = Provided {
+            type_id: TypeId::of::<T>(),
+            value: Rc::new(value),
+            eq: eq::<T>,
+        };
+        let mut reads = self.reads.borrow_mut();
+        reads.provided.retain(|p| p.type_id != provided.type_id);
+        reads.provided.push(provided);
+    }
+
+    /// The `T` the nearest component above this one provides (Solid:
+    /// `useContext`), through the app's elements too; `None` without one.
+    /// Reading subscribes.
+    pub fn context<T: 'static>(&self) -> Option<Rc<T>> {
+        let id = TypeId::of::<T>();
+        {
+            let mut reads = self.reads.borrow_mut();
+            if !reads.contexts.contains(&id) {
+                reads.contexts.push(id);
+            }
+        }
+        (self.scope.context)(id).and_then(|v| v.downcast::<T>().ok())
     }
 
     /// The app's theme.
     pub fn theme(&self) -> &'a Theme {
-        self.theme
+        self.scope.theme
     }
 
     /// The surface's size in points (Solid: `windowSize()`).
@@ -152,8 +238,8 @@ impl<'a, C: Component> RenderCx<'a, C> {
     /// its screen's (below the header) or modal's, else the safe area
     /// (Solid: `useSafeAreaInsets()`).
     pub fn insets(&self) -> EdgeInsets {
-        self.reads.set(self.reads.get() | env::INSETS);
-        self.insets
+        self.reads.borrow_mut().env |= env::INSETS;
+        self.scope.insets
     }
 
     /// The software keyboard's height over the surface, 0 when hidden
@@ -260,6 +346,9 @@ impl<'a, C: Component> Context<'a, C> {
             .unwrap_or_default();
         let result = f(&mut global, self);
         self.inner.globals.borrow_mut().insert(id, global);
+        if !self.inner.changed_globals.contains(&id) {
+            self.inner.changed_globals.push(id);
+        }
         result
     }
 

@@ -103,6 +103,8 @@ impl Component for Button {
   | `windowSize()`, `safeArea()`, `keyboard()`, `colorScheme()`, ... | `cx.window()`, `cx.safe_area()`, `cx.keyboard_height()`, `cx.dark()`, ... in the render: reading subscribes |
   | an effect on the environment | `fn environment_changed(&mut self, props, old, new, cx)` |
   | `useSafeAreaInsets()` | `cx.insets()` in the render: the insets where the component renders (the nearest screen's or modal's, else the surface's safe area) |
+  | a signal or store at module level | `cx.global::<G>()` in the render (subscribes); `cx.update_global::<G, _>(..)` in listeners, tasks' updates and modules renders the readers again |
+  | `createContext` / `<Ctx.Provider value>` / `useContext` | `cx.provide(value)` in the render; `cx.context::<T>()` below it (the nearest provider up the node tree, through the app's elements too; subscribes) |
   | `ref={el}`, `el.focus()` | `cx.element_ref()` (in `setup`, kept in a field), `.element_ref(&self.field)` on the element each render, `self.field.focus()` / `.scroll_to(..)` / `.seek(..)` / `.command(..)` from listeners and tasks |
 
   `render(&self)` cannot change state. Timers are tasks: a `tokio::time` sleep, then an update.
