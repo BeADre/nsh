@@ -348,7 +348,7 @@ pub struct LayoutTransition {
 
 /// Animates the layout changes of the next commit
 /// (`LayoutAnimation.configureNext`).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct LayoutAnimation {
     /// Views inserted by the commit.
     pub create: Option<LayoutTransition>,
@@ -356,4 +356,46 @@ pub struct LayoutAnimation {
     pub update: Option<LayoutTransition>,
     /// Views removed by the commit.
     pub delete: Option<LayoutTransition>,
+}
+
+impl LayoutTransition {
+    /// `curve` over `duration_ms`, appearing views fading.
+    pub const fn new(curve: LayoutCurve, duration_ms: f32) -> Self {
+        Self {
+            curve,
+            property: LayoutProperty::Opacity,
+            duration_ms,
+            delay_ms: 0.0,
+        }
+    }
+}
+
+impl LayoutAnimation {
+    /// `transition` for every kind of change.
+    pub const fn all(transition: LayoutTransition) -> Self {
+        Self {
+            create: Some(transition),
+            update: Some(transition),
+            delete: Some(transition),
+        }
+    }
+
+    /// React Native's `LayoutAnimation.Presets.easeInEaseOut`: 300 ms,
+    /// views fading in and out.
+    pub const EASE_IN_EASE_OUT: Self =
+        Self::all(LayoutTransition::new(LayoutCurve::EaseInEaseOut, 300.0));
+
+    /// `Presets.linear`: 500 ms at constant speed.
+    pub const LINEAR: Self = Self::all(LayoutTransition::new(LayoutCurve::Linear, 500.0));
+
+    /// `Presets.spring`: frames spring (damping 0.4) over 700 ms, views
+    /// fade linearly.
+    pub const SPRING: Self = Self {
+        create: Some(LayoutTransition::new(LayoutCurve::Linear, 700.0)),
+        update: Some(LayoutTransition::new(
+            LayoutCurve::Spring { damping: 0.4 },
+            700.0,
+        )),
+        delete: Some(LayoutTransition::new(LayoutCurve::Linear, 700.0)),
+    };
 }

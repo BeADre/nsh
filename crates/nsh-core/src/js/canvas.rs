@@ -127,9 +127,7 @@ impl OpArg<Drawing> for Option<Path> {
         while path.more() {
             let code = path.code()?;
             if code == CV_SVG_PATH {
-                ops.extend(parse_svg_path(
-                    &path.arg()?.as_string().unwrap_or_default(),
-                ));
+                ops.extend(parse_svg_path(&path.arg()?.as_string().unwrap_or_default()));
                 continue;
             }
             match PathOp::decode(code, &mut path, drawing)? {

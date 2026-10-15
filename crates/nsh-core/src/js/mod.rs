@@ -2,10 +2,12 @@
 //! op buffer cannot drift apart: its codes ([`protocol`]), the canvas API
 //! that records drawing operations and their decoding ([`canvas`], with
 //! [`ops`]' `#[derive(JsOps)]`), the style types
-//! ([`style`]) and the host elements' props ([`host`]: their decoding and
-//! types, from `#[derive(HostProps)]` on [`crate::Prop`]). The bundler
+//! ([`style`]), the host elements' props ([`host`]: their decoding and
+//! types, from `#[derive(HostProps)]` on [`crate::Prop`]) and the easings
+//! and layout animations ([`anim`]). The bundler
 //! embeds each generator's output as an internal module of `js/runtime`
-//! (`protocol.gen.ts`, `canvas.gen.ts`, `style.gen.ts`, `elements.gen.ts`);
+//! (`protocol.gen.ts`, `canvas.gen.ts`, `style.gen.ts`, `elements.gen.ts`,
+//! `anim.gen.ts`);
 //! the decoders in `nsh-js` match on the same constants and call the
 //! derived decoders.
 
@@ -23,6 +25,7 @@ macro_rules! codes {
     };
 }
 
+pub mod anim;
 pub mod canvas;
 pub mod host;
 pub(crate) mod host_values;
@@ -89,6 +92,13 @@ mod tests {
             assert!(elements[at..end].contains(prop), "{interface}: {prop}");
         }
         assert!(elements.contains("\"number-pad\" | \"numeric\""));
+        let anim = super::anim::typescript();
+        assert!(anim.contains("  back: (s: number = 1.70158): EasingCurve =>"));
+        assert!(anim.contains("export type LayoutAnimationType = \"easeInEaseOut\" | \"spring\""));
+        assert!(anim.contains("  readonly scaleXY: \"scaleXY\";"));
+        assert!(anim.contains(
+            "    update: { type: \"spring\", property: \"opacity\", duration: 700, delay: 0, springDamping: 0.4 },"
+        ));
         // What the runtime sets itself is not part of the types.
         for internal in ["splice?", "cellIndex?", "tailwindTheme?", "headerSlot?"] {
             assert!(!elements.contains(internal), "{internal}");

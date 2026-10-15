@@ -4,7 +4,8 @@
   `"deg"` / `"rad"` angles; `extrapolate` / `extrapolateLeft` / `extrapolateRight`: `clamp` (default) / `extend` / `identity`;
   `easing`), `add/sub/mul/div/mod`, `diffClamp(min, max)`. `Easing` (React Native's: `linear`, `ease`, `quad`, `cubic`, `poly`,
   `sin`, `circle`, `exp`, `elastic`, `back`, `bounce`, `bezier`, `in` / `out` / `inOut`) is data decoded in Rust
-  (`nsh_anim::Easing::Curve`), never a JS function. `Animated.timing` / `spring` / `decay` / `sequence` / `parallel` / `stagger` /
+  (`nsh_anim::Easing::Curve`), never a JS function: the curves, their parameters and defaults are one table
+  (`nsh_core::js::anim`), which decodes them and generates their types and `Easing`'s curves (`anim.gen.ts`). `Animated.timing` / `spring` / `decay` / `sequence` / `parallel` / `stagger` /
   `delay` / `loop` build a `Composite` tree that runs entirely natively (`AnimOp::StartComposite`): each step starts at the exact end
   time of the previous one (no frame gaps), `stop()` / `reset()` (back to the values at start) / `start(cb)` report `finished` once
   for the whole tree; leaf animations get internal ids (`LEAF_IDS`) that never reach JS. Composites are released by
@@ -14,4 +15,6 @@
   directly, and JS receives the velocity when the drag ends. Native values referenced by a view's style are kept on the view node (`YNode.anims`)
   and derived nodes hold their inputs, so bindings do not break when JS objects are collected.
 - **Layout animation**: `LayoutAnimation.configureNext(config)` (or the `easeInEaseOut` / `linear` / `spring` presets) animates
-  the next commit's frames, insertions and removals natively.
+  the next commit's frames, insertions and removals natively. The presets are `LayoutAnimation::EASE_IN_EASE_OUT` /
+  `LINEAR` / `SPRING` in Rust (what Rust components pass to `animate_layout`), written into `anim.gen.ts` for JS; the config's
+  decoding and types come from the same module.

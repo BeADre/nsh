@@ -18,6 +18,36 @@ import {
   ANIM_VALUE,
   OP_ANIM,
 } from "./protocol.gen";
+// The easings' and layout animations' types, curves and presets, generated
+// from the core's tables (`nsh_core::js::anim`).
+import {
+  type Easing,
+  type EasingCurve,
+  type EasingCurves,
+  easingCurves,
+  type LayoutAnimationConfig,
+  type LayoutAnimationPresets,
+  type LayoutAnimationProperties,
+  type LayoutAnimationProperty,
+  type LayoutAnimationType,
+  type LayoutAnimationTypes,
+  layoutAnimationPresets,
+  layoutAnimationProperties,
+  layoutAnimationTypes,
+} from "./anim.gen";
+export type {
+  Easing,
+  EasingCurve,
+  EasingCurveName,
+  EasingCurves,
+  LayoutAnimationAnim,
+  LayoutAnimationConfig,
+  LayoutAnimationPresets,
+  LayoutAnimationProperties,
+  LayoutAnimationProperty,
+  LayoutAnimationType,
+  LayoutAnimationTypes,
+} from "./anim.gen";
 
 // --- Native animation values -------------------------------------------
 
@@ -111,39 +141,10 @@ function math(op: string, a: Operand, b: Operand): NativeNode {
   return node;
 }
 
-/** A curve of the `Easing` module. */
-export interface EasingCurve {
-  curve: "quad" | "cubic" | "poly" | "sin" | "circle" | "exp" | "elastic" | "back" | "bounce";
-  param?: number;
-  mode: "in" | "out" | "inOut";
-}
-
-/** How a timing animation (or an interpolation segment) progresses: a name,
- * a cubic Bézier `[x1, y1, x2, y2]` or a curve from `Easing`. */
-export type Easing =
-  | "linear"
-  | "ease"
-  | "easeIn"
-  | "easeOut"
-  | "easeInOut"
-  | [number, number, number, number]
-  | EasingCurve;
-
-const curve = (name: EasingCurve["curve"], param?: number): EasingCurve => ({ curve: name, param, mode: "in" });
-
 /** Easing functions (React Native's `Easing`). */
-export interface EasingModule {
+export interface EasingModule extends EasingCurves {
   linear: Easing;
   ease: Easing;
-  quad: EasingCurve;
-  cubic: EasingCurve;
-  poly(n: number): EasingCurve;
-  sin: EasingCurve;
-  circle: EasingCurve;
-  exp: EasingCurve;
-  elastic(bounciness?: number): EasingCurve;
-  back(s?: number): EasingCurve;
-  bounce: EasingCurve;
   bezier(x1: number, y1: number, x2: number, y2: number): Easing;
   in(e: Easing): Easing;
   out(e: Easing): Easing;
@@ -153,17 +154,9 @@ export interface EasingModule {
 /** Easing functions (React Native's `Easing`): curves in their "in" form,
  * turned around with `out` / `inOut`. */
 export const Easing: EasingModule = {
-  linear: "linear" as Easing,
-  ease: "ease" as Easing,
-  quad: curve("quad"),
-  cubic: curve("cubic"),
-  poly: (n: number) => curve("poly", n),
-  sin: curve("sin"),
-  circle: curve("circle"),
-  exp: curve("exp"),
-  elastic: (bounciness = 1) => curve("elastic", bounciness),
-  back: (s = 1.70158) => curve("back", s),
-  bounce: curve("bounce"),
+  ...easingCurves,
+  linear: "linear",
+  ease: "ease",
   bezier: (x1: number, y1: number, x2: number, y2: number): Easing => [x1, y1, x2, y2],
   in: (e: Easing): Easing => (typeof e === "object" && !Array.isArray(e) ? { ...e, mode: "in" } : e),
   out: (e: Easing): Easing => {
@@ -383,24 +376,6 @@ export const Animated: AnimatedModule = {
 
 // --- Layout animations ----------------------------------------------------
 
-export type LayoutAnimationType = "spring" | "linear" | "easeInEaseOut" | "easeIn" | "easeOut";
-export type LayoutAnimationProperty = "opacity" | "scaleXY";
-
-export interface LayoutAnimationAnim {
-  type?: LayoutAnimationType;
-  property?: LayoutAnimationProperty;
-  duration?: number;
-  delay?: number;
-  springDamping?: number;
-}
-
-export interface LayoutAnimationConfig {
-  duration: number;
-  create?: LayoutAnimationAnim;
-  update?: LayoutAnimationAnim;
-  delete?: LayoutAnimationAnim;
-}
-
 function layoutPreset(
   duration: number,
   type: LayoutAnimationType = "easeInEaseOut",
@@ -423,24 +398,9 @@ export const LayoutAnimation = {
     type?: LayoutAnimationType,
     property?: LayoutAnimationProperty,
   ) => LayoutAnimationConfig,
-  Types: {
-    spring: "spring",
-    linear: "linear",
-    easeInEaseOut: "easeInEaseOut",
-    easeIn: "easeIn",
-    easeOut: "easeOut",
-  } as const,
-  Properties: { opacity: "opacity", scaleXY: "scaleXY" } as const,
-  Presets: {
-    easeInEaseOut: layoutPreset(300) as LayoutAnimationConfig,
-    linear: layoutPreset(500, "linear") as LayoutAnimationConfig,
-    spring: {
-      duration: 700,
-      create: { type: "linear", property: "opacity" },
-      update: { type: "spring", springDamping: 0.4 },
-      delete: { type: "linear", property: "opacity" },
-    } as LayoutAnimationConfig,
-  },
+  Types: layoutAnimationTypes as LayoutAnimationTypes,
+  Properties: layoutAnimationProperties as LayoutAnimationProperties,
+  Presets: layoutAnimationPresets as LayoutAnimationPresets,
   easeInEaseOut(onEnd?: () => void): void {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut, onEnd);
   },

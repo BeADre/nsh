@@ -5,17 +5,15 @@
 //! slowest stage, so all parsing (tags, style objects, event names) happens
 //! here in Rust.
 
-use nsh_anim::{
-    AnimOp, AnimProp, Curve, Driver, EaseMode, Easing, Extrapolate, MathOp, Operand, Output,
-};
+use nsh_anim::{AnimOp, AnimProp, Driver, Easing, Extrapolate, MathOp, Operand, Output};
 // The op buffer's codes, shared with the generated `protocol.gen.ts`.
 use nsh_core::js::{
-    host::{HostCx, HostInput, HostList, HostProps},
+    host::{HostCx, HostInput, HostList, HostProps, HostValue},
     protocol::*,
 };
 use nsh_core::{
-    Color, Command, EventKind, LayoutAnimation, LayoutCurve, LayoutProperty, LayoutTransition,
-    NodeId, Op, Prop, Style, StyleDecl, StyleError, StylePatch, StyleValue, Tag, TransformKind,
+    Color, Command, EventKind, LayoutAnimation, NodeId, Op, Prop, Style, StyleDecl, StyleError,
+    StylePatch, StyleValue, Tag, TransformKind,
 };
 use rquickjs::{Array, Ctx, Exception, Object, Type, Value};
 use rustc_hash::FxHashSet;
@@ -249,7 +247,10 @@ pub(crate) fn decode<'js>(
                             .and_then(|o| o.get::<_, Option<bool>>("animated").ok().flatten())
                             .unwrap_or(true),
                     },
-                    "layoutAnimation" => Command::LayoutAnimation(decode_layout_animation(&arg)?),
+                    "layoutAnimation" => Command::LayoutAnimation(
+                        <LayoutAnimation as HostValue>::decode(&Js(arg), &mut HostCx::default())
+                            .unwrap_or_default(),
+                    ),
                     "zoomTo" => {
                         let field = |key: &str| {
                             arg.as_object()
@@ -322,53 +323,6 @@ fn string(value: &Value<'_>) -> rquickjs::Result<String> {
 
 fn field_f32(obj: &Object<'_>, key: &str) -> rquickjs::Result<Option<f32>> {
     Ok(obj.get::<_, Option<f64>>(key)?.map(|v| v as f32))
-}
-
-/// `LayoutAnimation.configureNext(config)`: `{ duration, create, update,
-/// delete }`, each part `{ type, property, duration, delay, springDamping }`.
-fn decode_layout_animation(config: &Value<'_>) -> rquickjs::Result<LayoutAnimation> {
-    let Some(c) = config.as_object() else {
-        return Ok(LayoutAnimation {
-            create: None,
-            update: None,
-            delete: None,
-        });
-    };
-    let duration = field_f32(c, "duration")?.unwrap_or(300.0);
-    let part = |key: &str,
-                default_property: LayoutProperty|
-     -> rquickjs::Result<Option<LayoutTransition>> {
-        let Some(p) = c.get::<_, Option<Object>>(key)? else {
-            return Ok(None);
-        };
-        let kind: Option<String> = p.get("type")?;
-        let property: Option<String> = p.get("property")?;
-        Ok(Some(LayoutTransition {
-            curve: match kind.as_deref() {
-                Some("linear") => LayoutCurve::Linear,
-                Some("easeIn") => LayoutCurve::EaseIn,
-                Some("easeOut") => LayoutCurve::EaseOut,
-                Some("spring") => LayoutCurve::Spring {
-                    damping: field_f32(&p, "springDamping")?
-                        .unwrap_or(0.7)
-                        .clamp(0.01, 1.0),
-                },
-                _ => LayoutCurve::EaseInEaseOut,
-            },
-            property: match property.as_deref() {
-                Some("scaleXY") | Some("scale") => LayoutProperty::Scale,
-                Some("opacity") => LayoutProperty::Opacity,
-                _ => default_property,
-            },
-            duration_ms: field_f32(&p, "duration")?.unwrap_or(duration),
-            delay_ms: field_f32(&p, "delay")?.unwrap_or(0.0),
-        }))
-    };
-    Ok(LayoutAnimation {
-        create: part("create", LayoutProperty::Opacity)?,
-        update: part("update", LayoutProperty::Opacity)?,
-        delete: part("delete", LayoutProperty::Opacity)?,
-    })
 }
 
 /// A QuickJS value as host props read it.
@@ -713,7 +667,7 @@ fn decode_anim(r: &mut Reader<'_, '_>) -> rquickjs::Result<AnimOp> {
                 output,
                 extrapolate_left,
                 extrapolate_right,
-                easing: decode_easing(&easing, Easing::Linear)?,
+                easing: nsh_core::js::anim::easing(&Js(easing)).unwrap_or(Easing::Linear),
             }
         }
         ANIM_DIFF_CLAMP => AnimOp::CreateDiffClamp {
@@ -835,7 +789,8 @@ fn decode_driver(r: &Reader<'_, '_>, config: &Value<'_>) -> rquickjs::Result<Dri
         "timing" => Driver::Timing {
             to: num("to")?.unwrap_or(0.0),
             duration_ms: num("duration")?.unwrap_or(300.0),
-            easing: decode_easing(&c.get::<_, Value>("easing")?, Easing::EaseInOut)?,
+            easing: nsh_core::js::anim::easing(&Js(c.get::<_, Value>("easing")?))
+                .unwrap_or(Easing::EaseInOut),
             delay_ms: num("delay")?.unwrap_or(0.0),
         },
         "spring" => Driver::Spring {
@@ -856,53 +811,6 @@ fn decode_driver(r: &Reader<'_, '_>, config: &Value<'_>) -> rquickjs::Result<Dri
             ));
         }
     })
-}
-
-/// An easing: a name (`linear`, `easeIn`, ...), a Bézier `[x1, y1, x2, y2]`
-/// or a curve `{ curve, param?, mode }` (the runtime's `Easing`).
-fn decode_easing(value: &Value<'_>, default: Easing) -> rquickjs::Result<Easing> {
-    if let Some(a) = value.as_array() {
-        let p = |i| a.get::<f64>(i).map(|v| v as f32).unwrap_or(0.0);
-        return Ok(Easing::Bezier(p(0), p(1), p(2), p(3)));
-    }
-    if let Some(o) = value.as_object() {
-        let curve = o.get::<_, Option<String>>("curve")?.unwrap_or_default();
-        let param = o.get::<_, Option<f64>>("param")?.map(|v| v as f32);
-        let curve = match curve.as_str() {
-            "quad" => Curve::Quad,
-            "cubic" => Curve::Cubic,
-            "poly" => Curve::Poly(param.unwrap_or(2.0)),
-            "sin" => Curve::Sin,
-            "circle" => Curve::Circle,
-            "exp" => Curve::Exp,
-            "elastic" => Curve::Elastic(param.unwrap_or(1.0)),
-            "back" => Curve::Back(param.unwrap_or(1.70158)),
-            "bounce" => Curve::Bounce,
-            _ => return Ok(default),
-        };
-        let mode = match o.get::<_, Option<String>>("mode")?.as_deref() {
-            Some("out") => EaseMode::Out,
-            Some("inOut") => EaseMode::InOut,
-            _ => EaseMode::In,
-        };
-        return Ok(Easing::Curve(curve, mode));
-    }
-    Ok(
-        match value
-            .as_string()
-            .map(|s| s.to_string())
-            .transpose()?
-            .as_deref()
-        {
-            Some("linear") => Easing::Linear,
-            Some("easeIn") => Easing::EaseIn,
-            Some("easeOut") => Easing::EaseOut,
-            Some("easeInOut") => Easing::EaseInOut,
-            // CSS / React Native `ease`.
-            Some("ease") => Easing::Bezier(0.25, 0.1, 0.25, 1.0),
-            _ => default,
-        },
-    )
 }
 
 /// A composite animation: `{ type, ... }` with `node` on the runs.
@@ -1061,5 +969,87 @@ mod decode_bench {
             }
             eprintln!("decode 17500 calls: best {best:?}");
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nsh_anim::{Curve, EaseMode};
+    use nsh_core::{LayoutCurve, LayoutProperty, LayoutTransition};
+    use rquickjs::{Context, Runtime};
+
+    use super::*;
+
+    fn with_value<R>(source: &str, f: impl FnOnce(Js<'_>) -> R) -> R {
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        ctx.with(|ctx| f(Js(ctx.eval(format!("({source})")).unwrap())))
+    }
+
+    fn layout(source: &str) -> LayoutAnimation {
+        with_value(source, |v| {
+            <LayoutAnimation as HostValue>::decode(&v, &mut HostCx::default()).unwrap()
+        })
+    }
+
+    #[test]
+    fn easings_decode_by_name_curve_and_bezier() {
+        let easing = |s: &str| with_value(s, |v| nsh_core::js::anim::easing(&v));
+        assert_eq!(easing("'easeOut'"), Some(Easing::EaseOut));
+        assert_eq!(easing("'ease'"), Some(Easing::Bezier(0.25, 0.1, 0.25, 1.0)));
+        assert_eq!(
+            easing("[0.1, 'x', 0.3]"),
+            Some(Easing::Bezier(0.1, 0.0, 0.3, 0.0))
+        );
+        // The curve's default parameter, and its mode.
+        assert_eq!(
+            easing("{ curve: 'back', mode: 'inOut' }"),
+            Some(Easing::Curve(Curve::Back(1.70158), EaseMode::InOut))
+        );
+        assert_eq!(
+            easing("{ curve: 'poly', param: 4, mode: 'out' }"),
+            Some(Easing::Curve(Curve::Poly(4.0), EaseMode::Out))
+        );
+        assert_eq!(easing("{ curve: 'nope' }"), None);
+        assert_eq!(easing("'bogus'"), None);
+    }
+
+    #[test]
+    fn layout_animations_decode_with_defaults() {
+        // A phase without a duration takes the config's; unknown names are
+        // the defaults; `scale` is `scaleXY`.
+        let a = layout(
+            "{ duration: 250, create: { type: 'bogus', property: 'scale', delay: 20 }, update: { type: 'spring' } }",
+        );
+        assert_eq!(
+            a.create,
+            Some(LayoutTransition {
+                curve: LayoutCurve::EaseInEaseOut,
+                property: LayoutProperty::Scale,
+                duration_ms: 250.0,
+                delay_ms: 20.0,
+            })
+        );
+        assert_eq!(
+            a.update.map(|u| u.curve),
+            Some(LayoutCurve::Spring { damping: 0.7 })
+        );
+        assert_eq!(a.delete, None);
+        // Damping is held to 0.01..1; without a duration, 300 ms.
+        let b = layout("{ update: { type: 'spring', springDamping: 5 } }");
+        assert_eq!(
+            b.update,
+            Some(LayoutTransition {
+                curve: LayoutCurve::Spring { damping: 1.0 },
+                property: LayoutProperty::Opacity,
+                duration_ms: 300.0,
+                delay_ms: 0.0,
+            })
+        );
+        // The generated presets decode to the core's.
+        let presets = nsh_core::js::anim::typescript();
+        let spring = &presets[presets.find("  spring: {\n").unwrap() + 10..];
+        let spring = &spring[..spring.find("\n  },").unwrap() + 4];
+        assert_eq!(layout(spring), LayoutAnimation::SPRING);
     }
 }

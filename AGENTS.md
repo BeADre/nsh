@@ -138,9 +138,9 @@ host it is an empty crate, so always run clippy on platform code with the Cataly
   trusted as the app. QuickJS bytecode is trusted input (`Bundle::bytecode` is `unsafe`): it only loads from the app's
   own resources, the dev server and verified packages (`docs/dev/signed-packages.md`).
 - **Generated, never hand-copied**: the op buffer's codes (`OP_*`, `ANIM_*`, `CV_*`), the canvas's recording methods
-  and properties (and their decoding: `CanvasOp`'s `#[derive(JsOps)]`), the style types and the host elements' props
-  come from `crates/nsh-core/src/js/` (`protocol.gen.ts`,
-  `canvas.gen.ts`, `style.gen.ts`, `elements.gen.ts`); a new style property is one line of `style_keys!` (`style.rs`)
+  and properties (and their decoding: `CanvasOp`'s `#[derive(JsOps)]`), the style types, the host elements' props and
+  the easings / layout animation presets come from `crates/nsh-core/src/js/` (`protocol.gen.ts`,
+  `canvas.gen.ts`, `style.gen.ts`, `elements.gen.ts`, `anim.gen.ts`); a new style property is one line of `style_keys!` (`style.rs`)
   with its TS type, a new host prop one variant of `Prop` with `#[prop(js = …)]` (`docs/dev/elements.md`).
 - **Keep in sync**: the event handlers in `types.ts` ↔ the payloads of `nsh-js`'s `dispatch_event`; the order of `EventKind` ↔
   `Native.java`; `encode.rs` opcodes ↔ `Mounter.java`; new event payload keys ↔ the JNI event map's key list;
