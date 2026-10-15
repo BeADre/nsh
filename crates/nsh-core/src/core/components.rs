@@ -1414,16 +1414,41 @@ impl<M: TextEngine> Core<M> {
                     .all(|(&c, &id)| self.nodes[c as usize].id == id)
         });
         if !in_order {
+            // From the end, each child before the one after it: only the
+            // children out of place move. Moving a native view takes it
+            // out of the window for a moment, which ends its touches and
+            // its focus (Android: an input that gains a sibling would lose
+            // the keyboard on each keystroke).
             let ids: Vec<NodeId> = wanted().copied().collect();
-            for child in ids {
-                let _ = self.apply_op(Op::Insert {
-                    parent,
-                    child,
-                    before: None,
-                });
+            let mut before = None;
+            for &child in ids.iter().rev() {
+                if !self.precedes(parent, child, before) {
+                    let _ = self.apply_op(Op::Insert {
+                        parent,
+                        child,
+                        before,
+                    });
+                }
+                before = Some(child);
             }
         }
         out
+    }
+
+    /// Whether `child` is a child of `parent` right before `next` (the last
+    /// one when `next` is `None`).
+    fn precedes(&self, parent: NodeId, child: NodeId, next: Option<NodeId>) -> bool {
+        let Ok(k) = self.key(parent) else {
+            return false;
+        };
+        let children = &self.nodes[k as usize].children;
+        let Some(at) = children
+            .iter()
+            .position(|&c| self.nodes[c as usize].id == child)
+        else {
+            return false;
+        };
+        children.get(at + 1).map(|&c| self.nodes[c as usize].id) == next
     }
 
     /// Slot node `node` as element `el`: its styles, props and handlers

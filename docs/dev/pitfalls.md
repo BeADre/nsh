@@ -28,6 +28,9 @@ Things that were found the hard way. Read the section of the area you change bef
 - **Text nodes outside `<text>`** (e.g. empty placeholders of `<Show>` / `<For>`) create no native view and take no part in layout. A `<text>`
   nested in `<text>` is a span without a native view; the whole block is merged into one `AttributedText`.
 - **`TextSpan` offsets are UTF-16**, like NSAttributedString / Android Spannable.
+- **Never re-insert a native child that is already in place.** `Insert` of a mounted view is a move: the platform takes it
+  out of the window for a moment, which ends its touches and its focus (an Android input loses the keyboard). Child diffs
+  (Rust components' `reconcile_children`) move only the children out of order, from the end, with `before` anchors.
 - **Taffy 0.15 custom measure callbacks must delegate to `taffy::compute_leaf_layout`** and only compute the content size. Returning the
   content size directly skips resolving the leaf's own style (width / height / padding / min / max), so leaves such as
   `<image style={{width: 48}}>` end up with a zero size.

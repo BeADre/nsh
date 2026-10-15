@@ -755,3 +755,57 @@ fn a_rust_text_field_clears_after_typing() {
     });
     assert_eq!(value, Some((String::new(), 2)));
 }
+
+/// The clear button comes back with the first keystroke after a clear: the
+/// input stays where it is (moving its native view would end its focus).
+#[test]
+fn a_sibling_coming_back_does_not_move_a_rust_input() {
+    let (engine, rx) = start(FIELD);
+    let first = until(&rx, |b| shows(b, "name Ada"));
+    let items = || first.iter().flat_map(|b| &b.items);
+    let input = items()
+        .find_map(|i| match i {
+            MountItem::Create {
+                id,
+                kind: nsh_core::ViewKind::Input,
+            } => Some(*id),
+            _ => None,
+        })
+        .expect("an input");
+    let clear = items()
+        .filter_map(|i| match i {
+            MountItem::Events { id, events } if events.contains(EventKind::Press) => Some(*id),
+            _ => None,
+        })
+        .next_back()
+        .expect("the clear button");
+    let control = engine.control();
+    control.dispatch_event(clear, EventKind::Press, EventPayload::None);
+    until(&rx, |b| shows(b, "name "));
+    control.dispatch_event(
+        input,
+        EventKind::ChangeText,
+        EventPayload::Text {
+            text: "x".into(),
+            count: 1,
+        },
+    );
+    let after = until(&rx, |b| shows(b, "name x"));
+    let inserts: Vec<_> = after
+        .iter()
+        .flat_map(|b| &b.items)
+        .filter_map(|i| match i {
+            MountItem::Insert { child, before, .. } => Some((*child, *before)),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        inserts.iter().all(|&(child, _)| child != input),
+        "{inserts:?}"
+    );
+    // The new clear button goes after the input, at the end.
+    assert!(
+        inserts.iter().any(|&(_, before)| before.is_none()),
+        "{inserts:?}"
+    );
+}
