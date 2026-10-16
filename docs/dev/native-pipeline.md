@@ -102,6 +102,18 @@ renders each route (by identity) with the app's function into a screen, the app'
 rendered; a screen the user pops natively removes its route; screens and modals provide the insets they report to what
 they render (`useSafeAreaInsets`).
 
+## Runtime modules
+
+The rest of the runtime's modules are natives too: `nsh/list` (`List`, the component `<list>` is), `nsh/gesture`
+(the responder system, `touch.rs`), `nsh/animated` (`animated.rs`), `nsh/webview`, `nsh/video`, `nsh/native`, and the
+hand-written parts of `nsh/android` / `nsh/ios` (`platform_modules.rs`), and `nsh/canvas` (`canvas.rs`).
+
+A canvas drawing makes thousands of calls, so the context records into a Rust list instead of a JS array, and the
+core's decoder (`nsh_core::js::canvas::decode`, the one the JS runtime's arrays go through) reads it: both runtimes
+draw the same (`nsh-engine` test `canvas::the_native_context_draws_what_the_js_one_does` compares them). The
+recording methods and properties are made from the core's specs (`CanvasOp::methods` / `properties`), so a new
+operation needs no change here. Paths and gradients are taken as they are when the drawing uses them.
+
 ## Types (`crates/nsh-bundler/src/types.rs`)
 
 `.nsh/types` of a native app has the native `nsh` and a JSX namespace with the built-ins and the app's kebab-case
@@ -114,5 +126,5 @@ kebab tag uses (`Card` for `<card>`) stays, one only types use goes even without
 
 ## Not there yet
 
-`animated`, `canvas`, gestures and the responder system, `webview` / `video` / `native`, the hand-written parts of
-`nsh/android` and `nsh/ios`, and hot module replacement (a development build reloads the whole bundle).
+The web APIs of `web.js` (`fetch`, `URL`, `TextEncoder`, ...: JS globals for TS apps only; Rust code uses crates of
+its choice), and hot module replacement (a development build reloads the whole bundle).

@@ -446,6 +446,35 @@ pub(crate) fn node_id(ctx: *mut JsContext, v: JsValue) -> Option<NodeId> {
     (!p.is_null()).then(|| unsafe { (*p).id })
 }
 
+/// Keeps `value` (borrowed; objects only) alive with node `node` under
+/// `key`, replacing what it kept there: the native values a view reads.
+pub(crate) fn retain(ctx: *mut JsContext, node: JsValue, key: &'static str, value: JsValue) {
+    let p = node_ptr(ctx, node);
+    if !p.is_null() {
+        retain_in(ctx, p, key, value);
+    }
+}
+
+fn retain_in(ctx: *mut JsContext, p: *mut NodeData, key: &'static str, value: JsValue) {
+    // SAFETY: live node data; the node owns a dup; the old one is freed
+    // after the borrow ends (its finalizer may run).
+    let old = unsafe {
+        let retained = &mut (*p).retained;
+        let old = retained
+            .iter()
+            .position(|(k, _)| *k == key)
+            .map(|i| retained.remove(i).1);
+        if qjs::JS_IsObject(value) {
+            retained.push((key, qjs::JS_DupValue(ctx, value)));
+        }
+        old
+    };
+    if let Some(old) = old {
+        // SAFETY: the value the node owned.
+        unsafe { qjs::JS_FreeValue(ctx, old) };
+    }
+}
+
 /// The host's shared state.
 pub(crate) fn shared(ctx: *mut JsContext) -> Rc<Shared> {
     dom(ctx).shared.clone()
@@ -914,18 +943,7 @@ fn set_prop(
         .iter()
         .find(|k| **k == name)
     {
-        // SAFETY: live node data; the node owns a dup; the old one is freed.
-        let retained = unsafe { &mut (*p).retained };
-        let old = match retained.iter().position(|(k, _)| *k == key) {
-            Some(i) => Some(retained.remove(i).1),
-            None => None,
-        };
-        if unsafe { qjs::JS_IsObject(value) } {
-            retained.push((key, unsafe { qjs::JS_DupValue(ctx, value) }));
-        }
-        if let Some(old) = old {
-            unsafe { qjs::JS_FreeValue(ctx, old) };
-        }
+        retain_in(ctx, p, key, value);
     }
     // SAFETY: a context reference for the decoder, which reads `value`.
     let cx = unsafe { Ctx::from_raw(std::ptr::NonNull::new_unchecked(ctx)) };
@@ -998,10 +1016,10 @@ fn set_touch(
         unsafe { qjs::JS_IsFunction(ctx, value) }.then(|| unsafe { qjs::JS_DupValue(ctx, value) });
     let touch = unsafe { &mut (*p).touch };
     let before = !touch.is_empty();
-    let old = match touch.iter().position(|&(i, _)| i == prop) {
-        Some(at) => Some(touch.remove(at).1),
-        None => None,
-    };
+    let old = touch
+        .iter()
+        .position(|&(i, _)| i == prop)
+        .map(|at| touch.remove(at).1);
     if let Some(h) = handler {
         touch.push((prop, h));
     }

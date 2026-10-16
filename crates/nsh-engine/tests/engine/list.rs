@@ -83,8 +83,27 @@ fn native_list_scrolls_with_recycled_cells() {
     scrolls_with_recycled_cells(NATIVE_APP, true);
 }
 
+/// `List` imported from `nsh/list` is the same component as `<list>`.
+#[test]
+fn native_imported_list_scrolls_with_recycled_cells() {
+    let app = NATIVE_APP
+        .replace("<list ", "<List ")
+        .replace("</list>", "</List>")
+        .replace(
+            "import { signal, mount } from \"nsh\";",
+            "import { signal, mount } from \"nsh\";\nimport { List } from \"nsh/list\";",
+        );
+    assert!(app.contains("<List "));
+    scrolls_with_recycled_cells(&app, true);
+}
+
 fn scrolls_with_recycled_cells(app: &str, native: bool) {
-    let dir = std::env::temp_dir().join(format!("nsh-list-{}-{native}", std::process::id()));
+    static APPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "nsh-list-{}-{}",
+        std::process::id(),
+        APPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     std::fs::create_dir_all(&dir).unwrap();
     if native {
         std::fs::write(dir.join("nsh.json"), r#"{ "compiler": "nsh" }"#).unwrap();

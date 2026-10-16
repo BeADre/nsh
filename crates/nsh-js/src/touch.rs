@@ -643,7 +643,7 @@ unsafe extern "C" fn pan_handler(
             )
         }
         5 => ignore(callback(ctx, config, c"onPanResponderReject", e, gs)),
-        6 | 7 | 8 => {
+        6..=8 => {
             update(ctx, gs, last, e);
             let name = match magic {
                 6 => c"onPanResponderStart",

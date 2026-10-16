@@ -1,11 +1,12 @@
 //! `nsh/canvas` end to end: what a `draw` records (the generated methods and
-//! properties, and the hand-written ones) as the core decodes it.
+//! properties, and the hand-written ones) as the core decodes it; apps
+//! compiled by nsh (the native context) draw exactly what the JS one does.
 
 use std::time::Duration;
 
 use nsh_core::{
     ApproxTextEngine, MountBatch, MountItem, Size,
-    canvas::{CanvasOp, LineCap, Num, PathOp},
+    canvas::{CanvasOp, Drawing, LineCap, Num, PathOp},
 };
 use nsh_engine::{Bundle, Engine, EngineConfig};
 
@@ -44,8 +45,25 @@ render(
 "##;
 
 fn start(app: &str) -> (Engine, crossbeam_channel::Receiver<MountBatch>) {
-    let dir = std::env::temp_dir().join(format!("nsh-canvas-{}", std::process::id()));
+    start_with(app, false)
+}
+
+/// An app compiled by nsh (`"compiler": "nsh"`), through bytecode.
+fn start_native(app: &str) -> (Engine, crossbeam_channel::Receiver<MountBatch>) {
+    start_with(app, true)
+}
+
+fn start_with(app: &str, native: bool) -> (Engine, crossbeam_channel::Receiver<MountBatch>) {
+    static APPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "nsh-canvas-{}-{}",
+        std::process::id(),
+        APPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     std::fs::create_dir_all(&dir).unwrap();
+    if native {
+        std::fs::write(dir.join("nsh.json"), r#"{ "compiler": "nsh" }"#).unwrap();
+    }
     let entry = dir.join("App.tsx");
     std::fs::write(&entry, app).unwrap();
     let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {
@@ -53,9 +71,18 @@ fn start(app: &str) -> (Engine, crossbeam_channel::Receiver<MountBatch>) {
         minify: false,
     })
     .unwrap();
+    let app = if native {
+        let bytecode =
+            nsh_js::compile_bytecode_with(&bundle.code, false, &[nsh_ui_mobile::registry()])
+                .unwrap();
+        // SAFETY: compiled just now by this runtime.
+        unsafe { Bundle::bytecode(bytecode) }
+    } else {
+        Bundle::source(bundle.code)
+    };
     let (tx, rx) = crossbeam_channel::unbounded();
     let config = EngineConfig {
-        app: nsh_engine::App::Js(Bundle::source(bundle.code)),
+        app: nsh_engine::App::Js(app),
         viewport: Size::new(390.0, 844.0),
         trace: false,
         network: None,
@@ -72,20 +99,26 @@ fn start(app: &str) -> (Engine, crossbeam_channel::Receiver<MountBatch>) {
     )
 }
 
+/// The first `count` drawings the app sends.
+fn drawings(rx: &crossbeam_channel::Receiver<MountBatch>, count: usize) -> Vec<Drawing> {
+    let mut out = Vec::new();
+    while out.len() < count
+        && let Ok(batch) = rx.recv_timeout(Duration::from_secs(2))
+    {
+        for item in batch.items {
+            if let MountItem::Canvas { drawing, .. } = item {
+                out.push((*drawing).clone());
+            }
+        }
+    }
+    out
+}
+
 #[test]
 fn a_drawing_records_what_the_context_was_told() {
     let (_engine, rx) = start(APP);
-    let mut drawing = None;
-    while let Ok(batch) = rx.recv_timeout(Duration::from_secs(2)) {
-        drawing = batch.items.into_iter().find_map(|i| match i {
-            MountItem::Canvas { drawing, .. } => Some(drawing),
-            _ => None,
-        });
-        if drawing.is_some() {
-            break;
-        }
-    }
-    let ops = &drawing.expect("a drawing").ops;
+    let drawing = drawings(&rx, 1).pop().expect("a drawing");
+    let ops = &drawing.ops;
     let c = Num::Const;
     assert!(matches!(ops[0], CanvasOp::Save));
     assert!(matches!(ops[1], CanvasOp::LineWidth(Num::Const(3.0))));
@@ -110,4 +143,137 @@ fn a_drawing_records_what_the_context_was_told() {
     assert!(matches!(ops[13], CanvasOp::FillRect([_, _, w, h]) if w == c(100.0) && h == c(50.0)));
     assert!(matches!(ops[14], CanvasOp::Fill(Some(_), _)));
     assert_eq!(ops.len(), 15, "{ops:?}");
+}
+
+/// A drawing using every hand-written part of the context: the paints, the
+/// state stack, line dashes, text, images, paths and native values.
+const DRAW: &str = r##"(ctx, size) => {
+  const log = [];
+  const g = ctx.createLinearGradient(0, 0, size.width, 0);
+  g.addColorStop(1, "#0000ff");
+  g.addColorStop(0, "red");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 10, 10);
+  const r = ctx.createRadialGradient(1, 2, 3, 4, 5, 6);
+  r.addColorStop(0.5, "#00ff00");
+  ctx.strokeStyle = r;
+  ctx.strokeRect(0, 0, 5, 5);
+  ctx.strokeStyle = ctx.createConicGradient(0.5, 10, 10);
+  ctx.shadowColor = "rgba(0,0,0,0.5)";
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetX = 2;
+  ctx.shadowOffsetY = 3;
+  log.push(ctx.shadowOffsetX, ctx.shadowOffsetY, ctx.lineCap, ctx.globalAlpha);
+  ctx.setLineDash([4, 2, 1]);
+  log.push(ctx.getLineDash().join(","));
+  ctx.lineDashOffset = 1.5;
+  ctx.save();
+  ctx.font = "bold 14px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.globalAlpha = 0.25;
+  ctx.globalCompositeOperation = "multiply";
+  ctx.fillText(42, 5, 6);
+  ctx.strokeText("hi", 7, 8, 100);
+  log.push(ctx.font, ctx.measureText("abc").width);
+  ctx.restore();
+  log.push(ctx.font, ctx.globalAlpha);
+  ctx.resetTransform();
+  ctx.setTransform(1, 0, 0, 1, 2, 3);
+  ctx.transform(1, 0, 0, 1, 4, 5);
+  ctx.scale(2, 3);
+  ctx.rotate(0.1);
+  ctx.drawImage("https://example.com/a.png", 1, 2);
+  ctx.drawImage({ uri: "asset:/b.png", width: 20, height: 10 }, 1, 2);
+  ctx.drawImage("https://example.com/a.png", 1, 2, 3, 4);
+  ctx.drawImage("https://example.com/a.png", 1, 2, 3, 4, 5, 6, 7, 8);
+  const p = new Path2D();
+  p.moveTo(0, 0);
+  p.lineTo(v, 10);
+  p.rect(1, 2, 3, 4);
+  p.roundRect(0, 0, 10, 10, [1, 2, 3]);
+  p.roundRect(0, 0, 10, 10, 5);
+  p.ellipse(5, 5, 2, 3, 0, 0, 6.28);
+  p.quadraticCurveTo(1, 2, 3, 4);
+  p.bezierCurveTo(1, 2, 3, 4, 5, 6);
+  p.arcTo(1, 2, 3, 4, 5);
+  const q = new Path2D(p);
+  q.addPath(new Path2D("M0 0 L10 10 Z"));
+  ctx.fill(p, "evenodd");
+  ctx.fill("evenodd");
+  ctx.stroke(q);
+  ctx.clip(q);
+  ctx.clip();
+  ctx.lineWidth = v;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(1, 2, 3, 0, 1, true);
+  ctx.fill();
+  ctx.clearRect(0, 0, size.width, size.height);
+  log.push(ctx.canvas.width, ctx.canvas.height, ctx instanceof CanvasRenderingContext2D, g instanceof CanvasGradient, p instanceof Path2D);
+  ctx.fillText(log.join("|"), 0, 0);
+}"##;
+
+const DRAW_IMPORTS: &str = r##"import { Canvas, CanvasGradient, CanvasRenderingContext2D, Path2D } from "nsh/canvas";
+import { createNativeValue } from "nsh/animated";
+
+const v = createNativeValue(3);
+const color = v.interpolate({ inputRange: [0, 1], outputRange: ["#000000", "#ffffff"] });
+"##;
+
+#[test]
+fn the_native_context_draws_what_the_js_one_does() {
+    let solid = format!(
+        r#"import {{ render, root }} from "nsh";
+{DRAW_IMPORTS}
+render(() => <Canvas style={{{{ width: 100, height: 50 }}}} draw={{{DRAW}}} />, root);
+"#
+    );
+    let native = format!(
+        r#"import {{ mount }} from "nsh";
+{DRAW_IMPORTS}
+mount(() => <Canvas style={{{{ width: 100, height: 50 }}}} draw={{{DRAW}}} />);
+"#
+    );
+    let (_a, rx) = start(&solid);
+    let js = drawings(&rx, 1).pop().expect("a drawing");
+    let (_b, rx) = start_native(&native);
+    let native = drawings(&rx, 1).pop().expect("a native drawing");
+    let (js, native) = (format!("{js:#?}"), format!("{native:#?}"));
+    assert_eq!(js, native);
+    // What the getters read.
+    assert!(
+        js.contains("2|3|butt|1|4,2,1,4,2,1|bold 14px system-ui|23.100000381469727|10px sans-serif|1|100|50|true|true|true"),
+        "{js}"
+    );
+}
+
+/// Redrawn when a signal `draw` reads changes; a throwing `draw` still
+/// sends what it recorded, and the error reaches the app.
+const NATIVE_REDRAW: &str = r#"import { signal, mount } from "nsh";
+import { Canvas } from "nsh/canvas";
+
+const n = signal(1);
+setTimeout(() => n.set(2), 30);
+
+mount(() => (
+  <Canvas
+    style={{ width: 10, height: 10 }}
+    draw={(ctx) => {
+      ctx.lineWidth = n();
+      ctx.stroke();
+      if (n() === 2) throw new Error("drawn");
+    }}
+  />
+));
+"#;
+
+#[test]
+fn native_canvases_redraw_when_what_they_read_changes() {
+    let (_engine, rx) = start_native(NATIVE_REDRAW);
+    let d = drawings(&rx, 2);
+    assert_eq!(d.len(), 2);
+    assert!(matches!(d[0].ops[0], CanvasOp::LineWidth(Num::Const(1.0))));
+    assert!(matches!(d[1].ops[0], CanvasOp::LineWidth(Num::Const(2.0))));
+    assert_eq!(d[1].ops.len(), 2);
 }

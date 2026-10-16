@@ -11,6 +11,7 @@
 
 mod animated;
 mod bytecode;
+mod canvas;
 mod components;
 mod console;
 mod dom;

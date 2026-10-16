@@ -45,6 +45,8 @@ after `nsh trace` timings and item counts. Current baselines (Apple Silicon):
   Decoding that drawing in the core (`nsh_core::js::canvas::decode`, from the QuickJS array) takes ~0.52–0.57ms
   (`cargo test --release -p nsh-js --lib bench_canvas_decode -- --ignored --nocapture`), as the hand-written decoder
   it replaced did (0.57ms).
+  Apps compiled by nsh record into a Rust list (`nsh-js` `canvas.rs`): the same 17 500 calls take ~1.0–1.1ms
+  (~1.7ms in the JS runtime), and 12 of them plus decoding one commit 21–22ms (61ms).
 
 - Where JS time goes (release `nsh trace`, which logs `event js` per dispatched event; 2026-10-16, the baseline of the
   native JS runtime): with Solid in JS, the empty app's eval was ~250µs (all of it the runtime and Solid starting),

@@ -1017,3 +1017,8 @@ fn report(ctx: *mut JsContext, id: NodeId) -> JsValue {
         r
     }
 }
+
+/// `nsh/list`: `List`, the component `<list>` is (for apps that import it
+/// by name).
+pub(crate) const EXPORTS: &[(&str, crate::modules::Export)] =
+    &[("List", crate::modules::Export::Function(list, 1))];

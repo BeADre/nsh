@@ -47,7 +47,7 @@ pub(crate) struct Shared {
     next_frame_id: std::cell::Cell<u32>,
     /// Measures one line of text for `measureText` (the engine's text
     /// engine).
-    measurer: RefCell<Option<TextMeasurer>>,
+    pub(crate) measurer: RefCell<Option<TextMeasurer>>,
     /// The VM's limits.
     pub(crate) limits: Limits,
     /// Why the VM was stopped (out of memory, over a quota): no JS runs
