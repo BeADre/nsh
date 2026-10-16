@@ -22,15 +22,23 @@ use super::{
 pub(crate) struct Node {
     id: nsh_anim::NodeId,
     executor: Weak<Executor>,
+    /// The nodes it derives from, alive while it is: a chain such as
+    /// `v.mul(TAU).sub(1.0)` keeps no handle of its middle node.
+    _inputs: Vec<Rc<Node>>,
 }
 
 impl Node {
-    fn new(executor: &Rc<Executor>, op: impl FnOnce(nsh_anim::NodeId) -> AnimOp) -> Rc<Self> {
+    fn new(
+        executor: &Rc<Executor>,
+        op: impl FnOnce(nsh_anim::NodeId) -> AnimOp,
+        inputs: Vec<Rc<Node>>,
+    ) -> Rc<Self> {
         let id = executor.next_anim_id();
         executor.act(Action::Anim(op(id)));
         Rc::new(Self {
             id,
             executor: Rc::downgrade(executor),
+            _inputs: inputs,
         })
     }
 
@@ -98,7 +106,11 @@ impl NativeNode {
     /// The node `op` makes from this one: the live one made by the same
     /// operation if there is one (a render deriving it again gets the same
     /// node, so its bindings stay as they are).
-    fn derive(&self, op: impl FnOnce(nsh_anim::NodeId) -> AnimOp) -> NativeNode {
+    fn derive(
+        &self,
+        op: impl FnOnce(nsh_anim::NodeId) -> AnimOp,
+        other: Option<&NativeNode>,
+    ) -> NativeNode {
         let Some(executor) = self.executor() else {
             // The surface is gone: a node nothing reads.
             return self.clone();
@@ -107,7 +119,9 @@ impl NativeNode {
         if let Some(node) = executor.derived(&key) {
             return NativeNode(node);
         }
-        let node = Node::new(&executor, |id| with_node(key.clone(), id));
+        let mut inputs = vec![self.0.clone()];
+        inputs.extend(other.map(|o| o.0.clone()));
+        let node = Node::new(&executor, |id| with_node(key.clone(), id), inputs);
         executor.remember_derived(key, &node);
         NativeNode(node)
     }
@@ -144,62 +158,67 @@ impl NativeNode {
     ) -> NativeNode {
         let source = self.id();
         let input_range = input.to_vec();
-        self.derive(move |node| AnimOp::CreateInterpolate {
-            node,
-            input: source,
-            input_range,
-            output,
-            extrapolate_left: extrapolate,
-            extrapolate_right: extrapolate,
-            easing,
-        })
+        self.derive(
+            move |node| AnimOp::CreateInterpolate {
+                node,
+                input: source,
+                input_range,
+                output,
+                extrapolate_left: extrapolate,
+                extrapolate_right: extrapolate,
+                easing,
+            },
+            None,
+        )
     }
 
-    fn math(&self, op: MathOp, other: Operand) -> NativeNode {
+    fn math(&self, op: MathOp, other: AnimOperand) -> NativeNode {
         let a = Operand::Node(self.id());
-        self.derive(move |node| AnimOp::CreateMath {
-            node,
-            op,
-            a,
-            b: other,
-        })
+        let b = other.operand;
+        self.derive(
+            move |node| AnimOp::CreateMath { node, op, a, b },
+            other.node.as_ref(),
+        )
     }
 
     /// The sum with `other`.
     pub fn add(&self, other: impl Into<AnimOperand>) -> NativeNode {
-        self.math(MathOp::Add, other.into().0)
+        self.math(MathOp::Add, other.into())
     }
 
     /// The difference with `other`.
     pub fn sub(&self, other: impl Into<AnimOperand>) -> NativeNode {
-        self.math(MathOp::Sub, other.into().0)
+        self.math(MathOp::Sub, other.into())
     }
 
     /// The product with `other`.
     pub fn mul(&self, other: impl Into<AnimOperand>) -> NativeNode {
-        self.math(MathOp::Mul, other.into().0)
+        self.math(MathOp::Mul, other.into())
     }
 
     /// The quotient by `other`.
     pub fn div(&self, other: impl Into<AnimOperand>) -> NativeNode {
-        self.math(MathOp::Div, other.into().0)
+        self.math(MathOp::Div, other.into())
     }
 
     /// The remainder by `other`.
     pub fn modulo(&self, other: impl Into<AnimOperand>) -> NativeNode {
-        self.math(MathOp::Mod, other.into().0)
+        self.math(MathOp::Mod, other.into())
     }
 
     /// Follows the value's changes but stays within `min..=max` (a header
     /// hiding as content scrolls up).
     pub fn diff_clamp(&self, min: f32, max: f32) -> NativeNode {
         let input = self.id();
-        self.derive(move |node| AnimOp::CreateDiffClamp {
-            node,
-            input,
-            min,
-            max,
-        })
+        self.derive(
+            move |node| AnimOp::CreateDiffClamp {
+                node,
+                input,
+                min,
+                max,
+            },
+            None,
+        )
     }
 }
 
@@ -222,18 +241,29 @@ impl fmt::Debug for NativeNode {
 }
 
 /// An operand of arithmetic on nodes: a number or another node.
-#[derive(Debug, Clone, Copy)]
-pub struct AnimOperand(Operand);
+#[derive(Debug, Clone)]
+pub struct AnimOperand {
+    operand: Operand,
+    /// The node, kept alive by what derives from it.
+    node: Option<NativeNode>,
+}
 
 impl From<f32> for AnimOperand {
     fn from(n: f32) -> Self {
-        Self(Operand::Const(n))
+        Self {
+            operand: Operand::Const(n),
+            node: None,
+        }
     }
 }
 
 impl<A: Animated> From<&A> for AnimOperand {
     fn from(a: &A) -> Self {
-        Self(Operand::Node(a.native_node().id()))
+        let node = a.native_node();
+        Self {
+            operand: Operand::Node(node.id()),
+            node: Some(node),
+        }
     }
 }
 
@@ -286,9 +316,11 @@ impl std::future::IntoFuture for AnimationEnd {
 
 impl NativeValue {
     pub(crate) fn new(executor: &Rc<Executor>, value: f32) -> Self {
-        Self(NativeNode(Node::new(executor, |node| {
-            AnimOp::CreateValue { node, value }
-        })))
+        Self(NativeNode(Node::new(
+            executor,
+            |node| AnimOp::CreateValue { node, value },
+            Vec::new(),
+        )))
     }
 
     /// The node, to derive from.
@@ -371,5 +403,31 @@ impl NativeValue {
 impl Animated for NativeValue {
     fn native_node(&self) -> NativeNode {
         self.0.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn released(executor: &Executor) -> usize {
+        executor
+            .take_actions()
+            .into_iter()
+            .filter(|a| matches!(a, Action::Anim(AnimOp::Release { .. })))
+            .count()
+    }
+
+    #[test]
+    fn a_derived_chain_keeps_its_middle_nodes() {
+        let executor = Rc::new(Executor::default());
+        let v = NativeValue::new(&executor, 0.5);
+        // The product has no handle of its own once the difference exists.
+        let end = v.node().mul(2.0).sub(1.0);
+        assert_eq!(released(&executor), 0, "the product lives with the end");
+        drop(end);
+        assert_eq!(released(&executor), 2, "then both go");
+        drop(v);
+        assert_eq!(released(&executor), 1);
     }
 }
