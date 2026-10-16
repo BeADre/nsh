@@ -7,7 +7,7 @@ use crossbeam_channel::{Receiver, Sender};
 use nsh_core::{ApproxTextEngine, EventKind, EventPayload, MountBatch, MountItem, NodeId, Size};
 use nsh_engine::{Bundle, Engine, EngineConfig, HotUpdate, MountSink};
 
-struct ChannelSink(Sender<MountBatch>, Sender<()>);
+struct ChannelSink(Sender<MountBatch>, Sender<()>, Sender<String>);
 
 impl MountSink for ChannelSink {
     fn submit(&self, batch: MountBatch) {
@@ -17,29 +17,32 @@ impl MountSink for ChannelSink {
     fn hot_update_failed(&self) {
         let _ = self.1.send(());
     }
+
+    fn report_error(&self, message: &str) {
+        let _ = self.2.send(message.to_owned());
+    }
 }
 
 const APP: &str = r#"
-import { createSignal } from "solid-js";
-import { render, root } from "nsh";
+import { mount, signal } from "nsh";
 import { Counter } from "./Counter";
 import dot from "./dot.png";
 
 function App() {
-  const [n, setN] = createSignal(0);
-  return <view><image src={dot} /><text onPress={() => setN(n() + 1)}>app {n()}</text><Counter /></view>;
+  const n = signal(0);
+  return <view><image src={dot} /><text onPress={() => n.set(n() + 1)}>app {n()}</text><Counter /></view>;
 }
 
-render(() => <App />, root);
+mount(App);
 "#;
 
 const COUNTER: &str = r#"
-import { createSignal } from "solid-js";
+import { signal } from "nsh";
 import { greeting } from "./words";
 
 export function Counter() {
-  const [c, setC] = createSignal(0);
-  return <text onPress={() => setC(c() + 1)}>{greeting} {c()}</text>;
+  const c = signal(0);
+  return <text onPress={() => c.set(c() + 1)}>{greeting} {c()}</text>;
 }
 "#;
 
@@ -150,6 +153,7 @@ fn edits_replace_modules_and_keep_unrelated_state() {
     let (code, map) = bundle.script();
     let (tx, rx) = crossbeam_channel::unbounded();
     let (failed_tx, failed) = crossbeam_channel::unbounded();
+    let (errors_tx, errors) = crossbeam_channel::unbounded();
     let config = EngineConfig {
         app: nsh_engine::App::Js(Bundle::source(code).with_source_map(map.unwrap())),
         viewport: Size::new(390.0, 844.0),
@@ -162,7 +166,12 @@ fn edits_replace_modules_and_keep_unrelated_state() {
         components: Default::default(),
         runtime: None,
     };
-    let engine = Engine::start(config, || ApproxTextEngine, ChannelSink(tx, failed_tx)).unwrap();
+    let engine = Engine::start(
+        config,
+        || ApproxTextEngine,
+        ChannelSink(tx, failed_tx, errors_tx),
+    )
+    .unwrap();
     let control = engine.control();
     let mut screen = Screen::default();
     drain(&rx, &mut screen);
@@ -198,6 +207,33 @@ fn edits_replace_modules_and_keep_unrelated_state() {
     control.hot_update(update(&dir, &mut bundle, 3).unwrap());
     drain(&rx, &mut screen);
     assert_eq!(screen.texts(), ["app! 0", "taps: 0"]);
+
+    // A component that throws reports the error and renders nothing; the
+    // fix renders it again.
+    let counter = COUNTER.replace("{greeting} {c()}", "{greeting}: {c()}");
+    let broken = counter.replace(
+        "const c = signal(0);",
+        "const c = signal(0);\n  if (c() === 0) throw new Error(\"broken counter\");",
+    );
+    std::fs::write(dir.join("Counter.tsx"), &broken).unwrap();
+    control.hot_update(update(&dir, &mut bundle, 4).unwrap());
+    drain(&rx, &mut screen);
+    assert_eq!(screen.texts(), ["app! 0"]);
+    let error = errors.try_recv().expect("the error is reported");
+    assert!(error.contains("broken counter"), "{error}");
+    std::fs::write(dir.join("Counter.tsx"), &counter).unwrap();
+    control.hot_update(update(&dir, &mut bundle, 5).unwrap());
+    drain(&rx, &mut screen);
+    assert_eq!(screen.texts(), ["app! 0", "taps: 0"]);
     assert!(failed.try_recv().is_err(), "no update needed a reload");
+
+    // A native module the running bundle does not import: a reload.
+    std::fs::write(
+        dir.join("Counter.tsx"),
+        format!("import {{ windowSize }} from \"nsh/device\";\nwindowSize();\n{counter}"),
+    )
+    .unwrap();
+    let next = nsh_bundler::bundle_hot(&dir.join("App.tsx")).unwrap();
+    assert!(matches!(next.patch(&bundle), nsh_bundler::HotPatch::Reload));
     let _ = std::fs::remove_dir_all(&dir);
 }

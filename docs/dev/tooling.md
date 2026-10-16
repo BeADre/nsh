@@ -24,18 +24,19 @@
 - Build failures, bundle evaluation failures and uncaught exceptions show a red overlay on the host (tap to dismiss); it disappears on the next
   successful reload.
 - **Apps compiled by nsh** (`"compiler": "nsh"`): `.nsh/types` holds the native `nsh` and a JSX namespace with the
-  app's kebab-case components, rewritten after every build; development builds reload the whole bundle (no hot module
-  replacement yet). See `native-pipeline.md`.
+  app's kebab-case components, rewritten after every build. See `native-pipeline.md`.
 - **Hot module replacement** (`nsh dev` / `nsh run` without `--release`): development bundles keep one CommonJS chunk per module
   (rolldown `preserveModules`, tree shaking off; rolldown still leaves out the exports of embedded modules that no module
   imports, so an edit that starts using one changes that embedded module and reloads), each registered with the hot
-  runtime (`js/runtime/hot.js`). After a rebuild the CLI compares the chunks with the last good build and publishes a patch
+  runtime (`crates/nsh-js/src/hot.rs`, the `__nsh_hot` global that `import "nsh:hot"` makes; the script imports the
+  native modules the app uses for the factories' `require`, and an edit importing another one reloads). After a rebuild the CLI compares the chunks with the last good build and publishes a patch
   (`ServerMessage::Patch`, protocol v2) before the full bundle; hosts running the patch's base apply it in place
   (`EngineControl::hot_update`, ~0.2–0.5ms) and otherwise load the bundle. The runtime runs the changed modules again, plus the
   importers of modules that do not accept their own updates, up to the entry. The bundler wraps top-level components (capitalized
   functions whose body has JSX) in stable proxies keyed by module and name, with a signature of their code plus the module's other
   code: instances render again only when their signature changed (or a dependency module changed), so the rest of the app keeps its
-  state. Top-level `createContext()` results keep their identity. An entry that runs again replaces what it rendered. A patch that
+  state. Top-level `context()` results keep their identity (taking the new default). An entry that runs again replaces what it
+  `mount`ed. A component that throws reports the error and renders nothing until the fix. A patch that
   throws shows the error and the next save recovers; a patch that cannot be applied (`false`) makes the host reload.
 - Stacks are symbolicated with source maps: bundling produces a hidden source map (the TSX→JSX→JS maps are composed with
   `rolldown_sourcemap::collapse_sourcemaps`), sent along with the bundle; the engine rewrites `bundle.js:L:C` to `App.tsx:L:C` before reporting.

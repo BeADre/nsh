@@ -264,6 +264,7 @@ pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError
             compiler,
             entry: entry.clone(),
             elements: elements.clone(),
+            natives: Arc::default(),
         })],
     )
     .map_err(|e| BundleError::new(e.into_vec()))?;
@@ -314,9 +315,9 @@ pub struct HotBundle {
     modules: Vec<HotModule>,
     /// Module id of the entry.
     entry: String,
-    /// With nsh's compiler: the whole bundle (an ES module) and its source
-    /// map; any change reloads it.
-    whole: Option<(String, Option<String>)>,
+    /// With nsh's compiler: the native modules the app imports (the
+    /// script imports their namespaces for `require`).
+    natives: Option<Vec<String>>,
     /// As in [`Bundle::elements`].
     pub elements: Vec<AppElement>,
     /// Asset files the app imports (as in [`Bundle::assets`]).
@@ -356,14 +357,25 @@ pub enum HotPatch {
 
 impl HotBundle {
     /// The whole app as one script: the hot runtime, every module, and the
-    /// start of the entry.
+    /// start of the entry. With nsh's compiler it is an ES module importing
+    /// the native hot runtime and the app's native modules.
     pub fn script(&self) -> (String, Option<String>) {
-        if let Some(whole) = &self.whole {
-            return whole.clone();
-        }
         let mut joiner = rolldown_sourcemap::SourceJoiner::default();
         joiner.enable_sourcemap = true;
-        joiner.append_source(HOT_RUNTIME);
+        let mut start = format!("{HOT}.start({:?});", self.entry);
+        match &self.natives {
+            Some(natives) => {
+                let mut imports = String::from("import \"nsh:hot\";");
+                let mut map = String::new();
+                for (i, spec) in natives.iter().enumerate() {
+                    imports.push_str(&format!("import * as __nsh_n{i} from {spec:?};"));
+                    map.push_str(&format!("{spec:?}: __nsh_n{i},"));
+                }
+                joiner.append_source(imports);
+                start = format!("{HOT}.start({:?}, {{{map}}});", self.entry);
+            }
+            None => joiner.append_source(HOT_RUNTIME),
+        }
         for m in &self.modules {
             let open = format!(
                 "{HOT}.define({:?}, function (module, exports, require) {{",
@@ -372,23 +384,28 @@ impl HotBundle {
             let close = if m.embedded { "}, true);" } else { "});" };
             append_module(&mut joiner, m, &open, close);
         }
-        joiner.append_source(format!("{HOT}.start({:?});", self.entry));
+        joiner.append_source(start);
         let (code, map) = joiner.join();
         (code, map.map(|m| m.to_json_string()))
     }
 
     /// The update from `previous` (what hosts run) to this bundle.
     pub fn patch(&self, previous: &HotBundle) -> HotPatch {
-        if self.whole.is_some() || previous.whole.is_some() {
-            let same = matches!((&self.whole, &previous.whole), (Some(a), Some(b)) if a.0 == b.0);
-            return if same {
-                HotPatch::Unchanged
-            } else {
-                HotPatch::Reload
-            };
-        }
         if self.entry != previous.entry {
             return HotPatch::Reload;
+        }
+        // A native module the running script did not import.
+        let imported = |spec: &String| {
+            previous
+                .natives
+                .as_ref()
+                .is_some_and(|natives| natives.contains(spec))
+        };
+        match &self.natives {
+            Some(natives) if !natives.iter().all(imported) => return HotPatch::Reload,
+            Some(_) if previous.natives.is_none() => return HotPatch::Reload,
+            None if previous.natives.is_some() => return HotPatch::Reload,
+            _ => {}
         }
         let old: std::collections::HashMap<&str, &HotModule> = previous
             .modules
@@ -467,22 +484,9 @@ pub async fn bundle_hot_async(entry: &std::path::Path) -> Result<HotBundle, Bund
         .parent()
         .ok_or_else(|| BundleError::other("entry has no parent directory"))?
         .to_path_buf();
-    if compiler(&cwd)? == Compiler::Nsh {
-        let bundle = bundle_async(&BundleOptions {
-            entry: entry.clone(),
-            minify: false,
-        })
-        .await?;
-        return Ok(HotBundle {
-            modules: Vec::new(),
-            entry: String::new(),
-            whole: Some((bundle.code, bundle.source_map)),
-            elements: bundle.elements,
-            assets: bundle.assets,
-            capabilities: bundle.capabilities,
-            elapsed_ms: bundle.elapsed_ms,
-        });
-    }
+    let compiler = compiler(&cwd)?;
+    let elements = Arc::new(Mutex::new(Vec::new()));
+    let natives = Arc::new(Mutex::new(std::collections::BTreeSet::new()));
     let plugin_error = Arc::new(Mutex::new(None));
     let assets = Arc::new(Mutex::new(Vec::new()));
     let tailwind = tailwind_setup(&cwd)?;
@@ -514,9 +518,10 @@ pub async fn bundle_hot_async(entry: &std::path::Path) -> Result<HotBundle, Bund
             assets: assets.clone(),
             hot: true,
             tailwind,
-            compiler: Compiler::Solid,
+            compiler,
             entry: entry.clone(),
-            elements: Arc::default(),
+            elements: elements.clone(),
+            natives: natives.clone(),
         })],
     )
     .map_err(|e| BundleError::new(e.into_vec()))?;
@@ -553,10 +558,13 @@ pub async fn bundle_hot_async(entry: &std::path::Path) -> Result<HotBundle, Bund
         .collect();
     assets.sort();
     assets.dedup();
+    let mut elements = std::mem::take(&mut *elements.lock().expect("elements lock"));
+    elements.sort_by(|a, b| a.tag.cmp(&b.tag));
+    let natives = std::mem::take(&mut *natives.lock().expect("natives lock"));
     Ok(HotBundle {
         modules,
-        whole: None,
-        elements: Vec::new(),
+        natives: (compiler == Compiler::Nsh).then(|| natives.into_iter().collect()),
+        elements,
         entry: entry_id.ok_or_else(|| BundleError::other("bundle produced no entry chunk"))?,
         assets,
         capabilities,

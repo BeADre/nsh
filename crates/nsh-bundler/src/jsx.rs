@@ -316,11 +316,16 @@ fn key(name: &str) -> String {
     if ident { name.to_owned() } else { quote(name) }
 }
 
-/// JSX text as React and Solid render it: lines trimmed, whitespace-only
-/// lines dropped, the rest joined with a space; entities decoded.
+/// JSX text as React and Solid render it (Babel's algorithm): lines
+/// trimmed except at the text's ends, whitespace-only lines dropped, the
+/// rest joined with a space; entities decoded. One line keeps its spaces
+/// (`{a} {b}`).
 fn clean_text(raw: &str) -> Option<String> {
     let lines: Vec<&str> = raw.split(['\n', '\r']).collect();
-    let last_non_empty = lines.iter().rposition(|l| !l.trim().is_empty())?;
+    let last_non_empty = lines
+        .iter()
+        .rposition(|l| l.contains(|c| c != ' ' && c != '\t'))
+        .unwrap_or(0);
     let mut out = String::new();
     for (i, line) in lines.iter().enumerate() {
         let line = line.replace('\t', " ");
@@ -1165,6 +1170,7 @@ mod tests {
             SourceType::tsx(),
             source,
             None,
+            None,
         )
         .map(|(code, ..)| code)
     }
@@ -1380,6 +1386,8 @@ mod tests {
             Some("hello world")
         );
         assert_eq!(clean_text("\n   \n  "), None);
+        assert_eq!(clean_text(" ").as_deref(), Some(" "));
+        assert_eq!(clean_text(" \n ").as_deref(), None);
         assert_eq!(
             clean_text("a &amp; b &#65;&#x42;").as_deref(),
             Some("a & b AB")

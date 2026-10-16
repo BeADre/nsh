@@ -18,6 +18,7 @@ mod dom;
 mod env;
 mod error;
 mod host;
+mod hot;
 mod list;
 mod modules;
 mod navigation;

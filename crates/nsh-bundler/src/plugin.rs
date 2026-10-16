@@ -52,6 +52,8 @@ pub(crate) struct NshPlugin {
     pub(crate) entry: PathBuf,
     /// With nsh's compiler: the components the app names in kebab case.
     pub(crate) elements: Arc<Mutex<Vec<crate::AppElement>>>,
+    /// With nsh's compiler: the native modules the app imports.
+    pub(crate) natives: Arc<Mutex<std::collections::BTreeSet<String>>>,
 }
 
 /// The `"tailwind"` and `"theme"` of the app's `nsh.json`.
@@ -202,6 +204,10 @@ impl Plugin for NshPlugin {
         if self.compiler == Compiler::Nsh {
             let spec = args.specifier;
             if native_module(spec) {
+                self.natives
+                    .lock()
+                    .expect("natives lock")
+                    .insert(spec.to_owned());
                 return Ok(Some(HookResolveIdOutput {
                     external: Some(true.into()),
                     ..HookResolveIdOutput::from_id(spec)
@@ -321,9 +327,16 @@ impl Plugin for NshPlugin {
         if self.compiler == Compiler::Nsh && app_module {
             let path = Path::new(args.id);
             let entry = path == self.entry;
-            if !(jsx_module || entry) {
+            let script = matches!(args.module_type, ModuleType::Ts | ModuleType::Js);
+            if !(jsx_module || entry || self.hot && script) {
                 return Ok(None);
             }
+            let hot_key = self.hot.then(|| {
+                path.strip_prefix(&self.root)
+                    .unwrap_or(path)
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            });
             let source_type = match args.module_type {
                 ModuleType::Tsx => SourceType::tsx(),
                 ModuleType::Jsx => SourceType::jsx(),
@@ -341,9 +354,14 @@ impl Plugin for NshPlugin {
                 }
             }
             let prologue = if entry { self.prologue() } else { None };
-            let (code, map, uses) =
-                compile_native(path, source_type, args.code, prologue.as_deref())
-                    .map_err(|detail| self.fail(path, &detail))?;
+            let (code, map, uses) = compile_native(
+                path,
+                source_type,
+                args.code,
+                prologue.as_deref(),
+                hot_key.as_deref(),
+            )
+            .map_err(|detail| self.fail(path, &detail))?;
             let module = path
                 .strip_prefix(&self.root)
                 .unwrap_or(path)
@@ -465,13 +483,15 @@ fn type_module(module: &Path, specifier: Option<&str>) -> String {
 }
 
 /// TSX -> JS with nsh's JSX compiler ([`crate::jsx`]), TypeScript removed
-/// in the same pass; `prologue` runs first. Returns the components named in
+/// in the same pass; `prologue` runs first; with `hot_key` the module's
+/// components are hot ([`crate::hot`]). Returns the components named in
 /// kebab case too. Errors are rendered with a code frame.
 pub(crate) fn compile_native(
     path: &Path,
     source_type: SourceType,
     source: &str,
     prologue: Option<&str>,
+    hot_key: Option<&str>,
 ) -> Result<(String, SourceMap<'static>, Vec<crate::jsx::KebabUse>), String> {
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, source, source_type).parse();
@@ -497,6 +517,10 @@ pub(crate) fn compile_native(
         Transformer::new(&allocator, path, &options).build_with_scoping(scoping, &mut program);
     if let Some(err) = ret.diagnostics.into_iter().next() {
         return Err(err.render_with_source_code(source.to_owned()));
+    }
+    if let Some(key) = hot_key {
+        // Before the JSX goes: components are the functions with JSX.
+        crate::hot::transform(&allocator, &mut program, source, key);
     }
     let components: Vec<&str> = ui_components().iter().map(String::as_str).collect();
     let uses = crate::jsx::transform(

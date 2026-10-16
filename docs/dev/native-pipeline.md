@@ -124,6 +124,9 @@ reference for which tag names what). `<each>` items are not typed (intrinsic ele
 TypeScript's import elision runs after the JSX is compiled (`plugin.rs` `elide_unused_imports`): an import only a
 kebab tag uses (`Card` for `<card>`) stays, one only types use goes even without `type`.
 
-## Not there yet
+## Hot module replacement
 
-Hot module replacement (a development build reloads the whole bundle).
+Development bundles are compiled by the same compiler, one CommonJS chunk per module, and run by the native hot runtime
+(`crates/nsh-js/src/hot.rs`, see `tooling.md`). The script is an ES module: it imports `nsh:hot` (which makes the
+`__nsh_hot` global) and the namespaces of the native modules the app imports, which factories `require` by specifier;
+an edit that imports a native module the running script did not makes the host reload.

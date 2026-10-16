@@ -144,6 +144,10 @@ impl ModuleTable {
     fn exports(&self, name: &str) -> Option<Vec<(String, Made)>> {
         let mut out: Vec<(String, Made)> = Vec::new();
         let mut found = false;
+        if name == crate::hot::SPECIFIER {
+            let own = crate::hot::EXPORTS.iter();
+            return Some(own.map(|&(n, e)| (n.to_owned(), Made::Own(e))).collect());
+        }
         if let Some(m) = MODULES.iter().find(|m| m.name == name) {
             found = true;
             out.extend(m.exports.iter().map(|&(n, e)| (n.to_owned(), Made::Own(e))));

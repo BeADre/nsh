@@ -2233,6 +2233,24 @@ unsafe extern "C" fn context_call(
     unsafe { qjs::JS_DupValue(ctx, (*p).default) }
 }
 
+/// Gives context `kept` the default of context `from` (development
+/// updates keep a context's identity).
+pub(crate) fn set_context_default(ctx: *mut JsContext, kept: JsValue, from: JsValue) {
+    let class = dom(ctx).classes.context;
+    // SAFETY: the opaques of context objects; the old default is freed.
+    unsafe {
+        let (k, f) = (
+            qjs::JS_GetOpaque(kept, class) as *mut ContextData,
+            qjs::JS_GetOpaque(from, class) as *const ContextData,
+        );
+        if k.is_null() || f.is_null() || std::ptr::eq(k, f) {
+            return;
+        }
+        let old = std::mem::replace(&mut (*k).default, qjs::JS_DupValue(ctx, (*f).default));
+        qjs::JS_FreeValue(ctx, old);
+    }
+}
+
 /// `context(default)`: a context, read by calling it; `<Ctx.Provider
 /// value={…}>` provides a value to what it renders.
 pub(crate) unsafe extern "C" fn context(
@@ -2386,6 +2404,7 @@ pub(crate) unsafe extern "C" fn mount(
     let dispose =
         unsafe { qjs::JS_NewCFunctionData(ctx, Some(unmount), 0, 0, 2, data.as_mut_ptr()) };
     unsafe { qjs::JS_FreeValue(ctx, data[1]) };
+    crate::hot::rendered(ctx, dispose);
     reactive::finish_value(ctx, dispose)
 }
 
