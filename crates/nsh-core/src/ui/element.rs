@@ -1478,6 +1478,19 @@ impl<C: Component> ComponentElement<C> {
         }
     }
 
+    /// Fills its slot `slot` (its prop's JS name: `header`) with `content`.
+    pub fn fill(mut self, slot: &'static str, content: impl IntoElement) -> Self {
+        let mut holder = ElNode::new(Tag::View);
+        holder
+            .attrs
+            .props
+            .push(crate::Prop::ComponentSlot(slot.into()));
+        holder.key = Some(format!("slot:{slot}").into());
+        holder.children.push(content.into_element().0);
+        self.node.children.push(holder);
+        self
+    }
+
     /// Handles its events (they then do not reach the app).
     pub fn on_event(mut self, listener: Listener<C::Event>) -> Self {
         let inner = listener.0;
@@ -1499,6 +1512,11 @@ impl<C: Component> Element for ComponentElement<C> {
         &mut self.node
     }
 }
+
+/// The content of a nested component: `.child(..)` / `.children(..)` are
+/// its `Children`, [`ComponentElement::fill`] its slots, placed where its
+/// render places the app's.
+impl<C: Component> ParentElement for ComponentElement<C> {}
 
 impl<C: Component> IntoElement for ComponentElement<C> {
     fn into_element(self) -> AnyElement {

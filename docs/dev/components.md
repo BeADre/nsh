@@ -13,7 +13,7 @@ back. One implementation draws the same on iOS and Android, is laid out in the s
 | `crates/nsh-ui-mobile` | The mobile set's components, one file each (`README.md`: how to write one) |
 | `crates/nsh-js/src/components.rs` | The JS face of components and modules, made from their specs when a bundle imports the set |
 | `crates/nsh-js/src/declarations.rs` | `nsh/ui/mobile.d.ts`: the declarations generated from `nsh_ui_mobile::registry()` (`nsh_core::ui::declarations`) with the re-exports and the navigation |
-| `nsh_engine::EngineConfig::components` | The registry a surface renders from (the platforms and `nsh trace` pass `nsh_ui_mobile::registry()`) |
+| `nsh_engine::EngineConfig::ui_sets` | The registries a surface serves (the platforms' `set_ui_sets`, by default `nsh_ui_mobile::registry()`; an app's own set: `docs/dev/tooling.md`) |
 
 A desktop set will be a crate of its own (`nsh-ui-desktop`, on GPUI), not an abstraction over both.
 
@@ -80,7 +80,9 @@ impl Component for Button {
 - **Elements** are `view()`, `text(..)`, `image(..)`, the other host elements (`input()`, `scroll()`, `modal()`,
   `canvas(drawing)`, `web_view(url)`, `video(url)`, `native(name)` for the embedder's components; `ui/host.rs`),
   strings (as texts) and other components (`Button::element(props)`, whose `.on_event(cx.listener(..))` handles their
-  typed events instead of the app). Their abilities are traits: `Styled`, `Accessible`, `Interactive` (`active` /
+  typed events instead of the app; `.child(..)` / `.children(..)` pass it content and `.fill("header", ..)` fills a
+  slot, as JSX children and slot props do: the content is nodes of this render, placed where the nested component's
+  render places the app's). Their abilities are traits: `Styled`, `Accessible`, `Interactive` (`active` /
   `hover` / `focus` styles, `disabled`, `hit_slop`, and the typed events every element has: `on_press`,
   `on_long_press`, `on_layout(Rect)`, `on_touch(TouchEvent)`, `on_pan_start`, ...), `ParentElement`, `FluentBuilder`
   (`when`, `when_some`, `map`). Each host element has its own props and typed events (`input().value(..)

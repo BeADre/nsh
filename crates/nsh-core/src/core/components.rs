@@ -1596,6 +1596,11 @@ impl<M: TextEngine> Core<M> {
             if let Some(listener) = c.on_event {
                 inst.event_handlers.push((id, listener));
             }
+            // The content this render passes it (`.child`, `.fill`): nodes of
+            // this render, inserted into its host as JS inserts its children,
+            // so the nested component places them where its render says.
+            let content = std::mem::take(&mut el.children);
+            let children = self.reconcile_children(id, old_children, content, host, inst);
             return Expanded {
                 id,
                 tag: el.tag,
@@ -1607,7 +1612,7 @@ impl<M: TextEngine> Core<M> {
                 events: EventMask::default(),
                 list: ListConfig::default(),
                 part,
-                children: Vec::new(),
+                children,
             };
         }
         self.apply_attrs(id, &el.attrs, &old_attrs);

@@ -216,3 +216,100 @@ fn rust_components_navigate_with_native_stacks() {
     }
     assert!(deleted, "the popped screen goes");
 }
+
+/// Rust content in a Rust component of the mobile UI: a card's header
+/// and body.
+#[derive(Default)]
+struct WithCard {
+    taps: u32,
+}
+
+impl Component for WithCard {
+    const NAME: &'static str = "app.with_card";
+    type Props = ();
+    type Event = NoEvent;
+
+    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        view().flex_1().child(
+            nsh_ui_mobile::Card::element(nsh_ui_mobile::CardProps::default())
+                .fill("header", text("card header"))
+                .child(
+                    text(format!("card body {}", self.taps)).on_press(cx.listener(
+                        |this: &mut Self, _, cx| {
+                            this.taps += 1;
+                            cx.notify();
+                        },
+                    )),
+                ),
+        )
+    }
+}
+
+#[test]
+fn rust_components_pass_content_to_rust_components() {
+    let (tx, rx) = crossbeam_channel::unbounded();
+    let config = EngineConfig {
+        app: App::Rust(Root::of::<WithCard>()),
+        viewport: Size::new(390.0, 844.0),
+        trace: false,
+        network: None,
+        assets: None,
+        environment: Environment::default(),
+        header_heights: (44.0, 96.0),
+        limits: nsh_engine::Limits::default(),
+        ui_sets: Vec::new(),
+        runtime: None,
+    };
+    let engine = Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap();
+    let first = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    let texts: Vec<(u32, String)> = first
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            MountItem::Text { id, text, .. } => Some((*id, text.text.clone())),
+            _ => None,
+        })
+        .collect();
+    let names: Vec<&str> = texts.iter().map(|t| t.1.as_str()).collect();
+    assert!(
+        names.contains(&"card header") && names.contains(&"card body 0"),
+        "{names:?}"
+    );
+    // Both are in the tree (placed by the card), not left aside.
+    let parents: std::collections::HashMap<u32, u32> = first
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            MountItem::Insert { parent, child, .. } => Some((*child, *parent)),
+            _ => None,
+        })
+        .collect();
+    let attached = |mut id: u32| loop {
+        if id == nsh_core::ROOT_ID {
+            return true;
+        }
+        match parents.get(&id) {
+            Some(&p) => id = p,
+            None => return false,
+        }
+    };
+    for (id, name) in &texts {
+        assert!(attached(*id), "{name} is in the tree");
+    }
+    // The body renders again with the parent's state.
+    let body = texts.iter().find(|t| t.1 == "card body 0").unwrap().0;
+    engine
+        .control()
+        .dispatch_event(body, EventKind::Press, EventPayload::None);
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let mut updated = false;
+    while let Ok(batch) = rx.recv_deadline(deadline) {
+        if batch.items.iter().any(|i| {
+            matches!(i, MountItem::Text { id, text, .. } if *id == body && text.text == "card body 1")
+        }) {
+            updated = true;
+            break;
+        }
+    }
+    assert!(updated, "the same text node shows the new count");
+}
