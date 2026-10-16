@@ -92,6 +92,9 @@ struct NodeData {
     handlers: Vec<(EventKind, JsValue)>,
     /// Touch and responder handlers, by `touch::TOUCH_PROPS` index (owned).
     touch: Vec<(u8, JsValue)>,
+    /// Values of props that may hold native animation nodes (`style`,
+    /// `pan`, ...), kept alive with the view (owned).
+    retained: Vec<(&'static str, JsValue)>,
 }
 
 /// The renderer of `ctx`.
@@ -235,6 +238,12 @@ impl Dom {
     /// The platform the app runs on.
     pub(crate) fn os(&self) -> Os {
         self.os.get()
+    }
+
+    /// Queues the release of a collected animation node or composite (from
+    /// a finalizer).
+    pub(crate) fn queue_anim_release(&self, op: nsh_anim::AnimOp) {
+        self.shared.anim_releases.borrow_mut().push(op);
     }
 
     /// The surface's layout direction (sent once something is mounted).
@@ -409,6 +418,7 @@ fn new_node(ctx: *mut JsContext, id: NodeId, text: bool, tag: Option<Tag>) -> Js
         tag,
         popped: UNDEFINED,
         touch: Vec::new(),
+        retained: Vec::new(),
         parent: DETACHED,
         children: Vec::new(),
         handlers: Vec::new(),
@@ -434,6 +444,17 @@ pub(crate) fn node_id(ctx: *mut JsContext, v: JsValue) -> Option<NodeId> {
     let p = node_ptr(ctx, v);
     // SAFETY: live node data.
     (!p.is_null()).then(|| unsafe { (*p).id })
+}
+
+/// The host's shared state.
+pub(crate) fn shared(ctx: *mut JsContext) -> Rc<Shared> {
+    dom(ctx).shared.clone()
+}
+
+/// `merge(...values)` (borrowed): a new object (owned).
+pub(crate) fn merge_values(ctx: *mut JsContext, values: &mut [JsValue]) -> JsValue {
+    // SAFETY: borrowed arguments, as `merge` takes them.
+    unsafe { merge(ctx, UNDEFINED, values.len() as c_int, values.as_mut_ptr()) }
 }
 
 /// Queues `op` (for the components' glue).
@@ -612,6 +633,7 @@ unsafe extern "C" fn node_finalize(rt: *mut qjs::JSRuntime, obj: JsValue) {
         .into_iter()
         .map(|(_, v)| v)
         .chain(data.touch.into_iter().map(|(_, v)| v))
+        .chain(data.retained.into_iter().map(|(_, v)| v))
     {
         unsafe { qjs::JS_FreeValueRT(rt, v) };
     }
@@ -631,7 +653,12 @@ unsafe extern "C" fn node_mark(rt: *mut qjs::JSRuntime, obj: JsValue, mark: qjs:
     for &(_, v) in &data.handlers {
         unsafe { qjs::JS_MarkValue(rt, v, mark) };
     }
-    for &(_, v) in &data.touch {
+    for v in data
+        .touch
+        .iter()
+        .map(|&(_, v)| v)
+        .chain(data.retained.iter().map(|&(_, v)| v))
+    {
         unsafe { qjs::JS_MarkValue(rt, v, mark) };
     }
     unsafe { qjs::JS_MarkValue(rt, data.popped, mark) };
@@ -881,6 +908,24 @@ fn set_prop(
         && let Some(event) = EventKind::from_prop(name)
     {
         return set_event(ctx, p, event, value);
+    }
+    // Native animation nodes these props use stay alive with the view.
+    if let Some(&key) = ["style", "pan", "pinch", "rotation", "scrollValue"]
+        .iter()
+        .find(|k| **k == name)
+    {
+        // SAFETY: live node data; the node owns a dup; the old one is freed.
+        let retained = unsafe { &mut (*p).retained };
+        let old = match retained.iter().position(|(k, _)| *k == key) {
+            Some(i) => Some(retained.remove(i).1),
+            None => None,
+        };
+        if unsafe { qjs::JS_IsObject(value) } {
+            retained.push((key, unsafe { qjs::JS_DupValue(ctx, value) }));
+        }
+        if let Some(old) = old {
+            unsafe { qjs::JS_FreeValue(ctx, old) };
+        }
     }
     // SAFETY: a context reference for the decoder, which reads `value`.
     let cx = unsafe { Ctx::from_raw(std::ptr::NonNull::new_unchecked(ctx)) };

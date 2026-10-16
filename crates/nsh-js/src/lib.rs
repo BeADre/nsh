@@ -9,6 +9,7 @@
 //! A host is single-threaded (`!Send`): create and use it on the engine
 //! thread.
 
+mod animated;
 mod bytecode;
 mod components;
 mod console;

@@ -30,6 +30,7 @@ pub const NATIVE_MODULES: &[&str] = &[
     "nsh/video",
     "nsh/native",
     "nsh/gesture",
+    "nsh/animated",
 ];
 
 /// Resource limits of one VM.

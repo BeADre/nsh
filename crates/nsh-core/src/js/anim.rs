@@ -365,3 +365,67 @@ pub fn typescript() -> String {
     ));
     out
 }
+
+/// What `anim.gen.ts` holds, as data for the native runtime's
+/// `nsh/animated` (apps compiled by nsh): `curves` (`[name, parameter,
+/// default]`, the parameter `null` for curves without one), `presets`
+/// (name -> config, as `layoutAnimationPresets`), `types` and
+/// `properties` (the names of `LayoutAnimation.Types` / `Properties`).
+pub fn tables() -> crate::JsonValue {
+    use serde_json::{Map, Value, json};
+    let transition = |t: &LayoutTransition| {
+        let (kind, damping) = match t.curve {
+            LayoutCurve::Linear => ("linear", None),
+            LayoutCurve::EaseIn => ("easeIn", None),
+            LayoutCurve::EaseOut => ("easeOut", None),
+            LayoutCurve::EaseInEaseOut => ("easeInEaseOut", None),
+            LayoutCurve::Spring { damping } => ("spring", Some(damping)),
+        };
+        let property = match t.property {
+            LayoutProperty::Opacity => "opacity",
+            LayoutProperty::Scale => "scaleXY",
+        };
+        let mut o = json!({
+            "type": kind,
+            "property": property,
+            "duration": t.duration_ms,
+            "delay": t.delay_ms,
+        });
+        if let Some(d) = damping {
+            o["springDamping"] = json!(d);
+        }
+        o
+    };
+    let mut presets = Map::new();
+    for (name, preset) in PRESETS {
+        let duration = [preset.create, preset.update, preset.delete]
+            .iter()
+            .flatten()
+            .map(|t| t.duration_ms + t.delay_ms)
+            .fold(0.0, f32::max);
+        let mut o = Map::new();
+        o.insert("duration".into(), json!(duration));
+        for (key, phase) in [
+            ("create", &preset.create),
+            ("update", &preset.update),
+            ("delete", &preset.delete),
+        ] {
+            if let Some(t) = phase {
+                o.insert(key.into(), transition(t));
+            }
+        }
+        presets.insert((*name).into(), Value::Object(o));
+    }
+    json!({
+        "curves": CURVES
+            .iter()
+            .map(|c| match c.param {
+                Some((p, default)) => json!([c.name, p, default]),
+                None => json!([c.name, null, null]),
+            })
+            .collect::<Vec<_>>(),
+        "presets": presets,
+        "types": LAYOUT_TYPES.iter().map(|t| t.0).collect::<Vec<_>>(),
+        "properties": LAYOUT_PROPERTIES.iter().filter(|p| p.2).map(|p| p.0).collect::<Vec<_>>(),
+    })
+}

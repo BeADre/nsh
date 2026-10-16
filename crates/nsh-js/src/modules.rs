@@ -19,7 +19,7 @@ use nsh_core::ui::{ComponentSpec, ModuleSpec, Registry};
 use rquickjs::qjs;
 
 use crate::{
-    components, dom, env, platform_modules,
+    animated, components, dom, env, platform_modules,
     reactive::{self, Native},
     touch,
 };
@@ -94,6 +94,10 @@ const MODULES: &[NativeModule] = &[
     NativeModule {
         name: "nsh/gesture",
         exports: touch::GESTURE_EXPORTS,
+    },
+    NativeModule {
+        name: "nsh/animated",
+        exports: animated::EXPORTS,
     },
 ];
 

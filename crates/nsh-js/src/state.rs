@@ -26,6 +26,7 @@ pub(crate) struct State {
     pub(crate) lists: Lists,
     pub(crate) platform: crate::platform_modules::PlatformModules,
     pub(crate) touches: crate::touch::Touches,
+    pub(crate) animations: crate::animated::Animations,
     /// The native modules the context serves (the loader reads it).
     pub(crate) modules: ModuleTable,
 }
@@ -68,6 +69,7 @@ pub(crate) fn install(ctx: &Ctx<'_>, shared: Rc<Shared>, ui_sets: &[Registry]) {
             lists: Lists::default(),
             platform: Default::default(),
             touches: Default::default(),
+            animations: Default::default(),
             modules: ModuleTable::new(ui_sets),
         }));
         qjs::JS_SetContextOpaque(raw, state as *mut c_void);
@@ -94,6 +96,7 @@ pub(crate) fn uninstall(ctx: &Ctx<'_>) {
         STATES.with(|m| m.borrow_mut().remove(&(rt as usize)));
         qjs::JS_SetContextOpaque(raw, ptr::null_mut());
         let mut state = Box::from_raw(p);
+        state.animations.free_all(raw);
         state.platform.free_all(raw);
         state.lists.free_all(raw);
         state.components.free_all(raw);

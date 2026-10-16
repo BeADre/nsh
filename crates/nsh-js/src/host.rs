@@ -11,7 +11,7 @@ use nsh_core::{
 };
 use rquickjs::{
     Array, CatchResultExt, Context, Ctx, Function, Module, Persistent, Runtime, Value,
-    function::Opt,
+    function::Opt, qjs,
 };
 
 use crate::{
@@ -35,6 +35,8 @@ pub(crate) struct Shared {
     /// Native nodes collected since the last [`Host::take_ops`] (their
     /// finalizers queue here: the op queue may be borrowed meanwhile).
     pub(crate) releases: RefCell<Vec<NodeId>>,
+    /// Native animation nodes and composites collected meanwhile.
+    pub(crate) anim_releases: RefCell<Vec<nsh_anim::AnimOp>>,
     timers: RefCell<Timers>,
     pub(crate) warnings: RefCell<Warnings>,
     pub(crate) net: RefCell<NetworkQueue>,
@@ -342,6 +344,20 @@ impl Host {
                 return;
             }
             self.ctx.with(|ctx| {
+                let raw = ctx.as_raw().as_ptr();
+                // Animations of compiled JSX settle natively.
+                let mut rest = Vec::new();
+                for f in finished {
+                    match crate::animated::finished(raw, f.animation, f.finished) {
+                        Ok(true) => {}
+                        Ok(false) => rest.push(f),
+                        Err(_) => self.report::<()>(&ctx, Err(rquickjs::Error::Exception)),
+                    }
+                }
+                let finished = rest;
+                if finished.is_empty() {
+                    return;
+                }
                 let result = (|| {
                     let callback = ctx.globals().get::<_, Function>("__nsh_anim_end")?;
                     for f in finished {
@@ -366,6 +382,14 @@ impl Host {
         drop(ops);
         let mut releases = self.shared.releases.borrow_mut();
         out.extend(releases.drain(..).map(|id| Op::Release { id }));
+        drop(releases);
+        out.extend(
+            self.shared
+                .anim_releases
+                .borrow_mut()
+                .drain(..)
+                .map(Op::Anim),
+        );
     }
 
     /// Earliest timer deadline, if any timer is pending.
@@ -692,6 +716,17 @@ fn payload_object<'js>(ctx: &Ctx<'js>, payload: &EventPayload) -> rquickjs::Resu
         }
     }
     Ok(obj.into_value())
+}
+
+/// JSON as a JS value (owned), for natives.
+pub(crate) fn json_to_js(raw: *mut qjs::JSContext, json: &nsh_core::JsonValue) -> qjs::JSValue {
+    // SAFETY: a context reference; the value's ownership moves out.
+    let cx = unsafe { Ctx::from_raw(std::ptr::NonNull::new_unchecked(raw)) };
+    match json_value(&cx, json) {
+        // A value of our own; the wrapper (and its context reference) go.
+        Ok(v) => unsafe { qjs::JS_DupValue(raw, v.as_raw()) },
+        Err(_) => qjs::JS_UNDEFINED,
+    }
 }
 
 /// JSON (a native component's event data) as a JS value.
