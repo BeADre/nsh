@@ -27,6 +27,11 @@ use crate::runtime::Platform;
 /// Set in the app's command line: which app it is for (its workspace).
 const APP_ENV: &str = "NSH_RUST_APP";
 
+/// Set in the app's command line when it runs again after a change
+/// ([`RESTART`]): a failed build then waits for the next change instead of
+/// ending the development session.
+const RESTARTED_ENV: &str = "NSH_RUST_RESTARTED";
+
 /// The exit code of the app's command line when the app's Rust code changed
 /// during `nsh dev` / `nsh run`: `nsh` builds it again and runs the command
 /// anew ([`reexec`]).
@@ -114,17 +119,31 @@ pub(crate) fn reexec(entry: Option<&Path>) -> anyhow::Result<Option<std::process
     let Some(app) = of(entry)? else {
         return Ok(None);
     };
+    let mut restarted = false;
     loop {
         log::info!(target: "nsh::rust", "building the command line of {}", app.package);
-        let cli = app.build(&app.bin("cli"), None, false, &[])?;
-        let status = Command::new(&cli)
+        let cli = match app.build(&app.bin("cli"), None, false, &[]) {
+            Ok(cli) => cli,
+            Err(e) if restarted => {
+                app.wait_after(&e)?;
+                continue;
+            }
+            Err(e) => return Err(e),
+        };
+        let mut command = Command::new(&cli);
+        command
             .args(env::args_os().skip(1))
-            .env(APP_ENV, &app.workspace)
+            .env(APP_ENV, &app.workspace);
+        if restarted {
+            command.env(RESTARTED_ENV, "1");
+        }
+        let status = command
             .status()
             .with_context(|| format!("run {}", cli.display()))?;
         if status.code() != Some(RESTART) {
             return Ok(Some(status));
         }
+        restarted = true;
         log::info!(target: "nsh::rust", "the app's Rust code changed: building it again");
     }
 }
@@ -197,6 +216,31 @@ impl RustApp {
     /// The app crate's directory (watched in development).
     pub(crate) fn crate_dir(&self) -> &Path {
         &self.crate_dir
+    }
+
+    /// Reports `error` (a build of the code just saved failed) and waits for
+    /// the app's Rust code to change again.
+    fn wait_after(&self, error: &anyhow::Error) -> anyhow::Result<()> {
+        use notify::{RecursiveMode, Watcher};
+
+        log::error!(target: "nsh::rust", "{error:#}: fix the code and save, nsh builds it again");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut watcher =
+            notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+                if let Ok(event) = event {
+                    let _ = tx.send(event);
+                }
+            })?;
+        watcher.watch(&self.crate_dir, RecursiveMode::Recursive)?;
+        for event in &rx {
+            if event.paths.iter().any(|p| self.is_rust(p)) {
+                // Editors save in several writes: let them settle.
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                while rx.try_recv().is_ok() {}
+                return Ok(());
+            }
+        }
+        bail!("stopped watching {}", self.crate_dir.display())
     }
 
     /// The generated workspace.
@@ -351,7 +395,14 @@ impl RustApp {
         }
         let status = cmd.status().context("run cargo")?;
         if !status.success() {
-            bail!("building {package} failed");
+            let error = anyhow::anyhow!("building {package} failed");
+            // A development session that ran: a mistake in the code just
+            // saved waits for the fix (the command line runs again).
+            if env::var_os(RESTARTED_ENV).is_some() {
+                self.wait_after(&error)?;
+                return Err(Restart.into());
+            }
+            return Err(error);
         }
         let mut path = self.target_dir();
         if let Some(triple) = triple {
