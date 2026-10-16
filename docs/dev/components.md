@@ -77,7 +77,8 @@ impl Component for Button {
     generic over the row type). `.list(props.items, |l| l.flex_1().estimated_item_size(48.0), |row, at|
     view().px_4().when(at.is_last(), |v| v.rounded_b(px(16.0))).child(row))` places the list, lays it out (size, columns, padding, gaps, direction) and wraps each
     row; only rows near the viewport exist and cells are recycled as with `List`.
-- **Elements** are `view()`, `text(..)`, `image(..)`, the other host elements (`input()`, `scroll()`, `modal()`,
+- **Elements** are `view()`, `text(..)`, `image(..)`, the other host elements (`input()`, `scroll()`, `stack()` of
+  `screen()`s, `modal()`,
   `canvas(drawing)`, `web_view(url)`, `video(url)`, `native(name)` for the embedder's components; `ui/host.rs`),
   strings (as texts) and other components (`Button::element(props)`, whose `.on_event(cx.listener(..))` handles their
   typed events instead of the app; `.child(..)` / `.children(..)` pass it content and `.fill("header", ..)` fills a
@@ -89,7 +90,10 @@ impl Component for Button {
   .on_change_text(cx.listener(|this, text: &str, cx| ..))`, `scroll().on_scroll(..)`, `modal().on_request_close(..)`);
   `on(kind, listener)` takes any native event with its raw payload. Host props are the core's `Prop`s, kept one per
   property and diffed by kind: one a render stops setting goes back to its default, as when JS clears it. A modal
-  is presented while it is in the render. Canvases draw a `Drawing`, recorded with `Painter` (the Canvas 2D
+  is presented while it is in the render, a screen pushed while it is in its stack (keyed by its route, so the
+  screens below keep their state; `on_dismiss` reports a native pop, and the render leaves the screen out). A
+  component's root is a view (its host node), so a component cannot render its own screen: the screen's options
+  belong to whoever renders the stack (state they depend on goes in a global or a context; `examples/gallery-rs`). Canvases draw a `Drawing`, recorded with `Painter` (the Canvas 2D
   operations); a new drawing replaces the old one. Props that take a plain color (an input's placeholder color)
   take `cx.color(theme.muted_foreground)`: the theme color for the appearance now.
 - **State** is `Self`, written like a TSX component where Rust allows:
