@@ -309,16 +309,33 @@ enum Presented {
     Dismissible,
 }
 
-/// The demo's page: buttons pushing the screens, and its modals.
-#[derive(Debug, Default)]
+/// The demo's page: buttons pushing the screens, its modals, and the
+/// Android back button.
+#[derive(Default)]
 pub(crate) struct Navigation {
     sheet: Option<Presented>,
+    intercept: bool,
+    backs: u32,
+    _back: Option<BackSubscription>,
 }
 
 impl Component for Navigation {
     const NAME: &'static str = "gallery.navigation";
     type Props = ();
     type Event = NoEvent;
+
+    fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
+        // Stacks pop natively first: this only hears the button when there
+        // is nothing to pop.
+        self._back = Some(cx.on_back_press(|this: &mut Self, cx| {
+            if !this.intercept {
+                return false;
+            }
+            this.backs += 1;
+            cx.notify();
+            true
+        }));
+    }
 
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
         type Make = fn(&mut RenderCx<'_, Gallery>) -> Screen;
@@ -456,6 +473,40 @@ impl Component for Navigation {
             .child(page([
                 section("Screens", pushes).into_element(),
                 section("Modals", sheets).into_element(),
+                section(
+                    "Back button (Android)",
+                    [view()
+                        .flex_row()
+                        .items_center()
+                        .gap_3()
+                        .child(
+                            text(if self.intercept {
+                                format!("Intercepted {} times", self.backs)
+                            } else {
+                                "Back leaves the app".to_owned()
+                            })
+                            .flex_1()
+                            .text_color(colors::text()),
+                        )
+                        .child(
+                            button(
+                                if self.intercept {
+                                    "Release"
+                                } else {
+                                    "Intercept"
+                                },
+                                colors::gray(),
+                            )
+                            .on_press(cx.listener(
+                                |this: &mut Self, _, cx| {
+                                    this.intercept = !this.intercept;
+                                    cx.notify();
+                                },
+                            )),
+                        )
+                        .into_element()],
+                )
+                .into_element(),
             ]))
             .children(modal_view)
     }
