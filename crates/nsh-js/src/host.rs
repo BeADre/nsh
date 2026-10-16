@@ -17,7 +17,7 @@ use rquickjs::{
 use crate::{
     console,
     error::JsError,
-    net::{HttpResponse, NetworkQueue, RequestId},
+    net::{FetchEvent, NetworkQueue, RequestId},
     protocol::{self, Warnings},
     sandbox::{self, Budget, Phase},
     timers::Timers,
@@ -40,6 +40,9 @@ pub(crate) struct Shared {
     timers: RefCell<Timers>,
     pub(crate) warnings: RefCell<Warnings>,
     pub(crate) net: RefCell<NetworkQueue>,
+    /// Responses being received, until complete.
+    pub(crate) responses:
+        RefCell<rustc_hash::FxHashMap<RequestId, (crate::net::HttpHead, Vec<u8>)>>,
     /// Font assets imported by the app, not yet registered.
     fonts: RefCell<Vec<String>>,
     /// `requestAnimationFrame` callbacks waiting for the next frame.
@@ -435,9 +438,7 @@ impl Host {
     /// Moves the network requests and cancellations made since the last
     /// call into `out`.
     pub fn take_network(&self, out: &mut NetworkQueue) {
-        let mut net = self.shared.net.borrow_mut();
-        out.requests.append(&mut net.requests);
-        out.cancels.append(&mut net.cancels);
+        out.ops.append(&mut self.shared.net.borrow_mut().ops);
     }
 
     /// Publishes the surface's environment to JS. Call once before
@@ -502,11 +503,11 @@ impl Host {
         out.append(&mut self.shared.fonts.borrow_mut());
     }
 
-    /// Settles the `fetch` promise of request `id`.
-    pub fn finish_fetch(&self, id: RequestId, result: Result<HttpResponse, String>) {
+    /// Delivers an event of request `id` (what the network stack reported).
+    pub fn fetch_event(&self, id: RequestId, event: FetchEvent) {
         self.guarded(Phase::Call, || {
             self.ctx.with(|ctx| {
-                let result = web::finish_fetch(&ctx, id, result);
+                let result = web::fetch_event(&ctx, &self.shared, id, event);
                 self.report(&ctx, result);
             });
             self.run_jobs();

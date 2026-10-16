@@ -32,7 +32,9 @@ Input                        native gestures -> EngineControl::dispatch_event ->
 - **Networking**: `fetch` (and `Headers`, `Request`, `Response`, `AbortController`, `URL`, `URLSearchParams`, `TextEncoder`/`Decoder`)
   is defined by `crates/nsh-js/src/web.js`, precompiled to bytecode at build time and loaded on first use of any of those globals
   (zero startup cost for apps that do not use them). Requests go to the platform stack through `nsh_engine::Network`
-  (NSURLSession, HttpURLConnection; ureq for `nsh trace`).
+  (NSURLSession, HttpURLConnection; ureq for `nsh trace`), streaming both ways: the stack reports the response head,
+  then body chunks as they arrive (`FetchEvent`), and JS can pause reading (back pressure); a streamed request body is
+  sent in chunks the stack asks for one at a time (`FetchEvent::BodyWanted`, chunked transfer encoding).
 
 ## Crates
 

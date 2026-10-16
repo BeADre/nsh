@@ -148,15 +148,40 @@ pub struct HttpRequest {
     pub url: String,
     /// Header names and values, in order; names may repeat.
     pub headers: Vec<(String, String)>,
-    /// Request body (empty for none).
-    pub body: Vec<u8>,
+    /// Request body.
+    pub body: HttpBody,
     /// Follow redirects (`redirect: "follow"`, the default).
     pub follow_redirects: bool,
 }
 
-/// A response to a [`HttpRequest`].
+/// The body of an [`HttpRequest`].
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct HttpResponse {
+pub enum HttpBody {
+    /// No body.
+    #[default]
+    Empty,
+    /// All of it, known up front.
+    Bytes(Vec<u8>),
+    /// Produced while the request is sent (a `ReadableStream`), in chunks
+    /// the stack asks for one at a time ([`FetchEvent::BodyWanted`]); sent
+    /// with chunked transfer encoding.
+    Stream,
+}
+
+impl HttpBody {
+    /// No body at all.
+    pub fn is_empty(&self) -> bool {
+        match self {
+            HttpBody::Empty => true,
+            HttpBody::Bytes(b) => b.is_empty(),
+            HttpBody::Stream => false,
+        }
+    }
+}
+
+/// The status line and headers of a response, before its body.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct HttpHead {
     /// Status code.
     pub status: u16,
     /// Reason phrase, if the stack reports one.
@@ -167,6 +192,39 @@ pub struct HttpResponse {
     pub redirected: bool,
     /// Header names and values.
     pub headers: Vec<(String, String)>,
-    /// The whole body.
-    pub body: Vec<u8>,
+}
+
+/// What happens to a request, in order: (for a streamed body) any number
+/// of `BodyWanted`; then `Head`, `Data`… and `End` — or `Failed` at any
+/// point.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FetchEvent {
+    /// A streamed body's next chunk is wanted: first when the stack is
+    /// ready to send, then each time the last chunk was handed on.
+    BodyWanted,
+    /// The response's status and headers arrived.
+    Head(HttpHead),
+    /// Bytes of the response body, in order.
+    Data(Vec<u8>),
+    /// The body is complete.
+    End,
+    /// The request failed (no response, or the body broke off).
+    Failed(String),
+}
+
+/// What JS asks of a request it made (the JS host queues these for the
+/// engine, which hands them to the stack).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FetchOp {
+    /// Make the request.
+    Start(HttpRequest),
+    /// The next chunk of a streamed body (after [`FetchEvent::BodyWanted`]).
+    Send(Vec<u8>),
+    /// A streamed body is complete.
+    Finish,
+    /// Stop (`true`) or go on (`false`) reading the response body: nobody
+    /// reads what arrived.
+    Pause(bool),
+    /// Abort the request (`AbortController`, or the body was cancelled).
+    Cancel,
 }

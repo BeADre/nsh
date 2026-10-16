@@ -29,7 +29,10 @@ use nsh_core::{
 pub use nsh_core::{
     access::{Access, Capabilities},
     js::Limits,
-    platform::{ColorScheme, Environment, HttpRequest, HttpResponse, Idiom, Insets, Os},
+    platform::{
+        ColorScheme, Environment, FetchEvent, FetchOp, HttpBody, HttpHead, HttpRequest, Idiom,
+        Insets, Os,
+    },
     ui::{Root, Theme},
 };
 #[cfg(feature = "js")]
@@ -326,18 +329,31 @@ pub trait MountSink: Send + 'static {
     fn hot_update_failed(&self) {}
 }
 
-/// Completes a request started by [`Network::fetch`]: a response, or a
-/// message describing a network failure.
-pub type FetchDone = Box<dyn FnOnce(Result<HttpResponse, String>) + Send>;
+/// Receives what happens to a request started by [`Network::fetch`], in
+/// order, on any thread. After [`FetchTask::cancel`] it may still be called
+/// (the engine then ignores it).
+pub type FetchEvents = Box<dyn FnMut(FetchEvent) + Send>;
 
-/// Cancels a request started by [`Network::fetch`].
-pub type CancelFetch = Box<dyn FnOnce() + Send>;
+/// A request in flight, driven from the engine thread.
+pub trait FetchTask: Send {
+    /// The next chunk of a streamed body ([`HttpBody::Stream`]), after
+    /// [`FetchEvent::BodyWanted`].
+    fn send(&mut self, chunk: Vec<u8>);
+    /// A streamed body is complete.
+    fn finish(&mut self);
+    /// Stops (`true`) or resumes (`false`) reading the response body: JS
+    /// does not read what arrived (back pressure). Bytes already on their
+    /// way may still arrive.
+    fn pause(&mut self, paused: bool);
+    /// Aborts the request.
+    fn cancel(self: Box<Self>);
+}
 
 /// The platform's HTTP stack, used by JS `fetch`.
 pub trait Network: Send + Sync + 'static {
-    /// Starts `request`. `done` is called once, on any thread; after a
-    /// cancellation it may still be called (and is then ignored).
-    fn fetch(&self, request: HttpRequest, done: FetchDone) -> CancelFetch;
+    /// Starts `request`: its response head, then its body in chunks as they
+    /// arrive, are reported to `events`.
+    fn fetch(&self, request: HttpRequest, events: FetchEvents) -> Box<dyn FetchTask>;
 }
 
 /// Reads the app's bundled files (`asset:/…` URIs): from the app's
@@ -422,7 +438,9 @@ enum Message {
     RootSize(NodeId, Size, EdgeInsets),
     Frame,
     States(NodeId, u8),
-    FetchDone(RequestId, Result<HttpResponse, String>),
+    /// An event of a request (by the hop it is for: events of a hop the
+    /// engine left are dropped).
+    Fetch(RequestId, u64, FetchEvent),
     Hot(HotUpdate),
     Shutdown,
 }
@@ -645,7 +663,7 @@ fn run<M: TextEngine + 'static, S: MountSink>(
             queue: NetworkQueue::default(),
             inflight: FxHashMap::default(),
             access: access.clone(),
-            followed: FxHashMap::default(),
+            hops: 0,
         },
     };
     let mut last_gc = Instant::now();
@@ -805,83 +823,129 @@ struct Net {
     network: Option<Arc<dyn Network>>,
     tx: Sender<Message>,
     queue: NetworkQueue,
-    inflight: FxHashMap<RequestId, CancelFetch>,
+    inflight: FxHashMap<RequestId, Inflight>,
     /// What the app may reach.
     access: Arc<nsh_core::access::Access>,
+    /// Hops started so far (the id of the next).
+    hops: u64,
+}
+
+/// A request in flight.
+struct Inflight {
+    task: Box<dyn FetchTask>,
+    /// The hop the task is.
+    hop: u64,
     /// Requests whose redirects the engine follows (to check each hop).
-    followed: FxHashMap<RequestId, access::Followed>,
+    followed: Option<access::Followed>,
 }
 
 impl Net {
-    /// Hands the requests JS made to the network, and cancels aborted ones.
+    /// Hands what JS asked of its requests to the network.
     fn pump(&mut self, script: Option<&Script>) {
         let Some(script) = script else { return };
         script.take_network(&mut self.queue);
-        if self.queue.is_empty() {
-            return;
-        }
-        for id in self.queue.cancels.drain(..) {
-            self.followed.remove(&id);
-            if let Some(cancel) = self.inflight.remove(&id) {
-                cancel();
+        for (id, op) in std::mem::take(&mut self.queue.ops) {
+            match op {
+                FetchOp::Start(request) => self.request(script, id, request),
+                FetchOp::Send(chunk) => {
+                    if let Some(i) = self.inflight.get_mut(&id) {
+                        i.task.send(chunk);
+                    }
+                }
+                FetchOp::Finish => {
+                    if let Some(i) = self.inflight.get_mut(&id) {
+                        i.task.finish();
+                    }
+                }
+                FetchOp::Pause(paused) => {
+                    if let Some(i) = self.inflight.get_mut(&id) {
+                        i.task.pause(paused);
+                    }
+                }
+                FetchOp::Cancel => {
+                    if let Some(i) = self.inflight.remove(&id) {
+                        i.task.cancel();
+                    }
+                }
             }
         }
-        let requests = std::mem::take(&mut self.queue.requests);
-        for (id, request) in requests {
-            if self.access.is_unrestricted() {
-                self.start(id, request);
-            } else if !self.access.allows_http(&request.method, &request.url) {
-                script.finish_fetch(id, Err(access::refused(&request.method, &request.url)));
-            } else if request.follow_redirects {
-                let hop = access::hop(&request);
-                self.followed
-                    .insert(id, access::Followed { request, hops: 0 });
-                self.start(id, hop);
-            } else {
-                self.start(id, request);
-            }
+    }
+
+    /// Makes request `id`, if the app may.
+    fn request(&mut self, script: &Script, id: RequestId, request: HttpRequest) {
+        if self.access.is_unrestricted() {
+            self.start(id, request, None);
+        } else if !self.access.allows_http(&request.method, &request.url) {
+            let refused = access::refused(&request.method, &request.url);
+            script.fetch_event(id, FetchEvent::Failed(refused));
+        } else if request.follow_redirects {
+            let hop = access::hop(&request);
+            let followed = access::Followed { request, hops: 0 };
+            self.start(id, hop, Some(followed));
+        } else {
+            self.start(id, request, None);
         }
     }
 
     /// Hands one request (or redirect hop) to the network.
-    fn start(&mut self, id: RequestId, request: HttpRequest) {
+    fn start(&mut self, id: RequestId, request: HttpRequest, followed: Option<access::Followed>) {
+        self.hops += 1;
+        let hop = self.hops;
         let Some(network) = &self.network else {
-            let _ = self.tx.send(Message::FetchDone(
-                id,
-                Err("this host has no network stack".to_owned()),
-            ));
+            let failed = FetchEvent::Failed("this host has no network stack".to_owned());
+            let _ = self.tx.send(Message::Fetch(id, hop, failed));
             return;
         };
         let tx = self.tx.clone();
-        let done: FetchDone = Box::new(move |result| {
-            let _ = tx.send(Message::FetchDone(id, result));
+        let events: FetchEvents = Box::new(move |event| {
+            let _ = tx.send(Message::Fetch(id, hop, event));
         });
-        self.inflight.insert(id, network.fetch(request, done));
+        let task = network.fetch(request, events);
+        self.inflight.insert(
+            id,
+            Inflight {
+                task,
+                hop,
+                followed,
+            },
+        );
     }
 
-    /// A hop of request `id` answered: its final result, or `None` when the
-    /// next hop was started (or the request was cancelled).
-    fn finished(
-        &mut self,
-        id: RequestId,
-        result: Result<HttpResponse, String>,
-    ) -> Option<Result<HttpResponse, String>> {
-        // Results of cancelled requests are dropped.
-        if self.inflight.remove(&id).is_none() && self.network.is_some() {
-            return None;
+    /// An event of hop `hop` of request `id`: what JS is told, if anything
+    /// (`None` for events of hops left behind, and redirects the engine
+    /// follows).
+    fn event(&mut self, id: RequestId, hop: u64, event: FetchEvent) -> Option<FetchEvent> {
+        if self.network.is_none() {
+            return Some(event);
         }
-        let Some(followed) = self.followed.get_mut(&id) else {
-            return Some(result);
-        };
-        match access::next(&self.access, followed, result) {
-            access::Next::Done(result) => {
-                self.followed.remove(&id);
-                Some(result)
+        let inflight = self.inflight.get_mut(&id).filter(|i| i.hop == hop)?;
+        match event {
+            FetchEvent::Head(head) => {
+                let Some(followed) = &mut inflight.followed else {
+                    return Some(FetchEvent::Head(head));
+                };
+                match access::next(&self.access, followed, head) {
+                    access::Next::Done(head) => Some(FetchEvent::Head(head)),
+                    access::Next::Fail(message) => {
+                        if let Some(i) = self.inflight.remove(&id) {
+                            i.task.cancel();
+                        }
+                        Some(FetchEvent::Failed(message))
+                    }
+                    access::Next::Hop(request) => {
+                        let i = self.inflight.remove(&id)?;
+                        let followed = i.followed;
+                        i.task.cancel();
+                        self.start(id, request, followed);
+                        None
+                    }
+                }
             }
-            access::Next::Hop(request) => {
-                self.start(id, request);
-                None
+            FetchEvent::End | FetchEvent::Failed(_) => {
+                self.inflight.remove(&id);
+                Some(event)
             }
+            event => Some(event),
         }
     }
 }
@@ -1169,11 +1233,11 @@ fn handle<M: TextEngine>(script: Option<&Script>, state: &mut State<M>, message:
             }
         }
         Message::States(id, states) => state.core.set_states(id, states),
-        Message::FetchDone(id, result) => {
-            if let Some(result) = state.net.finished(id, result)
+        Message::Fetch(id, hop, event) => {
+            if let Some(event) = state.net.event(id, hop, event)
                 && let Some(script) = script
             {
-                script.finish_fetch(id, result);
+                script.fetch_event(id, event);
             }
         }
         Message::Hot(update) => state.hot.push(update),

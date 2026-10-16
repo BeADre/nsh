@@ -21,7 +21,7 @@ mod imp {
     use nsh_js::{Host, HostOptions, JsError, NetworkQueue, RequestId};
 
     use crate::{
-        Bundle, BundleCode, Environment, HotUpdate, HttpResponse, Limits, MountSink,
+        Bundle, BundleCode, Environment, FetchEvent, HotUpdate, Limits, MountSink,
         symbolicate::Symbolicator,
     };
 
@@ -148,8 +148,8 @@ mod imp {
             self.host.take_network(out);
         }
 
-        pub(crate) fn finish_fetch(&self, id: RequestId, result: Result<HttpResponse, String>) {
-            self.host.finish_fetch(id, result);
+        pub(crate) fn fetch_event(&self, id: RequestId, event: FetchEvent) {
+            self.host.fetch_event(id, event);
         }
 
         pub(crate) fn collect_garbage(&self) {
@@ -176,22 +176,15 @@ mod stub {
 
     use nsh_core::{EventKind, EventPayload, NodeId, Op, TextEngine};
 
-    use crate::{Bundle, Environment, HotUpdate, HttpResponse, Limits, MountSink};
+    use crate::{Bundle, Environment, HotUpdate, Limits, MountSink};
 
     /// No JS in this build: never made.
     pub(crate) enum Script {}
 
-    /// Requests and cancellations JS made (none without JS).
+    /// What JS asked of its requests (nothing without JS).
     #[derive(Default)]
     pub(crate) struct NetworkQueue {
-        pub(crate) requests: Vec<(u32, crate::HttpRequest)>,
-        pub(crate) cancels: Vec<u32>,
-    }
-
-    impl NetworkQueue {
-        pub(crate) fn is_empty(&self) -> bool {
-            self.requests.is_empty() && self.cancels.is_empty()
-        }
+        pub(crate) ops: Vec<(u32, crate::FetchOp)>,
     }
 
     impl Script {
@@ -262,7 +255,7 @@ mod stub {
             match *self {}
         }
 
-        pub(crate) fn finish_fetch(&self, _: u32, _: Result<HttpResponse, String>) {
+        pub(crate) fn fetch_event(&self, _: u32, _: crate::FetchEvent) {
             match *self {}
         }
 

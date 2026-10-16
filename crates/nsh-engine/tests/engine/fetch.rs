@@ -8,8 +8,8 @@ use std::{
 
 use nsh_core::{ApproxTextEngine, MountBatch, MountItem, Size};
 use nsh_engine::{
-    Bundle, CancelFetch, Engine, EngineConfig, FetchDone, HttpRequest, HttpResponse, MountSink,
-    Network,
+    Bundle, Engine, EngineConfig, FetchEvent, FetchEvents, FetchTask, HttpBody, HttpHead,
+    HttpRequest, MountSink, Network,
 };
 
 struct Sink(mpsc::Sender<MountBatch>);
@@ -20,6 +20,32 @@ impl MountSink for Sink {
     }
 }
 
+/// A task that only records its cancellation.
+struct Task(Option<Box<dyn FnOnce() + Send>>);
+
+impl FetchTask for Task {
+    fn send(&mut self, _: Vec<u8>) {}
+    fn finish(&mut self) {}
+    fn pause(&mut self, _: bool) {}
+    fn cancel(mut self: Box<Self>) {
+        if let Some(f) = self.0.take() {
+            f();
+        }
+    }
+}
+
+/// Answers `response` with `body` in two chunks, on another thread.
+fn answer(mut events: FetchEvents, head: HttpHead, body: Vec<u8>) {
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(5));
+        events(FetchEvent::Head(head));
+        let (a, b) = body.split_at(body.len() / 2);
+        events(FetchEvent::Data(a.to_vec()));
+        events(FetchEvent::Data(b.to_vec()));
+        events(FetchEvent::End);
+    });
+}
+
 /// Answers on a background thread, echoing the request.
 #[derive(Default)]
 struct EchoNetwork {
@@ -27,29 +53,27 @@ struct EchoNetwork {
 }
 
 impl Network for EchoNetwork {
-    fn fetch(&self, request: HttpRequest, done: FetchDone) -> CancelFetch {
+    fn fetch(&self, request: HttpRequest, events: FetchEvents) -> Box<dyn FetchTask> {
         let url = request.url.clone();
         if url.ends_with("/slow") {
             let cancelled = self.cancelled.clone();
-            return Box::new(move || cancelled.lock().unwrap().push(url));
+            return Box::new(Task(Some(Box::new(move || {
+                cancelled.lock().unwrap().push(url)
+            }))));
         }
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(5));
-            let body = format!(
-                "{} {} {}",
-                request.method,
-                request.url,
-                String::from_utf8_lossy(&request.body)
-            );
-            done(Ok(HttpResponse {
-                status: 200,
-                url: request.url,
-                headers: vec![("content-type".into(), "text/plain".into())],
-                body: body.into_bytes(),
-                ..HttpResponse::default()
-            }));
-        });
-        Box::new(|| {})
+        let sent = match &request.body {
+            HttpBody::Bytes(b) => String::from_utf8_lossy(b).into_owned(),
+            _ => String::new(),
+        };
+        let body = format!("{} {} {sent}", request.method, request.url);
+        let head = HttpHead {
+            status: 200,
+            url: request.url,
+            headers: vec![("content-type".into(), "text/plain".into())],
+            ..HttpHead::default()
+        };
+        answer(events, head, body.into_bytes());
+        Box::new(Task(None))
     }
 }
 
@@ -132,28 +156,33 @@ struct RedirectNetwork {
 }
 
 impl Network for RedirectNetwork {
-    fn fetch(&self, request: HttpRequest, done: FetchDone) -> CancelFetch {
+    fn fetch(&self, request: HttpRequest, events: FetchEvents) -> Box<dyn FetchTask> {
         self.seen.lock().unwrap().push(request.url.clone());
         assert!(
             !request.follow_redirects,
             "the engine follows redirects itself"
         );
-        let response = match request.url.split_once("/hop/") {
-            Some((_, to)) => HttpResponse {
-                status: 302,
-                url: request.url.clone(),
-                headers: vec![("location".into(), to.into())],
-                ..HttpResponse::default()
-            },
-            None => HttpResponse {
-                status: 200,
-                url: request.url.clone(),
-                body: b"ok".to_vec(),
-                ..HttpResponse::default()
-            },
+        let (head, body) = match request.url.split_once("/hop/") {
+            Some((_, to)) => (
+                HttpHead {
+                    status: 302,
+                    url: request.url.clone(),
+                    headers: vec![("location".into(), to.into())],
+                    ..HttpHead::default()
+                },
+                b"moved".to_vec(),
+            ),
+            None => (
+                HttpHead {
+                    status: 200,
+                    url: request.url.clone(),
+                    ..HttpHead::default()
+                },
+                b"ok".to_vec(),
+            ),
         };
-        std::thread::spawn(move || done(Ok(response)));
-        Box::new(|| {})
+        answer(events, head, body);
+        Box::new(Task(None))
     }
 }
 

@@ -10,7 +10,7 @@ use rquickjs::{
 
 use crate::{
     host::Shared,
-    net::{HttpRequest, HttpResponse, RequestId},
+    net::{FetchEvent, FetchOp, HttpBody, HttpHead, HttpRequest, RequestId},
 };
 
 /// `web.js`, compiled by the build script.
@@ -51,15 +51,20 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, shared: &Rc<Shared>) -> rquickjs::Res
                 let body = body
                     .and_then(|b| unsafe { b.as_bytes() }.map(<[u8]>::to_vec))
                     .unwrap_or_default();
-                s.net.borrow_mut().requests.push((
+                let body = if body.is_empty() {
+                    HttpBody::Empty
+                } else {
+                    HttpBody::Bytes(body)
+                };
+                s.net.borrow_mut().ops.push((
                     id,
-                    HttpRequest {
+                    FetchOp::Start(HttpRequest {
                         method,
                         url,
                         headers,
                         body,
                         follow_redirects,
-                    },
+                    }),
                 ));
             },
         )?,
@@ -68,12 +73,17 @@ pub(crate) fn install<'js>(ctx: &Ctx<'js>, shared: &Rc<Shared>) -> rquickjs::Res
     globals.set(
         "__nsh_fetch_abort",
         Function::new(ctx.clone(), move |id: RequestId| {
+            s.responses.borrow_mut().remove(&id);
             let mut net = s.net.borrow_mut();
             // Not handed to the network yet: drop it here.
-            let before = net.requests.len();
-            net.requests.retain(|(r, _)| *r != id);
-            if net.requests.len() == before {
-                net.cancels.push(id);
+            let queued = net
+                .ops
+                .iter()
+                .any(|(r, op)| *r == id && matches!(op, FetchOp::Start(_)));
+            if queued {
+                net.ops.retain(|(r, _)| *r != id);
+            } else {
+                net.ops.push((id, FetchOp::Cancel));
             }
         })?,
     )?;
@@ -137,17 +147,44 @@ const GLOBALS: [&str; 12] = [
     "fetch",
 ];
 
-/// Settles a `fetch` promise.
-pub(crate) fn finish_fetch<'js>(
+/// Takes an event of a `fetch`: buffers the response and settles the
+/// promise when it is complete.
+pub(crate) fn fetch_event<'js>(
     ctx: &Ctx<'js>,
+    shared: &Shared,
     id: RequestId,
-    result: Result<HttpResponse, String>,
+    event: FetchEvent,
 ) -> rquickjs::Result<()> {
+    let result = {
+        let mut responses = shared.responses.borrow_mut();
+        match event {
+            FetchEvent::BodyWanted => return Ok(()),
+            FetchEvent::Head(head) => {
+                responses.insert(id, (head, Vec::new()));
+                return Ok(());
+            }
+            FetchEvent::Data(bytes) => {
+                if let Some((_, body)) = responses.get_mut(&id) {
+                    body.extend_from_slice(&bytes);
+                }
+                return Ok(());
+            }
+            FetchEvent::End => match responses.remove(&id) {
+                Some(r) => Ok(r),
+                None => return Ok(()),
+            },
+            FetchEvent::Failed(message) => {
+                responses.remove(&id);
+                Err(message)
+            }
+        }
+    };
     let globals = ctx.globals();
     match result {
-        Ok(r) => {
+        Ok((r, body)) => {
+            let r: HttpHead = r;
             let flat: Vec<String> = r.headers.into_iter().flat_map(|(k, v)| [k, v]).collect();
-            let body = ArrayBuffer::new(ctx.clone(), r.body)?;
+            let body = ArrayBuffer::new(ctx.clone(), body)?;
             globals
                 .get::<_, Function>("__nsh_fetch_done")?
                 .call::<_, ()>((id, r.status, r.status_text, r.url, r.redirected, flat, body))

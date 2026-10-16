@@ -1,7 +1,28 @@
 //! Web APIs installed by the host: encoding, URL, headers, abort and fetch.
 
 use nsh_core::Op;
-use nsh_js::{Host, HttpResponse, NetworkQueue};
+use nsh_js::{FetchEvent, FetchOp, Host, HttpBody, HttpHead, HttpRequest, NetworkQueue};
+
+/// The requests started in `queue`.
+fn started(queue: &NetworkQueue) -> Vec<(u32, &HttpRequest)> {
+    queue
+        .ops
+        .iter()
+        .filter_map(|(id, op)| match op {
+            FetchOp::Start(r) => Some((*id, r)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Answers request `id` with `head` and `body` (in two chunks).
+fn respond(host: &Host, id: u32, head: HttpHead, body: &[u8]) {
+    host.fetch_event(id, FetchEvent::Head(head));
+    let (a, b) = body.split_at(body.len() / 2);
+    host.fetch_event(id, FetchEvent::Data(a.to_vec()));
+    host.fetch_event(id, FetchEvent::Data(b.to_vec()));
+    host.fetch_event(id, FetchEvent::End);
+}
 
 /// Runs `script` (which sets `globalThis.out`) and returns `out` as a string.
 fn run(host: &Host, script: &str) -> String {
@@ -119,29 +140,31 @@ fn fetch_goes_through_the_network_queue() {
     let mut queue = NetworkQueue::default();
     host.take_network(&mut queue);
     // The aborted request never reached the network.
-    assert_eq!(queue.requests.len(), 2);
-    assert!(queue.cancels.is_empty());
-    let (id, req) = &queue.requests[0];
+    let requests = started(&queue);
+    assert_eq!(requests.len(), 2, "{queue:?}");
+    assert_eq!(queue.ops.len(), 2, "{queue:?}");
+    let (id, req) = requests[0];
     assert_eq!(req.method, "POST");
     assert_eq!(req.url, "https://example.com/api?q=1");
-    assert_eq!(req.body, br#"{"a":1}"#);
+    assert_eq!(req.body, HttpBody::Bytes(br#"{"a":1}"#.to_vec()));
     assert!(req.headers.contains(&("x-token".into(), "t".into())));
     assert!(
         req.headers
             .contains(&("content-type".into(), "text/plain;charset=UTF-8".into()))
     );
-    host.finish_fetch(
-        *id,
-        Ok(HttpResponse {
+    respond(
+        &host,
+        id,
+        HttpHead {
             status: 201,
             status_text: "Created".into(),
             url: "https://example.com/api?q=1".into(),
             redirected: false,
             headers: vec![("Content-Type".into(), "application/json".into())],
-            body: br#"{"ok":true}"#.to_vec(),
-        }),
+        },
+        br#"{"ok":true}"#,
     );
-    host.finish_fetch(queue.requests[1].0, Err("offline".into()));
+    host.fetch_event(requests[1].0, FetchEvent::Failed("offline".into()));
     host.eval_source("__nsh_commit([1, 1, JSON.stringify(out)]);")
         .unwrap();
     assert_eq!(
@@ -163,13 +186,13 @@ fn aborting_an_inflight_fetch_cancels_it() {
     .unwrap();
     let mut queue = NetworkQueue::default();
     host.take_network(&mut queue);
-    let id = queue.requests[0].0;
+    let id = started(&queue)[0].0;
     host.eval_source("c.abort();").unwrap();
     let mut queue = NetworkQueue::default();
     host.take_network(&mut queue);
-    assert_eq!(queue.cancels, vec![id]);
+    assert_eq!(queue.ops, vec![(id, FetchOp::Cancel)]);
     // A late completion is ignored.
-    host.finish_fetch(id, Err("cancelled".into()));
+    host.fetch_event(id, FetchEvent::Failed("cancelled".into()));
     host.eval_source("__nsh_commit([1, 1, JSON.stringify(out)]);")
         .unwrap();
     assert_eq!(output(&host), r#"["AbortError"]"#);

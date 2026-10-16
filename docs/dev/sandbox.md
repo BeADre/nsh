@@ -26,7 +26,7 @@ trusted as the app's own code: every limit and check is enforced in Rust, never 
   reloads instead of patching) into `Policy::declared`.
 - Enforced in Rust: `fetch` in the engine (`access.rs`; refused requests never reach the network, and redirects are
   followed by the engine with `follow_redirects` off for the platform, so every hop is checked — hops are issued on the
-  engine thread); remote images, placeholders, canvas images, `Image.getSize` / `prefetch`, video sources, web view
+  engine thread when a hop's head arrives; a streamed request body is not sent again, so a 307 / 308 then fails); remote images, placeholders, canvas images, `Image.getSize` / `prefetch`, video sources, web view
   sources and the status bar in the core (`Core::check_prop`; a refused image fails with `onError`, the rest show nothing;
   each refusal is logged once, target `js`, saying which key to add); top-level web view navigations on the platforms
   (`WKNavigationDelegate decidePolicyForNavigationAction` / `WebViewClient.shouldOverrideUrlLoading` → `Native.allowsWebview`).

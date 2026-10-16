@@ -40,5 +40,5 @@ pub use crate::{
     bytecode::{BUNDLE_NAME, BYTECODE_VERSION, compile_bytecode, compile_bytecode_with},
     error::JsError,
     host::{ErrorHandler, Host, HostOptions, TextMeasurer},
-    net::{HttpRequest, HttpResponse, NetworkQueue, RequestId},
+    net::{FetchEvent, FetchOp, HttpBody, HttpHead, HttpRequest, NetworkQueue, RequestId},
 };

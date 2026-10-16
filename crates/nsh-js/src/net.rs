@@ -1,23 +1,21 @@
 //! HTTP requests made by `fetch`, as handed to the platform's network stack.
 
-pub use nsh_core::platform::{HttpRequest, HttpResponse};
+pub use nsh_core::platform::{FetchEvent, FetchOp, HttpBody, HttpHead, HttpRequest};
 
 /// Identifies a request between JS and the network stack.
 pub type RequestId = u32;
 
-/// Requests and cancellations made by JS since the last
-/// [`crate::Host::take_network`].
+/// What JS asked of its requests since the last
+/// [`crate::Host::take_network`], in order.
 #[derive(Debug, Default)]
 pub struct NetworkQueue {
-    /// New requests.
-    pub requests: Vec<(RequestId, HttpRequest)>,
-    /// Requests aborted by JS (`AbortController`).
-    pub cancels: Vec<RequestId>,
+    /// Operations, by request.
+    pub ops: Vec<(RequestId, FetchOp)>,
 }
 
 impl NetworkQueue {
     /// True if there is nothing to do.
     pub fn is_empty(&self) -> bool {
-        self.requests.is_empty() && self.cancels.is_empty()
+        self.ops.is_empty()
     }
 }
