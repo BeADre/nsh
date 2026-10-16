@@ -73,8 +73,6 @@ pub(crate) fn trace(
         limits: nsh_engine::Limits::default(),
         components: nsh_ui_mobile::registry(),
         runtime: None,
-        theme: None,
-        fonts: Vec::new(),
     };
     let control = Arc::new(OnceLock::new());
     let sink = ChannelSink {

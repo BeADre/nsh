@@ -21,10 +21,10 @@ nsh-package = { path = "crates/nsh-package" }
 nsh-ui-mobile = { path = "crates/nsh-ui-mobile" }
 nsh-macros = { path = "crates/nsh-macros" }
 nsh-js = { path = "crates/nsh-js" }
-nsh-engine = { path = "crates/nsh-engine" }
+nsh-engine = { path = "crates/nsh-engine", default-features = false }
 nsh-bundler = { path = "crates/nsh-bundler" }
-nsh-platform-ios = { path = "crates/nsh-platform-ios" }
-nsh-platform-android = { path = "crates/nsh-platform-android" }
+nsh-platform-ios = { path = "crates/nsh-platform-ios", default-features = false }
+nsh-platform-android = { path = "crates/nsh-platform-android", default-features = false }
 nsh-dev = { path = "crates/nsh-dev" }
 
 anyhow = "1"

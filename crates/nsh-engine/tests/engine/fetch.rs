@@ -104,8 +104,6 @@ fn fetch_round_trips_through_the_platform_network() {
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
         runtime: None,
-        theme: None,
-        fonts: Vec::new(),
     };
     let _engine = Engine::start(config, || ApproxTextEngine, Sink(tx)).unwrap();
     assert_eq!(
@@ -201,8 +199,6 @@ fn fetch_stays_within_the_capabilities() {
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
         runtime: None,
-        theme: None,
-        fonts: Vec::new(),
     };
     let _engine = Engine::start(config, || ApproxTextEngine, Sink(tx)).unwrap();
     assert_eq!(

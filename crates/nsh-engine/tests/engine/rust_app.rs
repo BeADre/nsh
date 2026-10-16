@@ -69,8 +69,6 @@ fn start() -> (Engine, Receiver<MountBatch>) {
         // Nothing registered: Rust renders its components by type.
         components: Default::default(),
         runtime: None,
-        theme: None,
-        fonts: Vec::new(),
     };
     (
         Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap(),

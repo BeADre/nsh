@@ -67,8 +67,6 @@ fn start() -> (Engine, Receiver<MountBatch>) {
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
         runtime: None,
-        theme: None,
-        fonts: Vec::new(),
     };
     (
         Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap(),

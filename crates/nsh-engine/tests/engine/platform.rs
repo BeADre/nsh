@@ -51,8 +51,6 @@ fn first_frame(os: Os) -> (Vec<String>, Vec<String>) {
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
         runtime: None,
-        theme: None,
-        fonts: Vec::new(),
     };
     let _engine = Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap();
     let batch = rx

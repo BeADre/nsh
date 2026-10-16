@@ -84,8 +84,6 @@ fn list_scrolls_with_recycled_cells() {
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
         runtime: None,
-        theme: None,
-        fonts: Vec::new(),
     };
     let engine = Engine::start(config, || ApproxTextEngine, Sink(tx)).unwrap();
     let first = rx.recv_timeout(Duration::from_secs(5)).unwrap();

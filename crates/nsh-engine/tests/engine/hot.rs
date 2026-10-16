@@ -161,8 +161,6 @@ fn edits_replace_modules_and_keep_unrelated_state() {
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
         runtime: None,
-        theme: None,
-        fonts: Vec::new(),
     };
     let engine = Engine::start(config, || ApproxTextEngine, ChannelSink(tx, failed_tx)).unwrap();
     let control = engine.control();

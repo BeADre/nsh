@@ -60,6 +60,18 @@ pub enum App {
     Js(Bundle),
 }
 
+impl From<Bundle> for App {
+    fn from(bundle: Bundle) -> Self {
+        App::Js(bundle)
+    }
+}
+
+impl From<Root> for App {
+    fn from(root: Root) -> Self {
+        App::Rust(root)
+    }
+}
+
 /// An app bundle: its code plus, in development, a source map.
 #[derive(Debug, Clone)]
 pub struct Bundle {
@@ -358,12 +370,6 @@ pub struct EngineConfig {
     /// The Rust components JS can render by name (`nsh_ui_mobile::registry()`
     /// on mobile); a Rust app's components need no registration.
     pub components: nsh_core::ui::Registry,
-    /// The theme of Rust components; `None`: the default one (JS apps set
-    /// theirs from `nsh.json`).
-    pub theme: Option<Theme>,
-    /// Font files (TrueType / OpenType) registered before the first render,
-    /// by their family names.
-    pub fonts: Vec<Arc<[u8]>>,
     /// The tokio runtime the components' async tasks use (timers, IO,
     /// background work); `None`: one shared by the engines of the process.
     pub runtime: Option<tokio::runtime::Handle>,
@@ -399,8 +405,6 @@ impl std::fmt::Debug for EngineConfig {
             .field("header_heights", &self.header_heights)
             .field("limits", &self.limits)
             .field("components", &self.components)
-            .field("theme", &self.theme.is_some())
-            .field("fonts", &self.fonts.len())
             .finish()
     }
 }
@@ -606,13 +610,17 @@ fn run<M: TextEngine + 'static, S: MountSink>(
     core.set_safe_area(insets(&config.environment));
     core.set_environment(ui_environment(&config.environment, config.viewport));
     core.set_task_runtime(config.runtime.clone().unwrap_or_else(shared_runtime));
-    if let Some(theme) = config.theme.clone() {
-        core.set_theme(theme);
-    }
-    for font in &config.fonts {
-        if let Err(err) = core.register_font(font) {
-            log::error!("font failed: {err}");
-            sink.report_error(&format!("font failed: {err}"));
+    // A Rust app's theme and fonts come with its root (a JS app's from its
+    // bundle).
+    if let App::Rust(root) = &config.app {
+        if let Some(theme) = root.theme_ref() {
+            core.set_theme(theme.clone());
+        }
+        for font in root.fonts() {
+            if let Err(err) = core.register_font(font) {
+                log::error!("font failed: {err}");
+                sink.report_error(&format!("font failed: {err}"));
+            }
         }
     }
     // A task woken on any thread wakes the loop.

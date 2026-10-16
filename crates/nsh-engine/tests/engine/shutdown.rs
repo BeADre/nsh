@@ -27,8 +27,6 @@ fn dropping_an_engine_aborts_running_js() {
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
         runtime: None,
-        theme: None,
-        fonts: Vec::new(),
     };
     let engine = Engine::start(config, || ApproxTextEngine, NullSink).unwrap();
     // Let the script start spinning.

@@ -65,8 +65,6 @@ fn start(app: &str) -> (Engine, crossbeam_channel::Receiver<MountBatch>) {
         limits: nsh_engine::Limits::default(),
         components: nsh_ui_mobile::registry(),
         runtime: None,
-        theme: None,
-        fonts: Vec::new(),
     };
     (
         Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap(),

@@ -485,14 +485,43 @@ impl<C: Component> AnyInstance for Instance<C> {
 /// thread, where elements live). The engine mounts it as the content of the
 /// surface (`nsh_engine::App::Rust`).
 #[derive(Clone)]
-pub struct Root(Arc<dyn Fn() -> super::AnyElement + Send + Sync>);
+pub struct Root {
+    make: Arc<dyn Fn() -> super::AnyElement + Send + Sync>,
+    theme: Option<Arc<super::Theme>>,
+    fonts: Vec<Arc<[u8]>>,
+}
 
 impl Root {
     /// Component `C` with the props `props` makes.
     pub fn new<C: Component>(props: impl Fn() -> C::Props + Send + Sync + 'static) -> Self {
-        Self(Arc::new(move || {
-            super::IntoElement::into_element(C::element(props()))
-        }))
+        Self {
+            make: Arc::new(move || super::IntoElement::into_element(C::element(props()))),
+            theme: None,
+            fonts: Vec::new(),
+        }
+    }
+
+    /// Renders with `theme` (by default the default one).
+    pub fn theme(mut self, theme: super::Theme) -> Self {
+        self.theme = Some(Arc::new(theme));
+        self
+    }
+
+    /// Registers a font file (TrueType / OpenType) before the first render;
+    /// styles name it by its family name.
+    pub fn font(mut self, data: impl Into<Arc<[u8]>>) -> Self {
+        self.fonts.push(data.into());
+        self
+    }
+
+    /// The theme it renders with.
+    pub fn theme_ref(&self) -> Option<&super::Theme> {
+        self.theme.as_deref()
+    }
+
+    /// The font files to register.
+    pub fn fonts(&self) -> &[Arc<[u8]>] {
+        &self.fonts
     }
 
     /// Component `C` with default props.
@@ -505,7 +534,7 @@ impl Root {
 
     /// The element of the root component.
     pub(crate) fn element(&self) -> super::AnyElement {
-        (self.0)()
+        (self.make)()
     }
 }
 
