@@ -238,6 +238,8 @@ pub(super) struct Components {
     virtual_lists: FxHashMap<NodeId, VirtualListState>,
     /// The insets screens and modals reported (`onInsets`).
     insets: FxHashMap<NodeId, EdgeInsets>,
+    /// JS listens to the back button (`BackHandler`) on the root.
+    js_back: bool,
     next_id: NodeId,
     dirty: Vec<NodeId>,
     /// Reused buffers.
@@ -267,6 +269,7 @@ impl Default for Components {
             animations: FxHashMap::default(),
             virtual_lists: FxHashMap::default(),
             insets: FxHashMap::default(),
+            js_back: false,
             // Odd: JS allocates the even ids (1 is the root).
             next_id: 3,
             dirty: Vec::new(),
@@ -697,6 +700,21 @@ impl<M: TextEngine> Core<M> {
                 inst.class_list = list;
                 self.update_user_class(id);
                 Ok(None)
+            }
+            // The root listens to the back button while JS or a component
+            // does.
+            Op::Listen {
+                id: crate::ROOT_ID,
+                event: EventKind::BackPress,
+                enabled,
+            } => {
+                self.components.js_back = enabled;
+                let rust = !self.components.executor.back.borrow().list.is_empty();
+                Ok(Some(Op::Listen {
+                    id: crate::ROOT_ID,
+                    event: EventKind::BackPress,
+                    enabled: enabled || rust,
+                }))
             }
             // The component's events come from the core, not from the view.
             Op::Listen {
@@ -1858,6 +1876,8 @@ impl<M: TextEngine> Core<M> {
         }
         // Its tasks and timers end with it.
         self.components.executor.cancel_host(host);
+        let listeners = self.components.executor.back.borrow_mut().remove_host(host);
+        drop(listeners);
         for &child in &inst.js_children {
             self.detach_id(child);
         }
@@ -2084,6 +2104,23 @@ impl<M: TextEngine> Core<M> {
                     .deliver(number("index").unwrap_or(-1.0) as i32);
                 true
             }
+            EventKind::BackPress if id == crate::ROOT_ID => {
+                let listeners = self.components.executor.back.borrow().newest_first();
+                for (host, listener) in listeners {
+                    if self.back_pressed(host, &listener) {
+                        return true;
+                    }
+                }
+                // JS's listeners run next (and exit when none handles it).
+                if self.components.js_back {
+                    return false;
+                }
+                let _ = self.apply_op(Op::Command {
+                    id: crate::ROOT_ID,
+                    command: Command::ExitApp,
+                });
+                true
+            }
             EventKind::ImageInfo if id == crate::ROOT_ID => {
                 let Some(request) = number("id") else {
                     return false;
@@ -2117,6 +2154,45 @@ impl<M: TextEngine> Core<M> {
             }
             _ => false,
         }
+    }
+
+    /// Runs a back listener of component `host`: whether it handled the
+    /// press.
+    fn back_pressed(&mut self, host: NodeId, listener: &crate::ui::BackListener) -> bool {
+        let mut cx = self.erased_cx(host);
+        let Some(inst) = self.components.instances.get_mut(&host) else {
+            return false;
+        };
+        let Inner::Component(inner) = &mut inst.inner else {
+            return false;
+        };
+        let (state, props) = inner.parts();
+        let result = caught(|| listener(state, props, &mut cx));
+        self.finish_event(host, cx);
+        match result {
+            Ok(handled) => handled,
+            Err(message) => {
+                self.component_failed(host, message);
+                false
+            }
+        }
+    }
+
+    /// The root listens to the back button while JS or a component does:
+    /// follows the components' listeners coming and going.
+    pub(super) fn sync_back(&mut self) {
+        let rust = {
+            let mut back = self.components.executor.back.borrow_mut();
+            if !std::mem::take(&mut back.changed) {
+                return;
+            }
+            !back.list.is_empty()
+        };
+        let _ = self.apply_op(Op::Listen {
+            id: crate::ROOT_ID,
+            event: EventKind::BackPress,
+            enabled: rust || self.components.js_back,
+        });
     }
 
     /// The nearest `type_id` provided by a component above `host` (through

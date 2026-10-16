@@ -26,6 +26,7 @@
 //! `docs/dev/components.md`.
 
 pub(crate) mod animated;
+mod back;
 mod component;
 mod element;
 mod element_ref;
@@ -45,6 +46,7 @@ pub use nsh_macros::{Event, JsObject, PropEnum, Props, methods, module};
 
 pub use self::{
     animated::{AnimOperand, Animated, AnimationEnd, NativeNode, NativeValue, Spring},
+    back::BackSubscription,
     component::{
         Component, ComponentError, ComponentSpec, Event, EventSpec, Method, MethodSpec, NoEvent,
         Param, PropKind, PropSpec, Props, Registry, Root, declarations,
@@ -76,6 +78,7 @@ pub use self::{
     virtual_list::{ListLayout, VirtualList, virtual_list},
 };
 pub(crate) use self::{
+    back::BackListener,
     component::{AnyInstance, caught},
     element::{ElKind, ErasedCx, Globals, PlaceFn, Provided, RenderReads, RenderScope},
     task::{Action, AnswerSlot, Executor},
@@ -100,6 +103,7 @@ pub mod prelude {
         AsyncCx,
         // Host elements and their settings.
         AutoCapitalize,
+        BackSubscription,
         CanvasView,
         Child,
         Children,

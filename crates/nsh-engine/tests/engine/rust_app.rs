@@ -313,3 +313,83 @@ fn rust_components_pass_content_to_rust_components() {
     }
     assert!(updated, "the same text node shows the new count");
 }
+
+/// A Rust component takes the Android back button while it listens; when
+/// it no longer handles it, the app exits.
+#[derive(Default)]
+struct BackCounter {
+    presses: u32,
+    _back: Option<BackSubscription>,
+}
+
+impl Component for BackCounter {
+    const NAME: &'static str = "app.back_counter";
+    type Props = ();
+    type Event = NoEvent;
+
+    fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
+        self._back = Some(cx.on_back_press(|this: &mut Self, cx| {
+            this.presses += 1;
+            cx.notify();
+            this.presses < 2
+        }));
+    }
+
+    fn render(&self, _: &(), _: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        view()
+            .flex_1()
+            .child(text(format!("presses {}", self.presses)))
+    }
+}
+
+#[test]
+fn rust_components_take_the_back_button() {
+    let (tx, rx) = crossbeam_channel::unbounded();
+    let config = EngineConfig {
+        app: App::Rust(Root::of::<BackCounter>()),
+        viewport: Size::new(390.0, 844.0),
+        trace: false,
+        network: None,
+        assets: None,
+        environment: Environment::default(),
+        header_heights: (44.0, 96.0),
+        limits: nsh_engine::Limits::default(),
+        ui_sets: Vec::new(),
+        runtime: None,
+    };
+    let engine = Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap();
+    let first = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(
+        first.items.iter().any(|i| matches!(
+            i,
+            MountItem::Events { id: nsh_core::ROOT_ID, events } if events.contains(EventKind::BackPress)
+        )),
+        "the root wants the back button"
+    );
+    let press = |until: &dyn Fn(&MountItem) -> bool| {
+        engine.control().dispatch_event(
+            nsh_core::ROOT_ID,
+            EventKind::BackPress,
+            EventPayload::None,
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while let Ok(batch) = rx.recv_deadline(deadline) {
+            if batch.items.iter().any(until) {
+                return true;
+            }
+        }
+        false
+    };
+    // Handled: no exit.
+    assert!(press(
+        &|i| matches!(i, MountItem::Text { text, .. } if text.text == "presses 1")
+    ));
+    // Not handled, and JS does not listen: the app exits.
+    assert!(press(&|i| matches!(
+        i,
+        MountItem::Command {
+            command: nsh_core::Command::ExitApp,
+            ..
+        }
+    )));
+}

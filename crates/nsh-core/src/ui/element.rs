@@ -438,6 +438,27 @@ impl<'a, C: Component> Context<'a, C> {
         task::spawn(&self.inner.executor, self.inner.host, f)
     }
 
+    /// Listens to the Android back button (TS:
+    /// `BackHandler.addEventListener("hardwareBackPress", f)`): when no modal
+    /// or stack takes it, `f` runs, newest listener first, and returns true
+    /// when it handled the press; when no listener does, the app exits.
+    /// Dropping the subscription removes the listener; while one exists
+    /// the system's default does not run.
+    pub fn on_back_press(
+        &mut self,
+        f: impl Fn(&mut C, &mut Context<'_, C>) -> bool + 'static,
+    ) -> super::BackSubscription {
+        let listener: super::back::BackListener = Rc::new(move |this, props, cx| {
+            match (this.downcast_mut::<C>(), props.downcast_ref::<C::Props>()) {
+                (Some(this), Some(props)) => f(this, &mut Context::new(cx, props)),
+                _ => false,
+            }
+        });
+        let back = &self.inner.executor.back;
+        let id = back.borrow_mut().add(self.inner.host, listener);
+        super::BackSubscription::new(back, id)
+    }
+
     /// Runs `f` once after `delay` (TS: `setTimeout`; dropping the task
     /// is `clearTimeout`). A task: a timer, then an update.
     pub fn set_timeout(
