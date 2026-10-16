@@ -44,26 +44,25 @@ fn report(key: i64, event: FetchEvent) {
     }
 }
 
-/// Calls static `Net` method `method` with `args`.
+/// Calls static `Net` method `method` with `args` (references that live
+/// until the call: the local frame of `with_env` frees them).
 fn call_net(
-    method: impl FnOnce(&crate::java::Java) -> jni::objects::JStaticMethodID,
-    args: impl FnOnce(&mut JNIEnv<'_>) -> jni::errors::Result<Vec<jni::sys::jvalue>>,
-) {
-    with_env(|env| {
-        let j = java();
-        let args = args(env)?;
-        // SAFETY: each caller passes the arguments of the signature checked
-        // in `java::init`.
-        unsafe {
-            env.call_static_method_unchecked(
-                <&JClass<'_>>::from(j.net.as_obj()),
-                method(j),
-                ReturnType::Primitive(Primitive::Void),
-                &args,
-            )
-        }
-        .map(|_| ())
-    });
+    env: &mut JNIEnv<'_>,
+    method: jni::objects::JStaticMethodID,
+    args: &[jni::sys::jvalue],
+) -> jni::errors::Result<()> {
+    let j = java();
+    // SAFETY: each caller passes the arguments of the signature checked in
+    // `java::init`.
+    unsafe {
+        env.call_static_method_unchecked(
+            <&JClass<'_>>::from(j.net.as_obj()),
+            method,
+            ReturnType::Primitive(Primitive::Void),
+            args,
+        )
+    }
+    .map(|_| ())
 }
 
 struct Task {
@@ -73,36 +72,27 @@ struct Task {
 impl FetchTask for Task {
     fn send(&mut self, chunk: Vec<u8>) {
         let key = self.key;
-        call_net(
-            |j| j.net_send,
-            |env| {
-                let bytes = env.byte_array_from_slice(&chunk)?;
-                // The local reference lives until the frame ends.
-                let bytes = env.auto_local(bytes);
-                Ok(vec![
-                    JValue::Long(key).as_jni(),
-                    JValue::Object(&bytes).as_jni(),
-                ])
-            },
-        );
+        with_env(|env| {
+            let bytes = env.byte_array_from_slice(&chunk)?;
+            let args = [JValue::Long(key).as_jni(), JValue::Object(&bytes).as_jni()];
+            call_net(env, java().net_send, &args)
+        });
     }
 
     fn finish(&mut self) {
         let key = self.key;
-        call_net(|j| j.net_finish, |_| Ok(vec![JValue::Long(key).as_jni()]));
+        with_env(|env| call_net(env, java().net_finish, &[JValue::Long(key).as_jni()]));
     }
 
     fn pause(&mut self, paused: bool) {
         let key = self.key;
-        call_net(
-            |j| j.net_pause,
-            |_| {
-                Ok(vec![
-                    JValue::Long(key).as_jni(),
-                    JValue::Bool(paused.into()).as_jni(),
-                ])
-            },
-        );
+        with_env(|env| {
+            let args = [
+                JValue::Long(key).as_jni(),
+                JValue::Bool(paused.into()).as_jni(),
+            ];
+            call_net(env, java().net_pause, &args)
+        });
     }
 
     fn cancel(self: Box<Self>) {
@@ -111,7 +101,7 @@ impl FetchTask for Task {
             map.remove(&self.key);
         }
         let key = self.key;
-        call_net(|j| j.net_cancel, |_| Ok(vec![JValue::Long(key).as_jni()]));
+        with_env(|env| call_net(env, java().net_cancel, &[JValue::Long(key).as_jni()]));
     }
 }
 
