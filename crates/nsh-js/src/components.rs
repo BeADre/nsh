@@ -385,15 +385,6 @@ fn render_component(
     props: JsValue,
     spec_data: *mut JsValue,
 ) -> Result<JsValue, JsValue> {
-    if let Some(items) = spec.items() {
-        let message = CString::new(format!(
-            "nsh: `{}` lays out rows (`{items}`), which apps compiled by nsh cannot pass yet",
-            spec.export
-        ))
-        .unwrap_or_default();
-        // SAFETY: throws on a live context.
-        return Err(unsafe { qjs::JS_ThrowTypeError(ctx, c"%s".as_ptr(), message.as_ptr()) });
-    }
     let node = dom::create_element(ctx, nsh_core::Tag::View)?;
     let guard = Owned(ctx, node);
     let name = new_string(ctx, spec.name);
@@ -414,6 +405,44 @@ fn render_component(
         r?;
         let reader = Owned(ctx, prop_reader(ctx, props, slot));
         dom::insert_value_at(ctx, holder.1, reader.1, None)?;
+        dom::insert_node(ctx, node, holder.1, None)?;
+        if anchor.is_none() {
+            anchor = Some(holder);
+        }
+    }
+    // A component with rows: a list of the app's data and row renderer as
+    // that slot (only what the app passes: the list checks which slots
+    // exist); the component lays it out and wraps the rows.
+    if let Some(items) = spec.items() {
+        // SAFETY: a new object with getters reading the app's props.
+        let forwarded = Owned(ctx, unsafe { qjs::JS_NewObject(ctx) });
+        for key in crate::list::ITEMS_PROPS {
+            if !has(ctx, props, key) {
+                continue;
+            }
+            let getter = prop_reader(ctx, props, key);
+            let k = CString::new(*key).unwrap_or_default();
+            unsafe {
+                let atom = qjs::JS_NewAtom(ctx, k.as_ptr());
+                qjs::JS_DefineProperty(
+                    ctx,
+                    forwarded.1,
+                    atom,
+                    UNDEFINED,
+                    getter,
+                    UNDEFINED,
+                    (qjs::JS_PROP_HAS_GET | qjs::JS_PROP_HAS_ENUMERABLE | qjs::JS_PROP_ENUMERABLE)
+                        as c_int,
+                );
+                qjs::JS_FreeAtom(ctx, atom);
+                qjs::JS_FreeValue(ctx, getter);
+            }
+        }
+        let holder = Owned(ctx, crate::list::render(ctx, forwarded.1)?);
+        let slot_name = new_string(ctx, items);
+        let r = dom::set_prop_value(ctx, holder.1, "componentSlot", slot_name);
+        unsafe { qjs::JS_FreeValue(ctx, slot_name) };
+        r?;
         dom::insert_node(ctx, node, holder.1, None)?;
         if anchor.is_none() {
             anchor = Some(holder);

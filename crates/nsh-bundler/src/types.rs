@@ -233,6 +233,7 @@ const NATIVE_ELEMENTS: &[(&str, &str)] = &[
     ("video", "ControlProps"),
     ("modal", "ControlProps"),
     ("input-accessory", "ControlProps"),
+    ("list", "ListProps<any>"),
 ];
 
 /// `nsh/jsx-runtime` for an app compiled by nsh: the built-in elements and
@@ -240,7 +241,8 @@ const NATIVE_ELEMENTS: &[(&str, &str)] = &[
 /// compiler).
 fn native_jsx(elements: &[crate::AppElement]) -> String {
     let mut out = String::from(
-        "import type { ViewProps, TextProps, ImageProps, ScrollProps, InputProps, ControlProps, JSX as Base } from \"./types\";\n\n\
+        "import type { ViewProps, TextProps, ImageProps, ScrollProps, InputProps, ControlProps, JSX as Base } from \"./types\";\n\
+         import type { ListProps } from \"./list\";\n\n\
          type PropsOf<C> = C extends (props: infer P) => any ? P : Record<string, any>;\n\n\
          export declare namespace JSX {\n\
          \x20 /** What components return and children accept. */\n\

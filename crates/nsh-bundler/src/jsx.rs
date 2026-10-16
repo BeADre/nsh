@@ -61,8 +61,13 @@ pub(crate) const ELEMENTS: &[(&str, &str)] = &[
     ("input-accessory", "inputaccessory"),
 ];
 
+/// The built-ins that are the renderer's components, not host elements:
+/// called with props like a component.
+pub(crate) const RUNTIME_COMPONENTS: &[&str] = &["list"];
+
 /// The renderer's functions compiled code calls (imported as `_$<name>`).
 const HELPERS: &[&str] = &[
+    "list",
     "element",
     "text",
     "append",
@@ -547,6 +552,9 @@ impl<'a> Compiler<'a, '_> {
                 }
                 if let Some(&(_, core)) = ELEMENTS.iter().find(|(name, _)| *name == tag) {
                     return Some(Tag::Host(core));
+                }
+                if let Some(&name) = RUNTIME_COMPONENTS.iter().find(|n| **n == tag) {
+                    return Some(Tag::Component(self.use_helper(name)));
                 }
                 let hint = self
                     .components

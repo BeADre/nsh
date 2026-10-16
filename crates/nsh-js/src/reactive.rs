@@ -1523,6 +1523,20 @@ pub(crate) fn set_signal(ctx: *mut JsContext, obj: JsValue, value: JsValue) {
     }
 }
 
+/// The number signal object `obj` holds (untracked), if it holds one.
+pub(crate) fn peek_number(ctx: *mut JsContext, obj: JsValue) -> Option<f64> {
+    let v = peek(ctx, obj);
+    // SAFETY: an inline check and a conversion of a live value.
+    unsafe {
+        if !qjs::JS_IsNumber(v) {
+            return None;
+        }
+        let mut n = 0f64;
+        qjs::JS_ToFloat64(ctx, &mut n, v);
+        Some(n)
+    }
+}
+
 /// The current value of signal object `obj` (borrowed; untracked), if live.
 pub(crate) fn peek(ctx: *mut JsContext, obj: JsValue) -> JsValue {
     let class = unsafe { graph(ctx) }.classes.signal;
@@ -1580,6 +1594,26 @@ pub(crate) fn with_root<R>(ctx: *mut JsContext, f: impl FnOnce() -> R) -> (u32, 
     g.listener = listener;
     g.owner = owner;
     (id, r)
+}
+
+/// The current owner (for [`with_root_under`] later).
+pub(crate) fn current_owner(ctx: *mut JsContext) -> u32 {
+    unsafe { graph(ctx) }.owner
+}
+
+/// [`with_root`] as if run under `owner` (from [`current_owner`]): rows a
+/// list makes later see the list's context.
+pub(crate) fn with_root_under<R>(
+    ctx: *mut JsContext,
+    owner: u32,
+    f: impl FnOnce() -> R,
+) -> (u32, R) {
+    let g = unsafe { graph(ctx) };
+    let live = owner != NONE && owner != UNOWNED && !g.nodes[owner as usize].disposed;
+    let previous = std::mem::replace(&mut g.owner, if live { owner } else { NONE });
+    let r = with_root(ctx, f);
+    unsafe { graph(ctx) }.owner = previous;
+    r
 }
 
 /// Disposes owner `id` (a root from [`with_root`]), untracked.

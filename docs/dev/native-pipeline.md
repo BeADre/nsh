@@ -83,6 +83,17 @@ One Oxc pass removes TypeScript and lowers JSX (`plugin.rs` `compile_native`):
 - The reactive graph and the renderer share one per-context state (`state.rs`); natives reach each part by shared or
   short exclusive references, never across a call into JS or a free of a JS value.
 
+## Lists and node methods
+
+- `<list>` is a built-in the renderer implements (`list.rs`, compiled as a component call to `nsh:rt`'s `list`): the
+  port of `list.ts`. The core asks for rows (`Host::bind_list`), answered natively; a recycled cell gets a new index
+  and its item accessor follows; header, footer, empty and separator cells, viewability tokens (with
+  `minimumViewTime`), `initialScrollIndex`. Rust components with rows (`ListView`) get a list of the app's data as
+  their items slot.
+- Nodes have the methods of `YNode` (`focus`, `blur`, `setSelection`, `command`, `scrollTo`, `zoomTo`,
+  `scrollToOffset`, `scrollToIndex`, `scrollToEnd`, the web view's and video's): each sends a command
+  (`protocol::decode_command`).
+
 ## Types (`crates/nsh-bundler/src/types.rs`)
 
 `.nsh/types` of a native app has the native `nsh` and a JSX namespace with the built-ins and the app's kebab-case
@@ -95,6 +106,6 @@ kebab tag uses (`Card` for `<card>`) stays, one only types use goes even without
 
 ## Not there yet
 
-`List` (and so `ListView`'s rows), navigation (`Stack`, `Screen`, `Modal`), `animated`, `canvas`, gestures and the
-responder system, `webview` / `video` / `native`, the hand-written parts of `nsh/android` and `nsh/ios`, node methods
-(`focus`, `scrollTo`, …) and hot module replacement (a development build reloads the whole bundle).
+Navigation (`Stack`, `Screen`, `Modal`), `animated`, `canvas`, gestures and the responder system, `webview` / `video`
+/ `native`, the hand-written parts of `nsh/android` and `nsh/ios`, and hot module replacement (a development build
+reloads the whole bundle).

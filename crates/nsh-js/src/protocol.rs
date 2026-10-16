@@ -207,106 +207,13 @@ pub(crate) fn decode<'js>(
                 let id = r.id()?;
                 let name = r.string()?;
                 let arg = r.value()?;
-                let command = match name.as_str() {
-                    "focus" => Command::Focus,
-                    "blur" => Command::Blur,
-                    "reload" => Command::Reload,
-                    "goBack" => Command::GoBack,
-                    "goForward" => Command::GoForward,
-                    "stopLoading" => Command::StopLoading,
-                    "injectJavaScript" => Command::InjectJavaScript(string(&arg)?),
-                    "postMessage" => Command::PostMessage(string(&arg)?),
-                    "seek" => Command::Seek(arg.as_number().unwrap_or(0.0)),
-                    "native" => {
-                        let o = arg.as_object();
-                        let name = o
-                            .and_then(|o| o.get::<_, Option<String>>("name").ok().flatten())
-                            .unwrap_or_default();
-                        let args = match o.map(|o| o.get::<_, Value>("args")).transpose()? {
-                            Some(args) => to_json(&args)?,
-                            None => nsh_core::JsonValue::Null,
-                        };
-                        Command::Native {
-                            name: name.into(),
-                            args,
-                        }
-                    }
-                    "setJsResponder" => Command::SetJsResponder {
-                        block: arg.as_bool().unwrap_or(true),
-                    },
-                    "clearJsResponder" => Command::ClearJsResponder,
-                    "setSelection" => {
-                        let field = |key: &str| {
-                            arg.as_object()
-                                .and_then(|o| o.get::<_, Option<f64>>(key).ok().flatten())
-                                .unwrap_or(0.0)
-                                .max(0.0) as u32
-                        };
-                        Command::SetSelection {
-                            start: field("start"),
-                            end: field("end"),
-                        }
-                    }
-                    "scrollToIndex" => {
-                        let o = arg.as_object();
-                        let f = |key: &str| -> rquickjs::Result<Option<f32>> {
-                            o.map_or(Ok(None), |o| field_f32(o, key))
-                        };
-                        Command::ScrollToIndex {
-                            index: f("index")?.unwrap_or(0.0).max(0.0) as u32,
-                            animated: o
-                                .and_then(|o| o.get::<_, Option<bool>>("animated").ok().flatten())
-                                .unwrap_or(true),
-                            view_position: f("viewPosition")?.unwrap_or(0.0),
-                            view_offset: f("viewOffset")?.unwrap_or(0.0),
-                        }
-                    }
-                    "scrollToEnd" => Command::ScrollToEnd {
-                        animated: arg
-                            .as_object()
-                            .and_then(|o| o.get::<_, Option<bool>>("animated").ok().flatten())
-                            .unwrap_or(true),
-                    },
-                    "layoutAnimation" => Command::LayoutAnimation(
-                        <LayoutAnimation as HostValue>::decode(&Js(arg), &mut HostCx::default())
-                            .unwrap_or_default(),
-                    ),
-                    "zoomTo" => {
-                        let field = |key: &str| {
-                            arg.as_object()
-                                .and_then(|o| o.get::<_, Option<f64>>(key).ok().flatten())
-                        };
-                        Command::ZoomTo {
-                            scale: field("scale").unwrap_or(1.0) as f32,
-                            center: field("x")
-                                .zip(field("y"))
-                                .map(|(x, y)| (x as f32, y as f32)),
-                            animated: arg
-                                .as_object()
-                                .and_then(|o| o.get::<_, Option<bool>>("animated").ok().flatten())
-                                .unwrap_or(true),
-                        }
-                    }
-                    "scrollTo" => {
-                        let field = |key: &str| {
-                            arg.as_object()
-                                .and_then(|o| o.get::<_, Option<f64>>(key).ok().flatten())
-                        };
-                        Command::ScrollTo {
-                            x: field("x").unwrap_or(0.0) as f32,
-                            y: field("y").unwrap_or(0.0) as f32,
-                            animated: arg
-                                .as_object()
-                                .and_then(|o| o.get::<_, Option<bool>>("animated").ok().flatten())
-                                .unwrap_or(true),
-                        }
-                    }
-                    other => {
-                        warnings.warn(format!("unknown command `{other}`"));
+                match decode_command(&name, arg)? {
+                    Some(command) => Op::Command { id, command },
+                    None => {
+                        warnings.warn(format!("unknown command `{name}`"));
                         continue;
                     }
-                };
-                Op::Command { id, command }
+                }
             }
             other => {
                 return Err(Exception::throw_type(
@@ -318,6 +225,110 @@ pub(crate) fn decode<'js>(
         out.push(op);
     }
     Ok(())
+}
+
+/// The command `name` with argument `arg` sends to a node's view (`None`:
+/// an unknown command).
+pub(crate) fn decode_command<'js>(
+    name: &str,
+    arg: Value<'js>,
+) -> rquickjs::Result<Option<Command>> {
+    Ok(Some(match name {
+        "focus" => Command::Focus,
+        "blur" => Command::Blur,
+        "reload" => Command::Reload,
+        "goBack" => Command::GoBack,
+        "goForward" => Command::GoForward,
+        "stopLoading" => Command::StopLoading,
+        "injectJavaScript" => Command::InjectJavaScript(string(&arg)?),
+        "postMessage" => Command::PostMessage(string(&arg)?),
+        "seek" => Command::Seek(arg.as_number().unwrap_or(0.0)),
+        "native" => {
+            let o = arg.as_object();
+            let name = o
+                .and_then(|o| o.get::<_, Option<String>>("name").ok().flatten())
+                .unwrap_or_default();
+            let args = match o.map(|o| o.get::<_, Value>("args")).transpose()? {
+                Some(args) => to_json(&args)?,
+                None => nsh_core::JsonValue::Null,
+            };
+            Command::Native {
+                name: name.into(),
+                args,
+            }
+        }
+        "setJsResponder" => Command::SetJsResponder {
+            block: arg.as_bool().unwrap_or(true),
+        },
+        "clearJsResponder" => Command::ClearJsResponder,
+        "setSelection" => {
+            let field = |key: &str| {
+                arg.as_object()
+                    .and_then(|o| o.get::<_, Option<f64>>(key).ok().flatten())
+                    .unwrap_or(0.0)
+                    .max(0.0) as u32
+            };
+            Command::SetSelection {
+                start: field("start"),
+                end: field("end"),
+            }
+        }
+        "scrollToIndex" => {
+            let o = arg.as_object();
+            let f = |key: &str| -> rquickjs::Result<Option<f32>> {
+                o.map_or(Ok(None), |o| field_f32(o, key))
+            };
+            Command::ScrollToIndex {
+                index: f("index")?.unwrap_or(0.0).max(0.0) as u32,
+                animated: o
+                    .and_then(|o| o.get::<_, Option<bool>>("animated").ok().flatten())
+                    .unwrap_or(true),
+                view_position: f("viewPosition")?.unwrap_or(0.0),
+                view_offset: f("viewOffset")?.unwrap_or(0.0),
+            }
+        }
+        "scrollToEnd" => Command::ScrollToEnd {
+            animated: arg
+                .as_object()
+                .and_then(|o| o.get::<_, Option<bool>>("animated").ok().flatten())
+                .unwrap_or(true),
+        },
+        "layoutAnimation" => Command::LayoutAnimation(
+            <LayoutAnimation as HostValue>::decode(&Js(arg), &mut HostCx::default())
+                .unwrap_or_default(),
+        ),
+        "zoomTo" => {
+            let field = |key: &str| {
+                arg.as_object()
+                    .and_then(|o| o.get::<_, Option<f64>>(key).ok().flatten())
+            };
+            Command::ZoomTo {
+                scale: field("scale").unwrap_or(1.0) as f32,
+                center: field("x")
+                    .zip(field("y"))
+                    .map(|(x, y)| (x as f32, y as f32)),
+                animated: arg
+                    .as_object()
+                    .and_then(|o| o.get::<_, Option<bool>>("animated").ok().flatten())
+                    .unwrap_or(true),
+            }
+        }
+        "scrollTo" => {
+            let field = |key: &str| {
+                arg.as_object()
+                    .and_then(|o| o.get::<_, Option<f64>>(key).ok().flatten())
+            };
+            Command::ScrollTo {
+                x: field("x").unwrap_or(0.0) as f32,
+                y: field("y").unwrap_or(0.0) as f32,
+                animated: arg
+                    .as_object()
+                    .and_then(|o| o.get::<_, Option<bool>>("animated").ok().flatten())
+                    .unwrap_or(true),
+            }
+        }
+        _ => return Ok(None),
+    }))
 }
 
 /// Reads the node id of a native value object (`{ __nv: id }`).

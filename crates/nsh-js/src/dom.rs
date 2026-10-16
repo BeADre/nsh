@@ -180,6 +180,27 @@ impl Dom {
             };
             // Calls of a context are function calls.
             qjs::JS_SetClassProto(raw, classes.context, qjs::JS_GetFunctionProto(raw));
+            // A node's methods send commands to its view.
+            let proto = qjs::JS_NewObject(raw);
+            for (name, length) in NODE_METHODS {
+                let mut data = [qjs::JS_NewStringLen(
+                    raw,
+                    name.as_ptr().cast(),
+                    name.len() as _,
+                )];
+                let f = qjs::JS_NewCFunctionData(
+                    raw,
+                    Some(node_method),
+                    *length,
+                    0,
+                    1,
+                    data.as_mut_ptr(),
+                );
+                qjs::JS_FreeValue(raw, data[0]);
+                let cname = std::ffi::CString::new(*name).unwrap_or_default();
+                qjs::JS_SetPropertyStr(raw, proto, cname.as_ptr(), f);
+            }
+            qjs::JS_SetClassProto(raw, classes.node, proto);
             classes
         };
         Dom {
@@ -248,6 +269,117 @@ impl Dom {
             .get((id >> 1) as usize)
             .copied()
             .unwrap_or(ptr::null_mut())
+    }
+}
+
+/// The methods of nodes (`ref` objects): each sends a command to the
+/// node's view, in order with the ops before it.
+const NODE_METHODS: &[(&str, c_int)] = &[
+    ("focus", 0),
+    ("blur", 0),
+    ("setSelection", 2),
+    ("command", 2),
+    ("scrollTo", 1),
+    ("zoomTo", 1),
+    ("scrollToOffset", 1),
+    ("scrollToIndex", 1),
+    ("scrollToEnd", 1),
+    ("reload", 0),
+    ("goBack", 0),
+    ("goForward", 0),
+    ("stopLoading", 0),
+    ("injectJavaScript", 1),
+    ("postMessage", 1),
+    ("seek", 1),
+];
+
+/// A node method: `this` is the node, data the method's name.
+unsafe extern "C" fn node_method(
+    ctx: *mut JsContext,
+    this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+    _magic: c_int,
+    data: *mut JsValue,
+) -> JsValue {
+    // SAFETY: one data value (the name); arguments are borrowed; values
+    // made here are freed.
+    let Some(name) = to_string(ctx, unsafe { *data }) else {
+        return qjs::JS_EXCEPTION;
+    };
+    let Some(id) = node_id(ctx, this) else {
+        return throw_type(ctx, "nsh: not a node");
+    };
+    let a0 = arg(argc, argv, 0);
+    let number = |v: JsValue| -> JsValue {
+        let mut n = 0f64;
+        unsafe { qjs::JS_ToFloat64(ctx, &mut n, v) };
+        qjs::JS_NewFloat64(n)
+    };
+    let field = |obj: JsValue, key: &CStr| -> JsValue {
+        unsafe {
+            if qjs::JS_IsObject(obj) {
+                qjs::JS_GetPropertyStr(ctx, obj, key.as_ptr())
+            } else {
+                UNDEFINED
+            }
+        }
+    };
+    let (command, argument) = unsafe {
+        match name.as_str() {
+            "setSelection" => {
+                let o = qjs::JS_NewObject(ctx);
+                let start = number(a0);
+                let a1 = arg(argc, argv, 1);
+                let end = if qjs::JS_IsUndefined(a1) {
+                    start
+                } else {
+                    number(a1)
+                };
+                qjs::JS_SetPropertyStr(ctx, o, c"start".as_ptr(), start);
+                qjs::JS_SetPropertyStr(ctx, o, c"end".as_ptr(), end);
+                ("setSelection", o)
+            }
+            "command" => {
+                let o = qjs::JS_NewObject(ctx);
+                qjs::JS_SetPropertyStr(ctx, o, c"name".as_ptr(), qjs::JS_DupValue(ctx, a0));
+                qjs::JS_SetPropertyStr(
+                    ctx,
+                    o,
+                    c"args".as_ptr(),
+                    qjs::JS_DupValue(ctx, arg(argc, argv, 1)),
+                );
+                ("native", o)
+            }
+            "scrollToOffset" => {
+                let o = qjs::JS_NewObject(ctx);
+                let offset = field(a0, c"offset");
+                qjs::JS_SetPropertyStr(ctx, o, c"x".as_ptr(), qjs::JS_DupValue(ctx, offset));
+                qjs::JS_SetPropertyStr(ctx, o, c"y".as_ptr(), offset);
+                qjs::JS_SetPropertyStr(ctx, o, c"animated".as_ptr(), field(a0, c"animated"));
+                ("scrollTo", o)
+            }
+            "scrollToEnd" if qjs::JS_IsUndefined(a0) => ("scrollToEnd", qjs::JS_NewObject(ctx)),
+            other => (
+                NODE_METHODS
+                    .iter()
+                    .find(|(n, _)| *n == other)
+                    .map_or("", |(n, _)| *n),
+                qjs::JS_DupValue(ctx, a0),
+            ),
+        }
+    };
+    // SAFETY: a context reference for the decoder, which takes `argument`.
+    let cx = unsafe { Ctx::from_raw(std::ptr::NonNull::new_unchecked(ctx)) };
+    let value = unsafe { Value::from_raw(cx, argument) };
+    match crate::protocol::decode_command(command, value) {
+        Ok(Some(command)) => dom(ctx)
+            .push(ctx, Op::Command { id, command })
+            .err()
+            .unwrap_or(UNDEFINED),
+        Ok(None) => UNDEFINED,
+        Err(rquickjs::Error::Exception) => qjs::JS_EXCEPTION,
+        Err(e) => throw_type(ctx, &format!("nsh: {name}: {e}")),
     }
 }
 
@@ -346,6 +478,15 @@ pub(crate) fn insert_value_at(
     marker: Option<JsValue>,
 ) -> Result<(), JsValue> {
     insert_value(ctx, parent, value, marker)
+}
+
+/// Removes node `child` from `parent`.
+pub(crate) fn remove_node(
+    ctx: *mut JsContext,
+    parent: JsValue,
+    child: JsValue,
+) -> Result<(), JsValue> {
+    remove_child(ctx, parent, child)
 }
 
 /// Moves node `child` into `parent` before `before`.
@@ -2009,6 +2150,7 @@ pub(crate) const RT_EXPORTS: &[(&str, Export)] = &[
     ("cond", Export::Function(cond, 3)),
     ("each", Export::Function(each, 3)),
     ("merge", Export::Function(merge, 2)),
+    ("list", Export::Function(crate::list::list, 1)),
     ("setup", Export::Function(setup, 2)),
 ];
 
@@ -2218,6 +2360,37 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(reported(&host), [r#"["light","dark","dark"]"#]);
+    }
+
+    #[test]
+    fn node_methods_send_commands() {
+        let host = Host::new().unwrap();
+        host.eval_source(
+            r#"
+            import { element } from "nsh:rt";
+            const s = element("scroll");
+            s.scrollTo({ y: 10, animated: false });
+            s.scrollToIndex({ index: 3 });
+            const i = element("input");
+            i.focus();
+            i.setSelection(2);
+            globalThis.keep = [s, i];
+            "#,
+        )
+        .unwrap();
+        let commands: Vec<String> = ops(&host, false)
+            .into_iter()
+            .filter(|o| o.starts_with("Command"))
+            .collect();
+        assert_eq!(
+            commands,
+            [
+                "Command { id: 2, command: ScrollTo { x: 0.0, y: 10.0, animated: false } }",
+                "Command { id: 2, command: ScrollToIndex { index: 3, animated: true, view_position: 0.0, view_offset: 0.0 } }",
+                "Command { id: 4, command: Focus }",
+                "Command { id: 4, command: SetSelection { start: 2, end: 2 } }",
+            ]
+        );
     }
 
     #[test]

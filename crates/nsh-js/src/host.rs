@@ -300,6 +300,13 @@ impl Host {
     pub fn bind_list(&self, list: NodeId, binds: &[(u32, u32)]) {
         self.guarded(Phase::Call, || {
             self.ctx.with(|ctx| {
+                // A list of compiled JSX binds natively.
+                if let Some(bound) = crate::list::bind(ctx.as_raw().as_ptr(), list, binds) {
+                    if bound.is_err() {
+                        self.report::<()>(&ctx, Err(rquickjs::Error::Exception));
+                    }
+                    return;
+                }
                 let result = (|| {
                     let flat = rquickjs::Array::new(ctx.clone())?;
                     for (i, &(slot, index)) in binds.iter().enumerate() {

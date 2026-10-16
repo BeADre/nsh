@@ -1116,3 +1116,61 @@ fn native_runtime_modules() {
     assert_eq!(toast, Some(("hello".to_owned(), true)));
     assert_eq!(focused, Some(note));
 }
+
+const NATIVE_ROWS: &str = r#"import { mount } from "nsh";
+import { Group, ListView } from "nsh/ui/mobile";
+
+const rows = Array.from({ length: 100 }, (_, i) => ({ id: i, label: `Row ${i}` }));
+
+mount(() => (
+  <list-view
+    each={rows}
+    ListHeaderComponent={() => (
+      <group>
+        <text>First</text>
+        <text>Second</text>
+      </group>
+    )}
+  >
+    {(row) => <text>{row().label}</text>}
+  </list-view>
+));
+"#;
+
+#[test]
+fn native_components_place_the_apps_children_and_rows() {
+    let (_engine, rx) = start_native(NATIVE_ROWS, Environment::default());
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    let parent_of = |id| {
+        first.items.iter().find_map(|i| match i {
+            MountItem::Insert { parent, child, .. } if *child == id => Some(*parent),
+            _ => None,
+        })
+    };
+    let frame = |id| {
+        first.items.iter().find_map(|i| match i {
+            MountItem::Frame { id: f, frame } if *f == id => Some(*frame),
+            _ => None,
+        })
+    };
+    let top_border = |id| {
+        first.items.iter().any(|i| {
+            matches!(i, MountItem::ViewStyle { id: v, style } if *v == id && style.borders.widths[0] == 1.0)
+        })
+    };
+    let a = parent_of(text_ids(&first, "First").expect("First")).unwrap();
+    let b = parent_of(text_ids(&first, "Second").expect("Second")).unwrap();
+    assert!(a % 2 == 1 && b % 2 == 1 && a != b);
+    assert!(!top_border(a) && top_border(b));
+    let row0 = parent_of(text_ids(&first, "Row 0").expect("Row 0")).unwrap();
+    let row1 = parent_of(text_ids(&first, "Row 1").expect("Row 1")).unwrap();
+    assert!(row0 % 2 == 1 && row1 % 2 == 1);
+    assert_eq!(
+        frame(text_ids(&first, "Row 0").unwrap()).map(|f| f.x),
+        Some(16.0)
+    );
+    assert!(!top_border(row0) && top_border(row1));
+    assert!(text_ids(&first, "Row 99").is_none());
+}

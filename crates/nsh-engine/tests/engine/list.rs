@@ -30,6 +30,21 @@ function App() {
 render(() => <App />, root);
 "#;
 
+/// The same app compiled by nsh: `<list>` on the native modules.
+const NATIVE_APP: &str = r#"
+import { signal, mount } from "nsh";
+const rows = signal(Array.from({ length: 100 }, (_, i) => i));
+function App() {
+  return (
+    <list each={rows()} estimatedItemSize={50} style={{ flex: 1 }}
+          onEndReached={() => rows.update((r) => [...r, ...Array.from({ length: 100 }, (_, i) => r.length + i)])}>
+      {(row) => <view style={{ height: 50 }}><text>{`row ${row()}`}</text></view>}
+    </list>
+  );
+}
+mount(App);
+"#;
+
 fn texts(batch: &MountBatch) -> Vec<String> {
     batch
         .items
@@ -60,10 +75,22 @@ fn cells_created(batch: &MountBatch) -> usize {
 
 #[test]
 fn list_scrolls_with_recycled_cells() {
-    let dir = std::env::temp_dir().join(format!("nsh-list-{}", std::process::id()));
+    scrolls_with_recycled_cells(APP, false);
+}
+
+#[test]
+fn native_list_scrolls_with_recycled_cells() {
+    scrolls_with_recycled_cells(NATIVE_APP, true);
+}
+
+fn scrolls_with_recycled_cells(app: &str, native: bool) {
+    let dir = std::env::temp_dir().join(format!("nsh-list-{}-{native}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
+    if native {
+        std::fs::write(dir.join("nsh.json"), r#"{ "compiler": "nsh" }"#).unwrap();
+    }
     let entry = dir.join("App.tsx");
-    std::fs::write(&entry, APP).unwrap();
+    std::fs::write(&entry, app).unwrap();
     let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {
         entry,
         minify: false,

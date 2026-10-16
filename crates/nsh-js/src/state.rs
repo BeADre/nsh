@@ -14,7 +14,8 @@ use rquickjs::{Ctx, qjs};
 use rustc_hash::FxHashMap;
 
 use crate::{
-    components::Components, dom::Dom, env::Env, host::Shared, modules::ModuleTable, reactive::Graph,
+    components::Components, dom::Dom, env::Env, host::Shared, list::Lists, modules::ModuleTable,
+    reactive::Graph,
 };
 
 pub(crate) struct State {
@@ -22,6 +23,7 @@ pub(crate) struct State {
     pub(crate) dom: Dom,
     pub(crate) env: Env,
     pub(crate) components: Components,
+    pub(crate) lists: Lists,
     /// The native modules the context serves (the loader reads it).
     pub(crate) modules: ModuleTable,
 }
@@ -61,6 +63,7 @@ pub(crate) fn install(ctx: &Ctx<'_>, shared: Rc<Shared>, ui_sets: &[Registry]) {
             dom,
             env: Env::default(),
             components: Components::default(),
+            lists: Lists::default(),
             modules: ModuleTable::new(ui_sets),
         }));
         qjs::JS_SetContextOpaque(raw, state as *mut c_void);
@@ -87,6 +90,7 @@ pub(crate) fn uninstall(ctx: &Ctx<'_>) {
         STATES.with(|m| m.borrow_mut().remove(&(rt as usize)));
         qjs::JS_SetContextOpaque(raw, ptr::null_mut());
         let mut state = Box::from_raw(p);
+        state.lists.free_all(raw);
         state.components.free_all(raw);
         state.env.free_all(raw);
         state.dom.free_all(raw);
