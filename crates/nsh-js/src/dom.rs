@@ -1237,6 +1237,76 @@ fn reconcile(
 
 // --- Components and control flow ------------------------------------------------
 
+/// `merge(...sources)`: a new object with the own enumerable properties of
+/// each source, later ones winning; getters stay getters (props spread
+/// into a component stay live).
+unsafe extern "C" fn merge(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+) -> JsValue {
+    // SAFETY: property reads and definitions on live objects; descriptor
+    // values are freed after use.
+    unsafe {
+        let target = qjs::JS_NewObject(ctx);
+        for i in 0..argc.max(0) as usize {
+            let source = *argv.add(i);
+            if !qjs::JS_IsObject(source) {
+                continue;
+            }
+            let mut tab: *mut qjs::JSPropertyEnum = ptr::null_mut();
+            let mut len: u32 = 0;
+            if qjs::JS_GetOwnPropertyNames(
+                ctx,
+                &mut tab,
+                &mut len,
+                source,
+                (qjs::JS_GPN_STRING_MASK | qjs::JS_GPN_SYMBOL_MASK | qjs::JS_GPN_ENUM_ONLY)
+                    as c_int,
+            ) != 0
+            {
+                qjs::JS_FreeValue(ctx, target);
+                return qjs::JS_EXCEPTION;
+            }
+            for j in 0..len as usize {
+                let atom = (*tab.add(j)).atom;
+                let mut desc = qjs::JSPropertyDescriptor {
+                    flags: 0,
+                    value: UNDEFINED,
+                    getter: UNDEFINED,
+                    setter: UNDEFINED,
+                };
+                if qjs::JS_GetOwnProperty(ctx, &mut desc, source, atom) <= 0 {
+                    continue;
+                }
+                let flags = if desc.flags & qjs::JS_PROP_GETSET as c_int != 0 {
+                    qjs::JS_PROP_HAS_GET | qjs::JS_PROP_HAS_SET
+                } else {
+                    qjs::JS_PROP_HAS_VALUE | qjs::JS_PROP_HAS_WRITABLE | qjs::JS_PROP_WRITABLE
+                } | qjs::JS_PROP_HAS_ENUMERABLE
+                    | qjs::JS_PROP_ENUMERABLE
+                    | qjs::JS_PROP_HAS_CONFIGURABLE
+                    | qjs::JS_PROP_CONFIGURABLE;
+                qjs::JS_DefineProperty(
+                    ctx,
+                    target,
+                    atom,
+                    desc.value,
+                    desc.getter,
+                    desc.setter,
+                    flags as c_int,
+                );
+                qjs::JS_FreeValue(ctx, desc.value);
+                qjs::JS_FreeValue(ctx, desc.getter);
+                qjs::JS_FreeValue(ctx, desc.setter);
+            }
+            qjs::JS_FreePropertyEnum(ctx, tab, len);
+        }
+        target
+    }
+}
+
 /// `component(Comp, props)`: renders a component (untracked).
 unsafe extern "C" fn component(
     ctx: *mut JsContext,
@@ -1841,6 +1911,7 @@ pub(crate) const RT_EXPORTS: &[(&CStr, Native, c_int)] = &[
     (c"component", component, 2),
     (c"cond", cond, 3),
     (c"each", each, 3),
+    (c"merge", merge, 2),
     (c"setup", setup, 2),
 ];
 

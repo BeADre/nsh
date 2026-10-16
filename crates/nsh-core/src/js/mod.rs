@@ -13,6 +13,11 @@
 
 use std::time::Duration;
 
+/// The native ES modules a bundle compiled with nsh's JSX compiler imports
+/// (served by `nsh-js`, left as imports by the bundler): `nsh`, the API
+/// apps write against, and `nsh:rt`, the renderer compiled JSX calls.
+pub const NATIVE_MODULES: &[&str] = &["nsh", "nsh:rt"];
+
 /// Resource limits of one VM.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Limits {

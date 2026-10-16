@@ -5,10 +5,16 @@
 //! runtime module, and rolldown bundles everything into one IIFE script.
 //! `solid-js` and the `nsh` runtime are embedded in the binary, so apps
 //! need no `node_modules` for them.
+//!
+//! Apps with `"compiler": "nsh"` in `nsh.json` are compiled by nsh's own
+//! JSX compiler ([`jsx`]) against the native modules (`nsh`, `nsh:rt`),
+//! which stay imports: the bundle is one ES module holding only the app's
+//! code.
 
 mod classes;
 mod embedded;
 mod hot;
+mod jsx;
 mod plugin;
 mod types;
 
@@ -24,6 +30,32 @@ use rolldown::{
 };
 use rolldown_common::Output;
 pub use types::{TSCONFIG, type_definitions};
+
+/// The JSX compiler and runtime an app uses (`nsh.json` `"compiler"`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Compiler {
+    /// Solid's universal compiler and the embedded JS runtime (the default
+    /// while the native one is completed).
+    Solid,
+    /// nsh's compiler and the native modules (`"compiler": "nsh"`).
+    Nsh,
+}
+
+/// The `"compiler"` of the `nsh.json` next to the entry.
+fn compiler(dir: &std::path::Path) -> Result<Compiler, BundleError> {
+    let Ok(text) = std::fs::read_to_string(dir.join("nsh.json")) else {
+        return Ok(Compiler::Solid);
+    };
+    let config: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| BundleError::other(format!("nsh.json: {e}")))?;
+    match config.get("compiler").and_then(|c| c.as_str()) {
+        None | Some("solid") => Ok(Compiler::Solid),
+        Some("nsh") => Ok(Compiler::Nsh),
+        Some(other) => Err(BundleError::other(format!(
+            "nsh.json: unknown compiler `{other}` (\"nsh\" or \"solid\")"
+        ))),
+    }
+}
 
 /// What to bundle and how.
 #[derive(Debug, Clone)]
@@ -97,7 +129,8 @@ fn strip_ansi(s: &str) -> String {
 /// A bundled app.
 #[derive(Debug, Clone)]
 pub struct Bundle {
-    /// The bundle as a single IIFE script.
+    /// The bundle: a single IIFE script, or with nsh's compiler an ES
+    /// module importing the native modules.
     pub code: String,
     /// Source map (JSON) from `code` back to the app sources.
     pub source_map: Option<String>,
@@ -181,6 +214,7 @@ pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError
     let cwd_root = cwd.clone();
     let tailwind = tailwind_setup(&cwd)?;
     let capabilities = capabilities(&cwd)?;
+    let compiler = compiler(&cwd)?;
     let plugin_error = Arc::new(Mutex::new(None));
     let assets = Arc::new(Mutex::new(Vec::new()));
     let mut bundler = Bundler::with_plugins(
@@ -193,7 +227,11 @@ pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError
             // Nothing is written; this only makes source map paths relative
             // to the entry directory (`App.tsx`, not `../App.tsx`).
             dir: Some(".".into()),
-            format: Some(OutputFormat::Iife),
+            // nsh's compiler: imports of the native modules stay.
+            format: Some(match compiler {
+                Compiler::Solid => OutputFormat::Iife,
+                Compiler::Nsh => OutputFormat::Esm,
+            }),
             // Never `Node`: solid-js maps the `node` export condition to its
             // non-reactive server build.
             platform: Some(Platform::Browser),
@@ -208,6 +246,8 @@ pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError
             assets: assets.clone(),
             hot: false,
             tailwind,
+            compiler,
+            entry: entry.clone(),
         })],
     )
     .map_err(|e| BundleError::new(e.into_vec()))?;
@@ -255,6 +295,9 @@ pub struct HotBundle {
     modules: Vec<HotModule>,
     /// Module id of the entry.
     entry: String,
+    /// With nsh's compiler: the whole bundle (an ES module) and its source
+    /// map; any change reloads it.
+    whole: Option<(String, Option<String>)>,
     /// Asset files the app imports (as in [`Bundle::assets`]).
     pub assets: Vec<PathBuf>,
     /// As in [`Bundle::capabilities`].
@@ -294,6 +337,9 @@ impl HotBundle {
     /// The whole app as one script: the hot runtime, every module, and the
     /// start of the entry.
     pub fn script(&self) -> (String, Option<String>) {
+        if let Some(whole) = &self.whole {
+            return whole.clone();
+        }
         let mut joiner = rolldown_sourcemap::SourceJoiner::default();
         joiner.enable_sourcemap = true;
         joiner.append_source(HOT_RUNTIME);
@@ -312,6 +358,14 @@ impl HotBundle {
 
     /// The update from `previous` (what hosts run) to this bundle.
     pub fn patch(&self, previous: &HotBundle) -> HotPatch {
+        if self.whole.is_some() || previous.whole.is_some() {
+            let same = matches!((&self.whole, &previous.whole), (Some(a), Some(b)) if a.0 == b.0);
+            return if same {
+                HotPatch::Unchanged
+            } else {
+                HotPatch::Reload
+            };
+        }
         if self.entry != previous.entry {
             return HotPatch::Reload;
         }
@@ -392,6 +446,21 @@ pub async fn bundle_hot_async(entry: &std::path::Path) -> Result<HotBundle, Bund
         .parent()
         .ok_or_else(|| BundleError::other("entry has no parent directory"))?
         .to_path_buf();
+    if compiler(&cwd)? == Compiler::Nsh {
+        let bundle = bundle_async(&BundleOptions {
+            entry: entry.clone(),
+            minify: false,
+        })
+        .await?;
+        return Ok(HotBundle {
+            modules: Vec::new(),
+            entry: String::new(),
+            whole: Some((bundle.code, bundle.source_map)),
+            assets: bundle.assets,
+            capabilities: bundle.capabilities,
+            elapsed_ms: bundle.elapsed_ms,
+        });
+    }
     let plugin_error = Arc::new(Mutex::new(None));
     let assets = Arc::new(Mutex::new(Vec::new()));
     let tailwind = tailwind_setup(&cwd)?;
@@ -423,6 +492,8 @@ pub async fn bundle_hot_async(entry: &std::path::Path) -> Result<HotBundle, Bund
             assets: assets.clone(),
             hot: true,
             tailwind,
+            compiler: Compiler::Solid,
+            entry: entry.clone(),
         })],
     )
     .map_err(|e| BundleError::new(e.into_vec()))?;
@@ -461,6 +532,7 @@ pub async fn bundle_hot_async(entry: &std::path::Path) -> Result<HotBundle, Bund
     assets.dedup();
     Ok(HotBundle {
         modules,
+        whole: None,
         entry: entry_id.ok_or_else(|| BundleError::other("bundle produced no entry chunk"))?,
         assets,
         capabilities,

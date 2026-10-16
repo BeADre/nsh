@@ -24,10 +24,14 @@ use rolldown::{
     },
 };
 
-use crate::embedded::{self, RENDERER_SPECIFIER};
+use crate::{
+    Compiler,
+    embedded::{self, RENDERER_SPECIFIER},
+};
 
-/// Serves embedded packages and compiles JSX with the Solid universal
-/// compiler.
+/// Serves embedded packages and compiles JSX: with the Solid universal
+/// compiler, or with nsh's own against the native modules
+/// (`"compiler": "nsh"`).
 #[derive(Debug)]
 pub(crate) struct NshPlugin {
     /// Paths in error messages are shown relative to this directory.
@@ -42,6 +46,10 @@ pub(crate) struct NshPlugin {
     pub(crate) hot: bool,
     /// The app's themes (`nsh.json`).
     pub(crate) tailwind: Arc<ThemeSetup>,
+    /// The JSX compiler (and runtime) the app uses.
+    pub(crate) compiler: Compiler,
+    /// The entry module (with nsh's compiler, it sets up the themes).
+    pub(crate) entry: PathBuf,
 }
 
 /// The `"tailwind"` and `"theme"` of the app's `nsh.json`.
@@ -100,7 +108,44 @@ fn density(path: &Path) -> f64 {
     }
 }
 
+/// The components of the mobile UI, for hints about tags they would be.
+fn ui_components() -> &'static [String] {
+    static NAMES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    NAMES.get_or_init(|| {
+        nsh_ui_mobile::registry()
+            .specs()
+            .iter()
+            .map(|s| s.export.clone())
+            .collect()
+    })
+}
+
 impl NshPlugin {
+    /// With nsh's compiler: the entry's first statement, giving the
+    /// renderer the app's themes.
+    fn prologue(&self) -> Option<String> {
+        let json = |v: &Option<String>| match v {
+            Some(json) => serde_json::Value::String(json.clone()).to_string(),
+            None => "null".to_owned(),
+        };
+        (self.tailwind.json.is_some() || self.tailwind.ui.is_some()).then(|| {
+            format!(
+                "_$setup({}, {});",
+                json(&self.tailwind.json),
+                json(&self.tailwind.ui)
+            )
+        })
+    }
+
+    /// Records `message` as the build's error (shown as it is).
+    fn refuse(&self, message: String) -> anyhow::Error {
+        self.error
+            .lock()
+            .expect("error lock")
+            .get_or_insert_with(|| message.clone());
+        anyhow!(message)
+    }
+
     fn fail(&self, path: &Path, detail: &str) -> anyhow::Error {
         let rel = path.strip_prefix(&self.root).unwrap_or(path);
         let message = format!("{}\n{detail}", rel.display());
@@ -131,6 +176,32 @@ impl Plugin for NshPlugin {
         }
         if args.specifier == UI_THEME_SPECIFIER {
             return Ok(Some(HookResolveIdOutput::from_id(UI_THEME_ID)));
+        }
+        if self.compiler == Compiler::Nsh {
+            let spec = args.specifier;
+            if nsh_core::js::NATIVE_MODULES.contains(&spec) {
+                return Ok(Some(HookResolveIdOutput {
+                    external: Some(true.into()),
+                    ..HookResolveIdOutput::from_id(spec)
+                }));
+            }
+            let from = args
+                .importer
+                .map(|i| {
+                    let p = Path::new(i);
+                    format!("{}: ", p.strip_prefix(&self.root).unwrap_or(p).display())
+                })
+                .unwrap_or_default();
+            if spec == "solid-js" || spec.starts_with("solid-js/") {
+                return Err(self.refuse(format!(
+                    "{from}`{spec}` is not part of apps compiled by nsh (`\"compiler\": \"nsh\"`): import signal, computed, effect, batch, untracked, cleanup, context and mount from \"nsh\""
+                )));
+            }
+            if spec.starts_with("nsh/") || spec.starts_with("nsh:") {
+                return Err(self.refuse(format!(
+                    "{from}`{spec}` is not available to apps compiled by nsh (`\"compiler\": \"nsh\"`) yet"
+                )));
+            }
         }
         Ok(embedded::resolve(args.specifier, args.importer)
             .map(|m| HookResolveIdOutput::from_id(m.id)))
@@ -225,6 +296,38 @@ impl Plugin for NshPlugin {
     ) -> HookTransformReturn {
         let jsx_module = matches!(args.module_type, ModuleType::Tsx | ModuleType::Jsx);
         let app_module = !args.id.starts_with('\0');
+        if self.compiler == Compiler::Nsh && app_module {
+            let path = Path::new(args.id);
+            let entry = path == self.entry;
+            if !(jsx_module || entry) {
+                return Ok(None);
+            }
+            let source_type = match args.module_type {
+                ModuleType::Tsx => SourceType::tsx(),
+                ModuleType::Jsx => SourceType::jsx(),
+                ModuleType::Ts => SourceType::ts(),
+                _ => SourceType::mjs(),
+            };
+            if jsx_module {
+                let rel = path
+                    .strip_prefix(&self.root)
+                    .unwrap_or(path)
+                    .display()
+                    .to_string();
+                for u in crate::classes::check(args.code, source_type, &self.tailwind.theme) {
+                    log::warn!(target: "nsh::build", "{rel}:{}:{}: unknown class `{}`", u.line, u.column, u.class);
+                }
+            }
+            let prologue = if entry { self.prologue() } else { None };
+            let (code, map) = compile_native(path, source_type, args.code, prologue.as_deref())
+                .map_err(|detail| self.fail(path, &detail))?;
+            return Ok(Some(HookTransformOutput {
+                code: Some(code),
+                map: map.into(),
+                module_type: Some(ModuleType::Js),
+                ..Default::default()
+            }));
+        }
         let script = matches!(args.module_type, ModuleType::Ts | ModuleType::Js);
         if !(jsx_module || self.hot && app_module && script) {
             return Ok(None);
@@ -288,6 +391,55 @@ impl Plugin for NshPlugin {
             ..Default::default()
         }))
     }
+}
+
+/// TSX -> JS with nsh's JSX compiler ([`crate::jsx`]), TypeScript removed
+/// in the same pass; `prologue` runs first. Errors are rendered with a
+/// code frame.
+pub(crate) fn compile_native(
+    path: &Path,
+    source_type: SourceType,
+    source: &str,
+    prologue: Option<&str>,
+) -> Result<(String, SourceMap<'static>), String> {
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, source, source_type).parse();
+    if let Some(err) = parsed.diagnostics.into_iter().next() {
+        return Err(err.render_with_source_code(source.to_owned()));
+    }
+    let mut program = parsed.program;
+    let scoping = SemanticBuilder::new()
+        .build(&program)
+        .semantic
+        .into_scoping();
+    let options = TransformOptions {
+        jsx: JsxOptions::disable(),
+        ..TransformOptions::default()
+    };
+    let ret =
+        Transformer::new(&allocator, path, &options).build_with_scoping(scoping, &mut program);
+    if let Some(err) = ret.diagnostics.into_iter().next() {
+        return Err(err.render_with_source_code(source.to_owned()));
+    }
+    let components: Vec<&str> = ui_components().iter().map(String::as_str).collect();
+    crate::jsx::transform(
+        &allocator,
+        &mut program,
+        &ret.scoping,
+        source,
+        prologue,
+        &components,
+    )?;
+    let out = Codegen::new()
+        .with_options(CodegenOptions {
+            source_map_path: Some(path.to_path_buf()),
+            ..CodegenOptions::default()
+        })
+        .build(&program);
+    Ok((
+        out.code,
+        out.map.expect("source map requested").into_owned(),
+    ))
 }
 
 /// TSX -> JSX: removes TypeScript syntax and keeps JSX for the Solid

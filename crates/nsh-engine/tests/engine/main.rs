@@ -12,6 +12,7 @@ use nsh_core::MountBatch;
 use nsh_engine::MountSink;
 
 mod canvas;
+mod compiled;
 mod component_bench;
 mod components;
 mod counter;

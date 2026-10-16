@@ -111,3 +111,15 @@ unsafe extern "C" fn init(ctx: *mut qjs::JSContext, m: *mut qjs::JSModuleDef) ->
     }
     0
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_modules_the_bundler_leaves_as_imports() {
+        let names: Vec<&str> = super::MODULES
+            .iter()
+            .map(|m| m.name.to_str().unwrap())
+            .collect();
+        assert_eq!(names, nsh_core::js::NATIVE_MODULES);
+    }
+}
