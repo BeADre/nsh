@@ -13,6 +13,7 @@ mod net;
 mod package;
 mod run;
 mod runtime;
+mod rust_app;
 mod sign;
 mod trace;
 
@@ -294,10 +295,25 @@ pub fn main_with(ui_sets: Vec<Registry>) -> anyhow::Result<()> {
     let types = !matches!(command, Command::Trace { .. });
     if let Some(entry) = command.entry_mut() {
         *entry = entry::resolve(entry)?;
-        if types {
-            init::write_types_for(entry);
-        }
     }
+    // An app with Rust components of its own runs in its own build of this.
+    if let Some(status) = rust_app::reexec(command.entry_mut().map(|e| e.as_path()))? {
+        std::process::exit(status.code().unwrap_or(1));
+    }
+    if types && let Some(entry) = command.entry_mut() {
+        init::write_types_for(entry);
+    }
+    let result = dispatch(command);
+    if result
+        .as_ref()
+        .is_err_and(|e| e.downcast_ref::<rust_app::Restart>().is_some())
+    {
+        std::process::exit(rust_app::RESTART);
+    }
+    result
+}
+
+fn dispatch(command: Command) -> anyhow::Result<()> {
     match command {
         Command::Init { dir, name } => init::init(&dir, name),
         Command::Build {
