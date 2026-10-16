@@ -2,12 +2,7 @@
 //! stagger, loop) with stop and reset, springs, interpolation, `diff_clamp`
 //! and layout animation (as the TSX gallery's `demos/Animations.tsx`).
 
-use std::time::Duration;
-
-use nsh_core::{
-    nsh_anim::{Curve, EaseMode},
-    ui::{AnimOutput, AnyElement, Extrapolate, LayoutAnimation, Text, View, prelude::*},
-};
+use nsh_core::ui::{LayoutAnimation, prelude::*};
 
 use crate::ui::{button, colors, page, section};
 
@@ -28,9 +23,6 @@ const BACK_OUT: Easing = Easing::Curve(Curve::Back(1.70158), EaseMode::Out);
 
 /// `Easing.sin`.
 const SIN: Easing = Easing::Curve(Curve::Sin, EaseMode::In);
-
-/// What `Animated.timing` moves along without an easing.
-const TIMING_DEFAULT: Easing = Easing::EaseInOut;
 
 /// A pill-shaped text button.
 fn chip(label: impl Into<SharedString>, on_press: Listener<()>) -> Text {
@@ -130,10 +122,15 @@ impl Component for Curves {
                 |this: &mut Self, _, _| {
                     this.there = !this.there;
                     let to = if this.there { TRACK } else { 0.0 };
-                    for (dot, (_, easing)) in this.dots.iter().zip(Self::curves()) {
-                        // Each runs to its end natively; nothing follows it up.
-                        let _ = dot.timing(to, 1000.0, easing);
-                    }
+                    let runs = this
+                        .dots
+                        .iter()
+                        .zip(Self::curves())
+                        .map(|(dot, (_, easing))| {
+                            Animation::timing(dot, to, Timing::new(1000.0, easing))
+                        });
+                    // It runs to its end natively; nothing follows it up.
+                    let _ = Animation::parallel(runs).start();
                 },
             )))
     }
@@ -148,9 +145,6 @@ enum Run {
 }
 
 impl Run {
-    /// In the order the stop and reset chips go through them.
-    const ALL: [Run; 3] = [Run::Stagger, Run::Sequence, Run::Loop];
-
     fn name(self) -> &'static str {
         match self {
             Run::Stagger => "stagger",
@@ -160,20 +154,7 @@ impl Run {
     }
 }
 
-/// A started [`Run`]: dropping its task stops following it up.
-#[derive(Debug)]
-struct Running {
-    run: Run,
-    /// Tells this start from a later start of the same run.
-    serial: u32,
-    task: Task<()>,
-}
-
 /// `sequence`, `parallel`, `stagger` and `loop`, with stop and reset.
-///
-/// The Rust API has no composite animations (TS: `Animated.sequence`, run
-/// natively step after step), so each composition is a task awaiting its
-/// steps' ends and starting the next ones.
 #[derive(Debug, Default)]
 struct Composition {
     /// The squares' vertical offsets.
@@ -184,10 +165,8 @@ struct Composition {
     fade: Option<NativeValue>,
     /// What last happened ("idle", "stagger…", "loop: stopped").
     state: String,
-    /// The runs going on.
-    running: Vec<Running>,
-    /// The last start's serial.
-    serial: u32,
+    /// The compositions, by [`Run`].
+    runs: Vec<Animation>,
 }
 
 impl Composition {
@@ -199,122 +178,22 @@ impl Composition {
         self.fade.as_ref().expect("set up")
     }
 
-    /// Starts `run` (again: a start replaces the one going on): `play`
-    /// animates and says whether every step reached its end.
-    fn start<F: Future<Output = bool> + 'static>(
-        &mut self,
-        run: Run,
-        play: impl FnOnce(AsyncCx) -> F + 'static,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.serial += 1;
-        let serial = self.serial;
-        self.running.retain(|r| r.run != run);
-        let task = cx.spawn(move |this, cx| async move {
-            let finished = play(cx).await;
+    /// Starts `run` (again: a start stops the run going on, which reports
+    /// it stopped) and reports how it ends.
+    fn run(&mut self, run: Run, cx: &mut Context<'_, Self>) {
+        let end = self.runs[run as usize].start();
+        cx.spawn(move |this, _| async move {
+            let finished = end.await;
             this.update(move |this, cx| {
-                this.running.retain(|r| r.serial != serial);
                 let end = if finished { "finished" } else { "stopped" };
                 this.state = format!("{}: {end}", run.name());
                 cx.notify();
             })
             .await;
-        });
-        self.running.push(Running { run, serial, task });
+        })
+        .detach();
         self.state = format!("{}…", run.name());
         cx.notify();
-    }
-
-    /// The squares jump one after the other, 80 ms apart.
-    fn stagger(&mut self, cx: &mut Context<'_, Self>) {
-        let parts: Vec<Task<bool>> = self
-            .ys
-            .iter()
-            .enumerate()
-            .map(|(i, y)| {
-                let y = y.clone();
-                cx.spawn(move |_, cx| async move {
-                    cx.timer(Duration::from_millis(80 * i as u64)).await;
-                    y.timing(-36.0, 220.0, Easing::Curve(Curve::Quad, EaseMode::Out))
-                        .await
-                        && y.spring(
-                            0.0,
-                            Spring {
-                                stiffness: 300.0,
-                                damping: 12.0,
-                                ..Spring::default()
-                            },
-                        )
-                        .await
-                })
-            })
-            .collect();
-        self.start(
-            Run::Stagger,
-            |_| async move {
-                let mut finished = true;
-                for part in parts {
-                    finished &= part.await;
-                }
-                finished
-            },
-            cx,
-        );
-    }
-
-    /// Turn, wait, fade and turn back together, fade in.
-    fn sequence(&mut self, cx: &mut Context<'_, Self>) {
-        let (spin, fade) = (self.spin().clone(), self.fade().clone());
-        self.start(
-            Run::Sequence,
-            |cx| async move {
-                if !spin.timing(1.0, 500.0, CUBIC_IN_OUT).await {
-                    return false;
-                }
-                cx.timer(Duration::from_millis(200)).await;
-                let faded = fade.timing(0.2, 300.0, TIMING_DEFAULT);
-                let turned = spin.timing(0.0, 600.0, BACK_OUT);
-                if !(faded.await & turned.await) {
-                    return false;
-                }
-                fade.timing(1.0, 300.0, TIMING_DEFAULT).await
-            },
-            cx,
-        );
-    }
-
-    /// A pulse of the opacity, until stopped.
-    fn pulse(&mut self, cx: &mut Context<'_, Self>) {
-        let fade = self.fade().clone();
-        self.start(
-            Run::Loop,
-            |_| async move {
-                loop {
-                    if !(fade.timing(0.3, 400.0, SIN).await && fade.timing(1.0, 400.0, SIN).await) {
-                        return false;
-                    }
-                }
-            },
-            cx,
-        );
-    }
-
-    /// Stops every run where it is (each going on reports it stopped).
-    fn stop(&mut self) {
-        for run in Run::ALL {
-            if self.running.iter().any(|r| r.run == run) {
-                self.state = format!("{}: stopped", run.name());
-            }
-        }
-        // Dropping the tasks also ends the waits between steps.
-        for running in self.running.drain(..) {
-            drop(running.task);
-        }
-        for y in &self.ys {
-            y.stop();
-        }
-        self.spin().stop();
-        self.fade().stop();
     }
 }
 
@@ -325,8 +204,50 @@ impl Component for Composition {
 
     fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
         self.ys = PALETTE.iter().map(|_| cx.native_value(0.0)).collect();
-        self.spin = Some(cx.native_value(0.0));
-        self.fade = Some(cx.native_value(1.0));
+        let (spin, fade) = (cx.native_value(0.0), cx.native_value(1.0));
+        let stagger = Animation::stagger(
+            80.0,
+            self.ys.iter().map(|y| {
+                Animation::sequence([
+                    Animation::timing(
+                        y,
+                        -36.0,
+                        Timing::new(220.0, Easing::Curve(Curve::Quad, EaseMode::Out)),
+                    ),
+                    Animation::spring(
+                        y,
+                        0.0,
+                        Spring {
+                            stiffness: 300.0,
+                            damping: 12.0,
+                            ..Spring::default()
+                        },
+                    ),
+                ])
+            }),
+        );
+        // `Animated.timing`'s curve when it names none.
+        let ms = |duration_ms| Timing {
+            duration_ms,
+            ..Timing::default()
+        };
+        let sequence = Animation::sequence([
+            Animation::timing(&spin, 1.0, Timing::new(500.0, CUBIC_IN_OUT)),
+            Animation::delay(200.0),
+            Animation::parallel([
+                Animation::timing(&fade, 0.2, ms(300.0)),
+                Animation::timing(&spin, 0.0, Timing::new(600.0, BACK_OUT)),
+            ]),
+            Animation::timing(&fade, 1.0, ms(300.0)),
+        ]);
+        let pulse = Animation::sequence([
+            Animation::timing(&fade, 0.3, Timing::new(400.0, SIN)),
+            Animation::timing(&fade, 1.0, Timing::new(400.0, SIN)),
+        ])
+        .looped(None);
+        self.runs = vec![stagger, sequence, pulse];
+        self.spin = Some(spin);
+        self.fade = Some(fade);
         self.state = "idle".into();
     }
 
@@ -369,35 +290,26 @@ impl Component for Composition {
                     .gap_2()
                     .child(chip(
                         "Stagger",
-                        cx.listener(|this: &mut Self, _, cx| this.stagger(cx)),
+                        cx.listener(|this: &mut Self, _, cx| this.run(Run::Stagger, cx)),
                     ))
                     .child(chip(
                         "Sequence",
-                        cx.listener(|this: &mut Self, _, cx| this.sequence(cx)),
+                        cx.listener(|this: &mut Self, _, cx| this.run(Run::Sequence, cx)),
                     ))
                     .child(chip(
                         "Loop",
-                        cx.listener(|this: &mut Self, _, cx| this.pulse(cx)),
+                        cx.listener(|this: &mut Self, _, cx| this.run(Run::Loop, cx)),
                     ))
                     .child(chip(
                         "Stop",
-                        cx.listener(|this: &mut Self, _, cx| {
-                            this.stop();
-                            cx.notify();
+                        cx.listener(|this: &mut Self, _, _| {
+                            this.runs.iter().for_each(Animation::stop)
                         }),
                     ))
                     .child(chip(
                         "Reset",
-                        cx.listener(|this: &mut Self, _, cx| {
-                            this.stop();
-                            // Where they rest (TS's reset puts them back
-                            // where they were when the run started).
-                            for y in &this.ys {
-                                y.set(0.0);
-                            }
-                            this.spin().set(0.0);
-                            this.fade().set(1.0);
-                            cx.notify();
+                        cx.listener(|this: &mut Self, _, _| {
+                            this.runs.iter().for_each(Animation::reset)
                         }),
                     )),
             )
@@ -463,9 +375,12 @@ impl Component for Springs {
                 |this: &mut Self, _, _| {
                     this.there = !this.there;
                     let to = if this.there { TRACK } else { 0.0 };
-                    for (x, (_, spring)) in this.xs.iter().zip(Self::settings()) {
-                        let _ = x.spring(to, spring);
-                    }
+                    let runs = this
+                        .xs
+                        .iter()
+                        .zip(Self::settings())
+                        .map(|(x, (_, spring))| Animation::spring(x, to, spring));
+                    let _ = Animation::parallel(runs).start();
                 },
             )))
     }
@@ -502,12 +417,13 @@ impl Component for Interpolations {
             &[0.0, 1.0, 2.0],
             &[rgb(0x54aeff), rgb(0x8250df), rgb(0xcf222e)],
         );
-        // Extends on both sides (TS: on the right only; `t` never goes
-        // below 0, so the left side never shows).
-        let angle = t.node().interpolate_with(
+        let angle = t.interpolate_with(
             &[0.0, 1.0],
             AnimOutput::Numbers(vec![0.0, 180.0]),
-            Interpolation::extrapolate(Extrapolate::Extend),
+            Interpolation {
+                extrapolate_right: Extrapolate::Extend,
+                ..Interpolation::default()
+            },
         );
         let scale = t.interpolate(&[0.0, 1.0], &[0.6, 1.2]);
         let chips = (0..3u8).map(|n| {
@@ -573,7 +489,7 @@ impl Component for HidingHeader {
 
     fn render(&self, _: &(), _: &mut RenderCx<'_, Self>) -> impl IntoElement {
         let scroll_value = self.scroll.as_ref().expect("set up");
-        let header = scroll_value.node().diff_clamp(0.0, 44.0);
+        let header = scroll_value.diff_clamp(0.0, 44.0);
         let rows = (1..=30).map(|n| {
             view()
                 .p(px(10.0))

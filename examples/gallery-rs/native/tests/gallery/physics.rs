@@ -1,13 +1,20 @@
-//! The Physics demo on a headless engine: releases are counted, a long
-//! press resets the count.
+//! The Physics demo on a headless engine: a release springs the card back
+//! with the drag's velocity and is counted, a tap pulses it, a long press
+//! resets the count.
+
+use std::time::Duration;
 
 use crossbeam_channel::Receiver;
-use nsh_core::{EventKind, EventPayload, MountBatch};
+use nsh_core::{
+    EventKind, EventPayload, MountBatch, MountItem,
+    nsh_anim::{AnimOp, Driver},
+};
 use nsh_engine::Engine;
 
 use crate::common::shows;
 
-/// Sends `kind` with `payload` to the parent of the text `label`.
+/// Sends `kind` with `payload` to the parent of the text `label`; the
+/// drivers the animations it started have.
 fn dispatch(
     engine: &Engine,
     rx: &Receiver<MountBatch>,
@@ -15,11 +22,20 @@ fn dispatch(
     label: &str,
     kind: EventKind,
     payload: EventPayload,
-) {
+) -> Vec<Driver> {
     let text = screen.find(label).unwrap_or_else(|| panic!("no {label}"));
     let target = screen.parents[&text];
     engine.control().dispatch_event(target, kind, payload);
-    crate::common::drain(rx, screen);
+    let mut started = Vec::new();
+    while let Ok(batch) = rx.recv_timeout(Duration::from_millis(300)) {
+        screen.apply(&batch);
+        for item in &batch.items {
+            if let MountItem::Anim(AnimOp::Start { driver, .. }) = item {
+                started.push(*driver);
+            }
+        }
+    }
+    started
 }
 
 #[test]
@@ -39,7 +55,7 @@ fn physics_counts_releases() {
         value_x: Some(80.0),
         value_y: Some(20.0),
     };
-    dispatch(
+    let springs = dispatch(
         &engine,
         &rx,
         &mut screen,
@@ -47,6 +63,15 @@ fn physics_counts_releases() {
         EventKind::PanEnd,
         release.clone(),
     );
+    // Back to the middle, with the drag's velocity.
+    let spring = |velocity| Driver::Spring {
+        to: 0.0,
+        stiffness: 180.0,
+        damping: 14.0,
+        mass: 1.0,
+        velocity: Some(velocity),
+    };
+    assert_eq!(springs, [spring(300.0), spring(-100.0)]);
     dispatch(
         &engine,
         &rx,
@@ -57,8 +82,26 @@ fn physics_counts_releases() {
     );
     assert!(shows(&screen, "Released 2 times"), "{:?}", screen.texts);
 
-    // A tap pulses (natively; the count stays).
-    crate::common::press(&engine, &rx, &mut screen, "Drag me");
+    // A tap pulses (natively; the count stays): up first.
+    let pulse = dispatch(
+        &engine,
+        &rx,
+        &mut screen,
+        "Drag me",
+        EventKind::Press,
+        EventPayload::None,
+    );
+    assert!(
+        matches!(
+            pulse[..],
+            [Driver::Timing {
+                to: 1.0,
+                duration_ms: 120.0,
+                ..
+            }]
+        ),
+        "{pulse:?}"
+    );
     assert!(shows(&screen, "Released 2 times"), "{:?}", screen.texts);
 
     dispatch(
