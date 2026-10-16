@@ -273,8 +273,7 @@ impl<A: Animated> From<&A> for AnimOperand {
 #[derive(Clone, PartialEq, Debug)]
 pub struct NativeValue(NativeNode);
 
-/// How a spring moves (React Native's defaults: stiffness 100, damping 10,
-/// mass 1).
+/// How a spring moves (TS's defaults: stiffness 170, damping 26, mass 1).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Spring {
     /// Stiffness `k`.
@@ -291,8 +290,8 @@ pub struct Spring {
 impl Default for Spring {
     fn default() -> Self {
         Self {
-            stiffness: 100.0,
-            damping: 10.0,
+            stiffness: 170.0,
+            damping: 26.0,
             mass: 1.0,
             velocity: None,
         }
