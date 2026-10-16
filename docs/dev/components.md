@@ -111,7 +111,8 @@ impl Component for Button {
   | `useSafeAreaInsets()` | `cx.insets()` in the render: the insets where the component renders (the nearest screen's or modal's, else the surface's safe area) |
   | a signal or store at module level | `cx.global::<G>()` in the render (subscribes); `cx.update_global::<G, _>(..)` in listeners, tasks' updates and modules renders the readers again |
   | `context(default)` / `<Ctx.Provider value>` / `Ctx()` | `cx.provide(value)` in the render; `cx.context::<T>()` below it (the nearest provider up the node tree, through the app's elements too; subscribes) |
-  | `createNativeValue`, `Animated.spring`, `interpolate` | `cx.native_value(0.0)` (in `setup`, kept in a field); `.bind_translate_y(&v)` / `.bind_opacity(..)` / `.bind_background(..)` / `.bind_scale(..)` / `.bind_rotate(..)`, `.pan_values(..)` (drags move it natively), `scroll().scroll_value(&v)`, canvas arguments (`Painter::new().fill_rect(0.0, 0.0, &v, 4.0)`); `v.spring(to, Spring::default())` / `.timing(..)` / `.decay(..)` return an `AnimationEnd` to await; `v.interpolate(..)`, `.add(..)`, `.diff_clamp(..)` derive nodes |
+  | `createNativeValue`, `Animated.spring`, `interpolate` | `cx.native_value(0.0)` (in `setup`, kept in a field); `.bind_translate_y(&v)` / `.bind_opacity(..)` / `.bind_background(..)` / `.bind_scale(..)` / `.bind_rotate(..)`, `.pan_values(..)` (drags move it natively), `scroll().scroll_value(&v)`, canvas arguments (`Painter::new().fill_rect(0.0, 0.0, &v, 4.0)`); `v.spring(to, Spring::default())` / `.timing(to, ms, easing)` / `.timing_with(to, Timing { delay_ms, .. })` / `.decay(..)` return an `AnimationEnd` to await; `v.interpolate(..)`, `.interpolate_with(.., Interpolation { extrapolate_left, extrapolate_right, easing })`, `.add(..)`, `.diff_clamp(..)` derive nodes |
+  | `Animated.sequence / parallel / stagger / delay / loop`, `.start(cb)` / `.stop()` / `.reset()` | `Animation::sequence([Animation::timing(&v, to, Timing::new(ms, easing)), Animation::delay(ms), Animation::spring(..)])`, `::parallel(..)` (`.stop_together(false)`), `::stagger(ms, ..)`, `.looped(iterations)` (`.reset_before_iteration(false)`), built in `setup` and kept in a field; `a.start()` returns an `AnimationEnd`, `a.stop()`, `a.reset()` |
   | `BackHandler.addEventListener("hardwareBackPress", f)`, `.remove()` | `cx.on_back_press(|this, cx| -> bool)` (in `setup`, kept in a field) returns a `BackSubscription`; dropping it removes the listener. After modals and stacks, the components' listeners run newest first, then JS's; when none returns true the app exits (`ui/back.rs`) |
   | an error boundary (TS has none) | `fn catch_error(&mut self, error, cx) -> bool`: the nearest component above one whose code panicked (render, listener, method, task) handles it, typically keeping `error`, rendering a fallback and clearing it to try again; the failed one renders nothing until it renders again; unhandled errors are logged (`js` target) |
   | a portal | none (TS has none either); overlays are `modal().transparent(true)` |
@@ -128,7 +129,9 @@ impl Component for Button {
   composite steps); the last handle released frees the node. Deriving the same node again (a render calling
   `interpolate` each time) gets the live one, so bindings stay as they are. Bound style properties go into the
   element's inline style, before the app's `style` on a host (the core keeps the app's and composes the two). The
-  animations' ends come back through `Core::animations_finished` (the engine hands JS the rest).
+  animations' ends come back through `Core::animations_finished` (the engine hands JS the rest). An `Animation` is
+  sent whole as one `AnimOp::StartComposite` and runs in the graph step after step; its composite key (odd, JS's
+  even) is what `reset()` restores by, and dropping the last handle releases it (a run going on goes on).
 - **Element refs** (`ui/element_ref.rs`) hold the node of the element that carries them, set when the render is
   applied and cleared when the element goes; their commands go out through the executor, and an event's handling
   applies them right after its own changes, so they keep their order.

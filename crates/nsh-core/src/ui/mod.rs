@@ -41,11 +41,14 @@ mod theme;
 mod value;
 pub(crate) mod virtual_list;
 
-pub use nsh_anim::{Easing, Extrapolate, Output as AnimOutput};
+pub use nsh_anim::{Curve, EaseMode, Easing, Extrapolate, Output as AnimOutput};
 pub use nsh_macros::{Event, JsObject, PropEnum, Props, methods, module};
 
 pub use self::{
-    animated::{AnimOperand, Animated, AnimationEnd, NativeNode, NativeValue, Spring},
+    animated::{
+        AnimOperand, Animated, Animation, AnimationEnd, Interpolation, NativeNode, NativeValue,
+        Spring, Timing,
+    },
     back::BackSubscription,
     component::{
         Component, ComponentError, ComponentSpec, Event, EventSpec, Method, MethodSpec, NoEvent,
@@ -99,7 +102,9 @@ pub mod prelude {
         AccessibilityState,
         Accessible,
         AdaptiveColor,
+        AnimOutput,
         Animated,
+        Animation,
         AnyElement,
         AsyncCx,
         // Host elements and their settings.
@@ -113,7 +118,9 @@ pub mod prelude {
         ComponentElement,
         ComponentError,
         Context,
+        Curve,
         DialogAnswer,
+        EaseMode,
         // Native animation values.
         Easing,
         EdgeInsets,
@@ -123,12 +130,14 @@ pub mod prelude {
         Event,
         EventKind,
         EventPayload,
+        Extrapolate,
         FluentBuilder,
         FontWeight,
         // Typed events.
         GestureEvent,
         Input,
         Interactive,
+        Interpolation,
         IntoElement,
         Items,
         JsObject,
@@ -171,6 +180,7 @@ pub mod prelude {
         Task,
         Text,
         Theme,
+        Timing,
         Video,
         VideoInfo,
         VideoProgress,

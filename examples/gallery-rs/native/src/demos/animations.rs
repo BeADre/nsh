@@ -507,8 +507,7 @@ impl Component for Interpolations {
         let angle = t.node().interpolate_with(
             &[0.0, 1.0],
             AnimOutput::Numbers(vec![0.0, 180.0]),
-            Extrapolate::Extend,
-            Easing::Linear,
+            Interpolation::extrapolate(Extrapolate::Extend),
         );
         let scale = t.interpolate(&[0.0, 1.0], &[0.6, 1.2]);
         let chips = (0..3u8).map(|n| {
@@ -607,8 +606,10 @@ impl Component for HidingHeader {
                     .bind_opacity(&header.interpolate_with(
                         &[0.0, 44.0],
                         AnimOutput::Numbers(vec![1.0, 0.0]),
-                        Extrapolate::Clamp,
-                        Easing::Curve(Curve::Quad, EaseMode::In),
+                        Interpolation {
+                            easing: Easing::Curve(Curve::Quad, EaseMode::In),
+                            ..Interpolation::default()
+                        },
                     ))
                     .child(
                         text("Scroll up to hide me")
