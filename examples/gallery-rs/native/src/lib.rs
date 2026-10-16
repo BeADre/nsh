@@ -20,13 +20,28 @@ pub fn registry() -> Registry {
 }
 
 /// The gallery: a native stack of its index and the screens pushed on it.
-#[derive(Debug, Default)]
-pub struct Gallery;
+#[derive(Default)]
+pub struct Gallery {
+    _back: Option<BackSubscription>,
+}
 
 impl Component for Gallery {
     const NAME: &'static str = "gallery.gallery";
     type Props = ();
     type Event = NoEvent;
+
+    fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
+        // The stack pops first: this hears the Android back button on the
+        // index, where it would leave the app.
+        self._back = Some(cx.on_back_press(|_: &mut Self, cx| {
+            cx.update_global::<demos::BackIntercept, _>(|intercept, _| {
+                if intercept.on {
+                    intercept.count += 1;
+                }
+                intercept.on
+            })
+        }));
+    }
 
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
         let routes = cx.global::<Routes>().screens();

@@ -20,6 +20,7 @@ mod typed_styles;
 
 use nsh_core::ui::{AnyElement, Screen, prelude::*};
 
+pub(crate) use self::navigation::BackIntercept;
 use crate::{Gallery, nav, ui::colors};
 
 /// A demo of the index: its name, what it shows and its screen's content.
@@ -143,14 +144,30 @@ pub(crate) fn index(cx: &mut RenderCx<'_, Gallery>) -> Screen {
             )
             .into_element()
     });
+    let intercept = *cx.global::<BackIntercept>();
     screen().key("index").title("Rust Gallery").child(
-        scroll().flex_1().bg(colors::background()).child(
-            view()
-                .m_4()
-                .rounded(px(12.0))
-                .bg(colors::surface())
-                .overflow_hidden()
-                .children(rows),
-        ),
+        scroll()
+            .flex_1()
+            .bg(colors::background())
+            .when(intercept.on, |s| {
+                s.child(
+                    text(format!(
+                        "Back is intercepted ({} presses): release it in Navigation",
+                        intercept.count
+                    ))
+                    .mx_4()
+                    .mt_4()
+                    .text_size(px(13.0))
+                    .text_color(colors::muted()),
+                )
+            })
+            .child(
+                view()
+                    .m_4()
+                    .rounded(px(12.0))
+                    .bg(colors::surface())
+                    .overflow_hidden()
+                    .children(rows),
+            ),
     )
 }

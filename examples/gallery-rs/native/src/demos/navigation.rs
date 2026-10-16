@@ -309,14 +309,20 @@ enum Presented {
     Dismissible,
 }
 
+/// Whether the gallery takes the Android back button where it would leave
+/// the app (its index), and how often it did: the gallery listens
+/// (`Gallery::setup`), this demo switches it.
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct BackIntercept {
+    pub(crate) on: bool,
+    pub(crate) count: u32,
+}
+
 /// The demo's page: buttons pushing the screens, its modals, and the
 /// Android back button.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct Navigation {
     sheet: Option<Presented>,
-    intercept: bool,
-    backs: u32,
-    _back: Option<BackSubscription>,
 }
 
 impl Component for Navigation {
@@ -324,20 +330,8 @@ impl Component for Navigation {
     type Props = ();
     type Event = NoEvent;
 
-    fn setup(&mut self, _: &(), cx: &mut Context<'_, Self>) {
-        // Stacks pop natively first: this only hears the button when there
-        // is nothing to pop.
-        self._back = Some(cx.on_back_press(|this: &mut Self, cx| {
-            if !this.intercept {
-                return false;
-            }
-            this.backs += 1;
-            cx.notify();
-            true
-        }));
-    }
-
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let intercept = *cx.global::<BackIntercept>();
         type Make = fn(&mut RenderCx<'_, Gallery>) -> Screen;
         let screens: [(&str, &str, Make); 8] = [
             ("large-title", "Large title", large_title),
@@ -480,27 +474,25 @@ impl Component for Navigation {
                         .items_center()
                         .gap_3()
                         .child(
-                            text(if self.intercept {
-                                format!("Intercepted {} times", self.backs)
+                            text(if intercept.on {
+                                format!(
+                                    "On the index, back is intercepted ({} times so far)",
+                                    intercept.count
+                                )
                             } else {
-                                "Back leaves the app".to_owned()
+                                "Back pops screens, then leaves the app".to_owned()
                             })
                             .flex_1()
                             .text_color(colors::text()),
                         )
                         .child(
                             button(
-                                if self.intercept {
-                                    "Release"
-                                } else {
-                                    "Intercept"
-                                },
+                                if intercept.on { "Release" } else { "Intercept" },
                                 colors::gray(),
                             )
                             .on_press(cx.listener(
-                                |this: &mut Self, _, cx| {
-                                    this.intercept = !this.intercept;
-                                    cx.notify();
+                                |_: &mut Self, _, cx| {
+                                    cx.update_global::<BackIntercept, _>(|b, _| b.on = !b.on);
                                 },
                             )),
                         )
