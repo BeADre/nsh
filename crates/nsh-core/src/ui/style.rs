@@ -885,6 +885,42 @@ pub trait Styled: Sized {
         self
     }
 
+    /// 36pt text, 40pt lines.
+    fn text_4xl(mut self) -> Self {
+        self.style().push(Declaration::TextPreset("4xl"));
+        self
+    }
+
+    /// 48pt text, 48pt lines.
+    fn text_5xl(mut self) -> Self {
+        self.style().push(Declaration::TextPreset("5xl"));
+        self
+    }
+
+    /// 60pt text, 60pt lines.
+    fn text_6xl(mut self) -> Self {
+        self.style().push(Declaration::TextPreset("6xl"));
+        self
+    }
+
+    /// 72pt text, 72pt lines.
+    fn text_7xl(mut self) -> Self {
+        self.style().push(Declaration::TextPreset("7xl"));
+        self
+    }
+
+    /// 96pt text, 96pt lines.
+    fn text_8xl(mut self) -> Self {
+        self.style().push(Declaration::TextPreset("8xl"));
+        self
+    }
+
+    /// 128pt text, 128pt lines.
+    fn text_9xl(mut self) -> Self {
+        self.style().push(Declaration::TextPreset("9xl"));
+        self
+    }
+
     /// The line height, in points.
     fn line_height(mut self, height: impl Into<Length>) -> Self {
         self.style().lengths(&[StyleKey::LineHeight], height.into());

@@ -180,7 +180,9 @@ enum Kind {
 ///   data props), at most one, and not with `Children`.
 ///
 /// `#[prop(rename = "…")]` sets the JS name. The struct's doc comment
-/// documents the component in TypeScript, the fields' its props.
+/// documents the component in TypeScript, the fields' its props. The props
+/// also get `Default` (every field at its default), for Rust renders:
+/// `ButtonProps { title: "+1".into(), ..Default::default() }`.
 #[proc_macro_derive(Props, attributes(prop))]
 pub fn derive_props(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -330,6 +332,14 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
     };
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     Ok(quote! {
+        /// Every prop at its default (`..Default::default()` when Rust
+        /// renders the component).
+        impl #impl_generics ::core::default::Default for #name #ty_generics #where_clause {
+            fn default() -> Self {
+                <Self as #ui::Props>::initial()
+            }
+        }
+
         impl #impl_generics #ui::Props for #name #ty_generics #where_clause {
             fn doc() -> &'static str {
                 #doc

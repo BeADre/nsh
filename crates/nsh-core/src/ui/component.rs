@@ -223,6 +223,31 @@ pub trait Props: Clone + PartialEq + 'static {
     fn set_children(&mut self, children: Children) -> bool;
 }
 
+/// The props of a component that has none (an app's root, say).
+impl Props for () {
+    fn doc() -> &'static str {
+        ""
+    }
+
+    fn spec(_: &mut TsTypes) -> Vec<PropSpec> {
+        Vec::new()
+    }
+
+    fn initial() -> Self {}
+
+    fn set(&mut self, name: &str, _: Option<JsonValue>) -> Result<bool, PropError> {
+        Err(PropError(format!("unknown prop `{name}`")))
+    }
+
+    fn set_slot(&mut self, _: &str, _: Option<Slot>) -> bool {
+        false
+    }
+
+    fn set_children(&mut self, _: Children) -> bool {
+        false
+    }
+}
+
 /// A component's events. Derive it: `#[derive(Event)]`.
 pub trait Event: 'static {
     /// The events (their named types declared in `types`).
