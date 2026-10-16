@@ -20,6 +20,7 @@ mod grid;
 pub mod js;
 mod mount;
 mod ops;
+pub mod platform;
 mod props;
 pub mod runtime;
 pub mod shape;

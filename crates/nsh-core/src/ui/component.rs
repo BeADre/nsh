@@ -274,7 +274,7 @@ pub struct ComponentSpec {
 }
 
 impl ComponentSpec {
-    fn of<C: Component>() -> Self {
+    pub(crate) fn of<C: Component>() -> Self {
         let mut types = TsTypes::default();
         let props = C::Props::spec(&mut types);
         let events = C::Event::spec(&mut types);
@@ -481,6 +481,50 @@ impl<C: Component> AnyInstance for Instance<C> {
     }
 }
 
+/// The root of a Rust app: makes the app's top component (on the engine
+/// thread, where elements live). The engine mounts it as the content of the
+/// surface (`nsh_engine::App::Rust`).
+#[derive(Clone)]
+pub struct Root(Arc<dyn Fn() -> super::AnyElement + Send + Sync>);
+
+impl Root {
+    /// Component `C` with the props `props` makes.
+    pub fn new<C: Component>(props: impl Fn() -> C::Props + Send + Sync + 'static) -> Self {
+        Self(Arc::new(move || {
+            super::IntoElement::into_element(C::element(props()))
+        }))
+    }
+
+    /// Component `C` with default props.
+    pub fn of<C: Component>() -> Self
+    where
+        C::Props: Default,
+    {
+        Self::new::<C>(C::Props::default)
+    }
+
+    /// The element of the root component.
+    pub(crate) fn element(&self) -> super::AnyElement {
+        (self.0)()
+    }
+}
+
+impl fmt::Debug for Root {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Root")
+    }
+}
+
+/// A new instance of `C`, its props not set yet.
+pub(crate) fn make_instance<C: Component>() -> Box<dyn AnyInstance> {
+    Box::new(Instance::<C> {
+        state: C::default(),
+        props: C::Props::initial(),
+        rendered: None,
+        set_up: false,
+    })
+}
+
 #[derive(Clone)]
 struct ComponentType {
     spec: Arc<ComponentSpec>,
@@ -520,19 +564,11 @@ impl Registry {
 
     /// Registers component `C` under [`Component::NAME`].
     pub fn register<C: Component>(&mut self) -> &mut Self {
-        fn make<C: Component>() -> Box<dyn AnyInstance> {
-            Box::new(Instance::<C> {
-                state: C::default(),
-                props: C::Props::initial(),
-                rendered: None,
-                set_up: false,
-            })
-        }
         Arc::make_mut(&mut self.types).insert(
             C::NAME,
             ComponentType {
                 spec: Arc::new(ComponentSpec::of::<C>()),
-                make: make::<C>,
+                make: make_instance::<C>,
             },
         );
         self

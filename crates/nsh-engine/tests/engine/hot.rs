@@ -151,7 +151,7 @@ fn edits_replace_modules_and_keep_unrelated_state() {
     let (tx, rx) = crossbeam_channel::unbounded();
     let (failed_tx, failed) = crossbeam_channel::unbounded();
     let config = EngineConfig {
-        bundle: Bundle::source(code).with_source_map(map.unwrap()),
+        app: nsh_engine::App::Js(Bundle::source(code).with_source_map(map.unwrap())),
         viewport: Size::new(390.0, 844.0),
         trace: false,
         network: None,
@@ -161,6 +161,8 @@ fn edits_replace_modules_and_keep_unrelated_state() {
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
         runtime: None,
+        theme: None,
+        fonts: Vec::new(),
     };
     let engine = Engine::start(config, || ApproxTextEngine, ChannelSink(tx, failed_tx)).unwrap();
     let control = engine.control();

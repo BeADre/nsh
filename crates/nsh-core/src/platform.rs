@@ -1,5 +1,6 @@
-//! Facts about the surface that JS reads reactively (`safeArea()`,
-//! `keyboard()`, `colorScheme()`...).
+//! What the platform reports about a surface (its size, safe area,
+//! keyboard, appearance, device) and the HTTP requests it carries out: the
+//! data both Rust components and JS read, with or without a JS runtime.
 
 /// Edge insets in points.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -136,4 +137,36 @@ impl Default for Environment {
             idiom: Idiom::Phone,
         }
     }
+}
+
+/// An HTTP request for the platform's network stack (made by JS `fetch`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HttpRequest {
+    /// Upper-case method (`GET`, `POST`, ...).
+    pub method: String,
+    /// Absolute URL.
+    pub url: String,
+    /// Header names and values, in order; names may repeat.
+    pub headers: Vec<(String, String)>,
+    /// Request body (empty for none).
+    pub body: Vec<u8>,
+    /// Follow redirects (`redirect: "follow"`, the default).
+    pub follow_redirects: bool,
+}
+
+/// A response to a [`HttpRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct HttpResponse {
+    /// Status code.
+    pub status: u16,
+    /// Reason phrase, if the stack reports one.
+    pub status_text: String,
+    /// Final URL, after redirects.
+    pub url: String,
+    /// True if a redirect was followed.
+    pub redirected: bool,
+    /// Header names and values.
+    pub headers: Vec<(String, String)>,
+    /// The whole body.
+    pub body: Vec<u8>,
 }

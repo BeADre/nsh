@@ -11,7 +11,6 @@
 
 mod bytecode;
 mod console;
-mod env;
 mod error;
 mod host;
 mod net;
@@ -20,11 +19,14 @@ mod sandbox;
 mod timers;
 mod web;
 
+pub use nsh_core::{
+    js::Limits,
+    platform::{ColorScheme, Environment, Idiom, Insets, Os},
+};
+
 pub use crate::{
     bytecode::{BUNDLE_NAME, BYTECODE_VERSION, compile_bytecode},
-    env::{ColorScheme, Environment, Idiom, Insets, Os},
     error::JsError,
     host::{ErrorHandler, Host, HostOptions, TextMeasurer},
     net::{HttpRequest, HttpResponse, NetworkQueue, RequestId},
-    sandbox::Limits,
 };

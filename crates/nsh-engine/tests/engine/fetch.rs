@@ -92,7 +92,9 @@ fn fetch_round_trips_through_the_platform_network() {
     let (tx, rx) = mpsc::channel();
     let config = EngineConfig {
         // SAFETY: compiled just now by this runtime.
-        bundle: unsafe { Bundle::bytecode(nsh_js::compile_bytecode(&bundle.code, false).unwrap()) },
+        app: nsh_engine::App::Js(unsafe {
+            Bundle::bytecode(nsh_js::compile_bytecode(&bundle.code, false).unwrap())
+        }),
         viewport: Size::new(320.0, 480.0),
         trace: false,
         network: Some(network),
@@ -102,6 +104,8 @@ fn fetch_round_trips_through_the_platform_network() {
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
         runtime: None,
+        theme: None,
+        fonts: Vec::new(),
     };
     let _engine = Engine::start(config, || ApproxTextEngine, Sink(tx)).unwrap();
     assert_eq!(
@@ -183,9 +187,11 @@ fn fetch_stays_within_the_capabilities() {
     let (tx, rx) = mpsc::channel();
     let config = EngineConfig {
         // SAFETY: compiled just now by this runtime.
-        bundle: unsafe { Bundle::bytecode(nsh_js::compile_bytecode(&bundle.code, false).unwrap()) }
-            .with_capabilities_json(Some(r#"{ "network": { "hosts": ["api.example.com"] } }"#))
-            .unwrap(),
+        app: nsh_engine::App::Js(
+            unsafe { Bundle::bytecode(nsh_js::compile_bytecode(&bundle.code, false).unwrap()) }
+                .with_capabilities_json(Some(r#"{ "network": { "hosts": ["api.example.com"] } }"#))
+                .unwrap(),
+        ),
         viewport: Size::new(320.0, 480.0),
         trace: false,
         network: Some(Arc::new(RedirectNetwork { seen: seen.clone() })),
@@ -195,6 +201,8 @@ fn fetch_stays_within_the_capabilities() {
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
         runtime: None,
+        theme: None,
+        fonts: Vec::new(),
     };
     let _engine = Engine::start(config, || ApproxTextEngine, Sink(tx)).unwrap();
     assert_eq!(

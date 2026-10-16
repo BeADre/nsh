@@ -2946,6 +2946,33 @@ mod components {
         c
     }
 
+    /// A Rust app's root: mounted with no op from JS and no registration.
+    #[test]
+    fn a_rust_root_mounts_renders_and_handles_events() {
+        let mut c = core();
+        c.mount_root(&crate::ui::Root::new::<Tally>(|| TallyProps {
+            label: "Root".into(),
+            children: Children::default(),
+        }));
+        let batch = c.commit().unwrap();
+        assert_eq!(texts(&batch), ["Root 0"]);
+        let host = batch
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MountItem::Insert {
+                    parent: ROOT_ID,
+                    child,
+                    ..
+                } => Some(*child),
+                _ => None,
+            })
+            .expect("the root's host is in the root view");
+        assert_eq!(host % 2, 1, "the core's own id");
+        assert!(c.component_event(host, EventKind::Press, &EventPayload::None));
+        assert_eq!(texts(&c.commit().unwrap()), ["Root 1"]);
+    }
+
     #[test]
     fn components_render_handle_events_and_place_children() {
         let mut c = core_with_tally();

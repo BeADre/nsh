@@ -3,8 +3,10 @@
 //! engine (not by the platform's stack) so that every hop is checked again.
 //! Hops are issued on the engine thread, like the first request.
 
-use nsh_core::access::Access;
-use nsh_js::{HttpRequest, HttpResponse};
+use nsh_core::{
+    access::Access,
+    platform::{HttpRequest, HttpResponse},
+};
 
 /// Redirects followed at most (as browsers).
 const MAX_REDIRECTS: usize = 20;

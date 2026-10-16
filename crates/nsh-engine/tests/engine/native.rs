@@ -57,7 +57,7 @@ fn start() -> (Engine, Receiver<MountBatch>) {
     .unwrap();
     let (tx, rx) = crossbeam_channel::unbounded();
     let config = EngineConfig {
-        bundle: Bundle::source(bundle.code),
+        app: nsh_engine::App::Js(Bundle::source(bundle.code)),
         viewport: Size::new(320.0, 480.0),
         trace: false,
         network: None,
@@ -67,6 +67,8 @@ fn start() -> (Engine, Receiver<MountBatch>) {
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
         runtime: None,
+        theme: None,
+        fonts: Vec::new(),
     };
     (
         Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap(),

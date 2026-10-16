@@ -23,6 +23,7 @@ mod list_bench;
 mod native;
 mod package;
 mod platform;
+mod rust_app;
 mod shutdown;
 
 /// Hands the engine's batches to the test.

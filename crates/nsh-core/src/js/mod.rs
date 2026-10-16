@@ -11,6 +11,46 @@
 //! the decoders in `nsh-js` match on the same constants and call the
 //! derived decoders.
 
+use std::time::Duration;
+
+/// Resource limits of one VM.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Limits {
+    /// QuickJS heap, in bytes (0: no limit). Running out stops the VM.
+    pub memory_bytes: usize,
+    /// Interpreter stack, in bytes: deep recursion becomes a `RangeError`
+    /// rather than a native stack overflow. Must stay below the engine
+    /// thread's stack.
+    pub stack_bytes: usize,
+    /// Evaluating the bundle.
+    pub load_budget: Duration,
+    /// Any other call into JS: one event (with the rendering it causes), one
+    /// list bind, one timer, one frame's callbacks, the microtask drain.
+    pub call_budget: Duration,
+    /// Values one commit may send (the JS op buffer's length). The buffer is
+    /// decoded into Rust memory, which the heap limit does not cover.
+    pub max_op_values: usize,
+    /// Operations one canvas drawing may record.
+    pub max_canvas_ops: usize,
+    /// Nodes the core keeps (each may have a native view, whose memory the
+    /// heap limit does not cover either).
+    pub max_nodes: usize,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            memory_bytes: 256 << 20,
+            stack_bytes: 4 << 20,
+            load_budget: Duration::from_secs(10),
+            call_budget: Duration::from_secs(2),
+            max_op_values: 8_000_000,
+            max_canvas_ops: 1_000_000,
+            max_nodes: 200_000,
+        }
+    }
+}
+
 /// Constants of the op buffer and a table of them for the generators.
 macro_rules! codes {
     ($table:ident: $($(#[doc = $doc:literal])* $name:ident = $value:literal),* $(,)?) => {

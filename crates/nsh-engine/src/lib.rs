@@ -1,16 +1,19 @@
 //! The engine thread of one surface.
 //!
-//! The engine owns a [`nsh_js::Host`] and a [`nsh_core::Core`] on a dedicated
-//! thread. Each wake-up (input event, timer, resize) runs JS, drains the
-//! microtask queue, applies the committed ops, lays out, and hands one
-//! [`MountBatch`] to the platform through a [`MountSink`]. The platform
-//! thread never blocks on JS.
+//! The engine owns a [`nsh_core::Core`] on a dedicated thread and runs one
+//! app ([`App`]): a Rust app's root component, or a JS bundle in a QuickJS
+//! VM (`nsh_js::Host`, feature `js`). Each wake-up (input event, timer,
+//! resize) runs the app's code (component tasks; JS and its microtasks),
+//! applies what JS committed, lays out, and hands one [`MountBatch`] to the
+//! platform through a [`MountSink`]. The platform thread never blocks on
+//! the engine.
 
 mod access;
+mod script;
+#[cfg(feature = "js")]
 mod symbolicate;
 
 use std::{
-    cell::RefCell,
     io,
     rc::Rc,
     sync::Arc,
@@ -19,21 +22,24 @@ use std::{
 };
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
-pub use nsh_core::access::{Access, Capabilities};
 use nsh_core::{
     ApplyError, Core, EdgeInsets, EventKind, EventPayload, ListBind, MountBatch, NodeId, Op,
     PayloadValue, Size, TextEngine,
 };
-pub use nsh_js::{
-    BYTECODE_VERSION, ColorScheme, Environment, HttpRequest, HttpResponse, Idiom, Insets, Limits,
-    Os,
+pub use nsh_core::{
+    access::{Access, Capabilities},
+    js::Limits,
+    platform::{ColorScheme, Environment, HttpRequest, HttpResponse, Idiom, Insets, Os},
+    ui::{Root, Theme},
 };
-use nsh_js::{Host, HostOptions, JsError, NetworkQueue, RequestId};
+#[cfg(feature = "js")]
+pub use nsh_js::BYTECODE_VERSION;
 /// Signed packages, release-key certificates, revocations and trust stores.
+#[cfg(feature = "js")]
 pub use nsh_package as package;
 use rustc_hash::FxHashMap;
 
-use crate::symbolicate::Symbolicator;
+use crate::script::{NetworkQueue, RequestId, Script};
 
 /// Stack size of the engine thread. QuickJS recursion (and deep Solid
 /// component trees) needs more than the 512 KiB default of secondary
@@ -44,6 +50,15 @@ const ENGINE_STACK_SIZE: usize = 8 * 1024 * 1024;
 /// garbage immediately; only cycles (such as detached node subtrees, whose
 /// parent/child links reference each other) wait for the collector.
 const IDLE_GC_INTERVAL: Duration = Duration::from_secs(1);
+
+/// The app an engine runs.
+#[derive(Debug, Clone)]
+pub enum App {
+    /// A Rust app: its root component, mounted as the surface's content.
+    Rust(Root),
+    /// A JS app (feature `js`).
+    Js(Bundle),
+}
 
 /// An app bundle: its code plus, in development, a source map.
 #[derive(Debug, Clone)]
@@ -189,6 +204,7 @@ impl Bundle {
     }
 }
 
+#[cfg(feature = "js")]
 impl Bundle {
     /// The bundle of a verified package: its bytecode when it was compiled
     /// for this runtime (else its source), its source map and its declared
@@ -214,6 +230,7 @@ impl Bundle {
 }
 
 /// A verified package, unpacked ([`load_package`]).
+#[cfg(feature = "js")]
 #[derive(Debug)]
 pub struct LoadedPackage {
     /// Its bundle.
@@ -227,6 +244,7 @@ pub struct LoadedPackage {
 /// Verifies the package `bytes` with `trust`, writes its assets under
 /// `assets_root` (`<root>/<app id>/<package hash>/`, once per package) and
 /// records its build (older builds of the app are refused from now on).
+#[cfg(feature = "js")]
 pub fn load_package(
     trust: &mut nsh_package::TrustStore,
     bytes: &[u8],
@@ -320,8 +338,8 @@ pub trait Assets: Send + Sync + 'static {
 /// Engine settings.
 #[derive(Clone)]
 pub struct EngineConfig {
-    /// The app bundle.
-    pub bundle: Bundle,
+    /// The app.
+    pub app: App,
     /// Initial size of the root view.
     pub viewport: Size,
     /// Log per-commit timings (target `nsh::perf`, level info).
@@ -335,11 +353,17 @@ pub struct EngineConfig {
     /// Height of the platform's screen header bar, normal and with a large
     /// title (status bar excluded).
     pub header_heights: (f32, f32),
-    /// The VM's resource limits.
+    /// The JS VM's resource limits (a JS app's; Rust code has none).
     pub limits: Limits,
-    /// The Rust components the app can render (`nsh_ui_mobile::registry()`
-    /// on mobile).
+    /// The Rust components JS can render by name (`nsh_ui_mobile::registry()`
+    /// on mobile); a Rust app's components need no registration.
     pub components: nsh_core::ui::Registry,
+    /// The theme of Rust components; `None`: the default one (JS apps set
+    /// theirs from `nsh.json`).
+    pub theme: Option<Theme>,
+    /// Font files (TrueType / OpenType) registered before the first render,
+    /// by their family names.
+    pub fonts: Vec<Arc<[u8]>>,
     /// The tokio runtime the components' async tasks use (timers, IO,
     /// background work); `None`: one shared by the engines of the process.
     pub runtime: Option<tokio::runtime::Handle>,
@@ -366,7 +390,7 @@ fn shared_runtime() -> tokio::runtime::Handle {
 impl std::fmt::Debug for EngineConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EngineConfig")
-            .field("bundle", &self.bundle)
+            .field("app", &self.app)
             .field("viewport", &self.viewport)
             .field("trace", &self.trace)
             .field("network", &self.network.is_some())
@@ -375,6 +399,8 @@ impl std::fmt::Debug for EngineConfig {
             .field("header_heights", &self.header_heights)
             .field("limits", &self.limits)
             .field("components", &self.components)
+            .field("theme", &self.theme.is_some())
+            .field("fonts", &self.fonts.len())
             .finish()
     }
 }
@@ -560,47 +586,19 @@ fn run<M: TextEngine + 'static, S: MountSink>(
     stop: Arc<std::sync::atomic::AtomicBool>,
 ) {
     raise_thread_priority();
-    let sink = Rc::new(sink);
-    let options = HostOptions {
-        limits: config.limits,
-        harden: config.bundle.policy.harden,
-    };
-    let mut host = match Host::with_options(options) {
-        Ok(host) => {
-            host.set_stop_flag(stop);
-            host
-        }
-        Err(err) => {
-            log::error!("failed to start JS: {err}");
-            return sink.report_error(&err.message);
-        }
-    };
-    let symbolicator = Rc::new(RefCell::new(Symbolicator::new(
-        config.bundle.source_map.clone(),
-    )));
-    let report = {
-        let sink = sink.clone();
-        let symbolicator = symbolicator.clone();
-        move |what: &str, message: &str| {
-            let message = symbolicator.borrow_mut().rewrite(message);
-            log::error!(target: "js", "{what}: {message}");
-            sink.report_error(&message);
-        }
-    };
-    let uncaught = report.clone();
-    host.set_error_handler(Box::new(move |err| {
-        uncaught("uncaught exception", &err.message)
-    }));
-    // Shared with canvas `measureText`, which measures on this thread.
+    let sink: Rc<dyn MountSink> = Rc::new(sink);
     let text_engine = Rc::new(text_engine);
-    let measurer = text_engine.clone();
-    host.set_text_measurer(Box::new(move |font, text| {
-        nsh_core::canvas::measure_line(&*measurer, font, text)
-    }));
-    let access = Arc::new(config.bundle.policy.access());
-    let mut core = Core::new(text_engine, config.viewport);
+    let access = Arc::new(match &config.app {
+        App::Js(bundle) => bundle.policy.access(),
+        // Native code is trusted: it reaches what the platform allows.
+        App::Rust(_) => Policy::default().access(),
+    });
+    let mut core = Core::new(text_engine.clone(), config.viewport);
     core.set_components(config.components.clone());
-    core.set_max_nodes(config.limits.max_nodes);
+    if let App::Js(_) = &config.app {
+        // Only JS is limited (Rust code is as trusted as the platform).
+        core.set_max_nodes(config.limits.max_nodes);
+    }
     core.set_access(access.clone());
     core.set_font_scale(config.environment.font_scale);
     core.set_class_environment(class_environment(&config.environment));
@@ -608,6 +606,15 @@ fn run<M: TextEngine + 'static, S: MountSink>(
     core.set_safe_area(insets(&config.environment));
     core.set_environment(ui_environment(&config.environment, config.viewport));
     core.set_task_runtime(config.runtime.clone().unwrap_or_else(shared_runtime));
+    if let Some(theme) = config.theme.clone() {
+        core.set_theme(theme);
+    }
+    for font in &config.fonts {
+        if let Err(err) = core.register_font(font) {
+            log::error!("font failed: {err}");
+            sink.report_error(&format!("font failed: {err}"));
+        }
+    }
     // A task woken on any thread wakes the loop.
     let wake = tx.clone();
     core.set_task_notify(Arc::new(move || {
@@ -637,27 +644,39 @@ fn run<M: TextEngine + 'static, S: MountSink>(
 
     let mut environment = config.environment;
     environment.window = (config.viewport.width, config.viewport.height);
-    host.set_environment(&environment);
     let start = Instant::now();
-    let loaded: Result<(), JsError> = match &config.bundle.code {
-        BundleCode::Bytecode(bytes) => host.eval_bytecode(bytes),
-        BundleCode::Source(code) => host.eval_source(code),
+    let (script, eval_us) = match &config.app {
+        App::Js(bundle) => match Script::start(
+            bundle,
+            config.limits,
+            &environment,
+            text_engine,
+            stop,
+            sink.clone(),
+        ) {
+            Some((script, eval_us)) => (Some(script), eval_us),
+            None => return,
+        },
+        App::Rust(root) => {
+            state.core.mount_root(root);
+            (None, 0)
+        }
     };
-    if let Err(err) = loaded {
-        report("bundle failed", &err.message);
-    }
-    let eval_us = start.elapsed().as_micros();
+    let script = script.as_ref();
     // A VM stopped for good (out of memory, over a quota) is reported once;
     // its views stay as they were and no JS runs any more.
     let mut stopped = false;
-    let mut check_stopped = |host: &Host| {
-        if !stopped && let Some(reason) = host.fatal() {
+    let mut check_stopped = |script: Option<&Script>| {
+        if let Some(script) = script
+            && !stopped
+            && let Some(reason) = script.fatal()
+        {
             stopped = true;
-            report("stopped", &reason);
+            script.report(&*sink, "stopped", &reason);
         }
     };
-    state.load_fonts(&host, config.assets.as_deref(), &report);
-    if let Some(batch) = state.commit(&host) {
+    state.load_fonts(script, config.assets.as_deref(), &*sink);
+    if let Some(batch) = state.commit(script) {
         if state.trace {
             log::info!(
                 target: "nsh::perf",
@@ -667,17 +686,22 @@ fn run<M: TextEngine + 'static, S: MountSink>(
         }
         sink.submit(batch);
     }
-    state.net.pump(&host);
-    state.request_frame(&host, &*sink);
-    check_stopped(&host);
+    state.net.pump(script);
+    state.request_frame(script, &*sink);
+    check_stopped(script);
 
     loop {
         // Wake for the next timer, or for an idle collection if one is due.
-        let gc_deadline = state.committed_since_gc.then(|| last_gc + IDLE_GC_INTERVAL);
-        let deadline = [host.next_timer(), gc_deadline, state.next_scroll_event()]
-            .into_iter()
-            .flatten()
-            .min();
+        let gc_deadline =
+            (script.is_some() && state.committed_since_gc).then(|| last_gc + IDLE_GC_INTERVAL);
+        let deadline = [
+            script.and_then(Script::next_timer),
+            gc_deadline,
+            state.next_scroll_event(),
+        ]
+        .into_iter()
+        .flatten()
+        .min();
         let message = match deadline {
             Some(deadline) => match rx.recv_deadline(deadline) {
                 Ok(message) => Some(message),
@@ -690,46 +714,43 @@ fn run<M: TextEngine + 'static, S: MountSink>(
             },
         };
         if let Some(message) = message {
-            if !handle(&host, &mut state, message) {
+            if !handle(script, &mut state, message) {
                 return;
             }
             // Coalesce everything already queued into this frame.
             while let Ok(message) = rx.try_recv() {
-                if !handle(&host, &mut state, message) {
+                if !handle(script, &mut state, message) {
                     return;
                 }
             }
         }
-        state.dispatch_touch_move(&host);
-        state.dispatch_scroll_events(&host);
-        for update in std::mem::take(&mut state.hot) {
-            if let Some(map) = update.source_map {
-                symbolicator.borrow_mut().add(&update.name, map);
+        state.dispatch_touch_move(script);
+        state.dispatch_scroll_events(script);
+        let hot = std::mem::take(&mut state.hot);
+        if let Some(script) = script {
+            for update in hot {
+                script.hot_update(update, &*sink);
             }
-            let start = Instant::now();
-            match host.eval_script(&update.name, &update.code) {
-                Ok(true) => log::info!("hot update applied in {}µs", start.elapsed().as_micros()),
-                Ok(false) => sink.hot_update_failed(),
-                // The app keeps the modules that ran; the next update can
-                // fix the rest.
-                Err(err) => report("hot update failed", &err.message),
-            }
+            script.run_timers(Instant::now());
         }
-        host.run_timers(Instant::now());
         state.core.run_component_tasks();
-        state.load_fonts(&host, config.assets.as_deref(), &report);
-        if let Some(batch) = state.commit(&host) {
+        state.load_fonts(script, config.assets.as_deref(), &*sink);
+        if let Some(batch) = state.commit(script) {
             sink.submit(batch);
         }
-        state.net.pump(&host);
-        state.request_frame(&host, &*sink);
-        check_stopped(&host);
-        if state.committed_since_gc && rx.is_empty() && last_gc.elapsed() >= IDLE_GC_INTERVAL {
+        state.net.pump(script);
+        state.request_frame(script, &*sink);
+        check_stopped(script);
+        if let Some(script) = script
+            && state.committed_since_gc
+            && rx.is_empty()
+            && last_gc.elapsed() >= IDLE_GC_INTERVAL
+        {
             // Idle: collect cycles so released nodes free their views.
-            host.collect_garbage();
+            script.collect_garbage();
             last_gc = Instant::now();
             state.committed_since_gc = false;
-            if let Some(batch) = state.commit(&host) {
+            if let Some(batch) = state.commit(Some(script)) {
                 sink.submit(batch);
             }
         }
@@ -784,8 +805,9 @@ struct Net {
 
 impl Net {
     /// Hands the requests JS made to the network, and cancels aborted ones.
-    fn pump(&mut self, host: &Host) {
-        host.take_network(&mut self.queue);
+    fn pump(&mut self, script: Option<&Script>) {
+        let Some(script) = script else { return };
+        script.take_network(&mut self.queue);
         if self.queue.is_empty() {
             return;
         }
@@ -800,7 +822,7 @@ impl Net {
             if self.access.is_unrestricted() {
                 self.start(id, request);
             } else if !self.access.allows_http(&request.method, &request.url) {
-                host.finish_fetch(id, Err(access::refused(&request.method, &request.url)));
+                script.finish_fetch(id, Err(access::refused(&request.method, &request.url)));
             } else if request.follow_redirects {
                 let hop = access::hop(&request);
                 self.followed
@@ -857,9 +879,11 @@ impl Net {
 
 impl<M: TextEngine> State<M> {
     /// Sends the pending touch move.
-    fn dispatch_touch_move(&mut self, host: &Host) {
-        if let Some((id, touch)) = self.touch_move.take() {
-            host.dispatch_event(id, EventKind::Touch, &EventPayload::Touch(touch));
+    fn dispatch_touch_move(&mut self, script: Option<&Script>) {
+        if let Some((id, touch)) = self.touch_move.take()
+            && let Some(script) = script
+        {
+            script.dispatch_event(id, EventKind::Touch, &EventPayload::Touch(touch));
         }
     }
 
@@ -873,7 +897,8 @@ impl<M: TextEngine> State<M> {
     }
 
     /// Sends the `onScroll` events that are due.
-    fn dispatch_scroll_events(&mut self, host: &Host) {
+    fn dispatch_scroll_events(&mut self, script: Option<&Script>) {
+        let Some(script) = script else { return };
         if self.scroll_events.is_empty() {
             return;
         }
@@ -889,7 +914,7 @@ impl<M: TextEngine> State<M> {
             e.pending = false;
             e.last = Some(now);
             let n = |v: f32| PayloadValue::Number(v as f64);
-            host.dispatch_event(
+            script.dispatch_event(
                 id,
                 EventKind::Scroll,
                 &EventPayload::Map(vec![
@@ -906,8 +931,8 @@ impl<M: TextEngine> State<M> {
     }
 
     /// Asks the platform for a frame when JS waits for one.
-    fn request_frame(&mut self, host: &Host, sink: &dyn MountSink) {
-        if !self.frame_requested && host.wants_frame() {
+    fn request_frame(&mut self, script: Option<&Script>, sink: &dyn MountSink) {
+        if !self.frame_requested && script.is_some_and(Script::wants_frame) {
             self.frame_requested = true;
             sink.request_frame();
         }
@@ -917,12 +942,13 @@ impl<M: TextEngine> State<M> {
     /// measured with a fallback font first.
     fn load_fonts(
         &mut self,
-        host: &Host,
+        script: Option<&Script>,
         assets: Option<&dyn Assets>,
-        report: &dyn Fn(&str, &str),
+        sink: &dyn MountSink,
     ) {
+        let Some(script) = script else { return };
         let mut fonts = Vec::new();
-        host.take_fonts(&mut fonts);
+        script.take_fonts(&mut fonts);
         for uri in fonts {
             let result = match assets {
                 Some(assets) => assets.read(&uri),
@@ -930,14 +956,14 @@ impl<M: TextEngine> State<M> {
             }
             .and_then(|data| self.core.register_font(&data));
             if let Err(err) = result {
-                report("font failed", &format!("{uri}: {err}"));
+                script.report(sink, "font failed", &format!("{uri}: {err}"));
             }
         }
     }
 
     /// Produces one frame: applies JS ops, lays out, and lets lists pull
     /// the items they need, merging everything into a single batch.
-    fn commit(&mut self, host: &Host) -> Option<MountBatch> {
+    fn commit(&mut self, script: Option<&Script>) -> Option<MountBatch> {
         let start = Instant::now();
         let mut merged: Option<MountBatch> = None;
         let mut op_count = 0;
@@ -945,21 +971,30 @@ impl<M: TextEngine> State<M> {
         for _ in 0..MAX_LIST_ROUNDS {
             // Requests from the previous round (or frame) first.
             let js_start = Instant::now();
-            for bind in self.binds.drain(..) {
-                host.bind_list(bind.list, &bind.binds);
-            }
-            for (id, event, payload) in self.events.drain(..) {
-                host.dispatch_event(id, event, &payload);
+            // Without JS, lists bind and events go nowhere (Rust components
+            // get theirs in the core).
+            let binds = self.binds.drain(..);
+            let events = self.events.drain(..);
+            if let Some(script) = script {
+                for bind in binds {
+                    script.bind_list(bind.list, &bind.binds);
+                }
+                for (id, event, payload) in events {
+                    script.dispatch_event(id, event, &payload);
+                }
+                script.take_ops(&mut self.ops);
+            } else {
+                drop((binds, events));
             }
             js += js_start.elapsed();
-            host.take_ops(&mut self.ops);
             op_count += self.ops.len();
             // A stop drops the rest of the ops (`drain` clears them).
             for op in self.ops.drain(..) {
                 match self.core.apply(op) {
                     Ok(()) => {}
                     Err(err) if err.is_fatal() => {
-                        host.stop(match err {
+                        let Some(script) = script else { break };
+                        script.stop(match err {
                             ApplyError::TooManyNodes(max) => {
                                 format!("the app created more than {max} nodes and was stopped")
                             }
@@ -1016,7 +1051,7 @@ fn ui_environment(env: &Environment, window: Size) -> nsh_core::ui::Environment 
         safe_area: insets(env),
         keyboard_height: env.keyboard_height,
         keyboard_duration: env.keyboard_duration,
-        dark: env.color_scheme == nsh_js::ColorScheme::Dark,
+        dark: env.color_scheme == ColorScheme::Dark,
         font_scale: env.font_scale,
         reduce_motion: env.reduce_motion,
         screen_reader: env.screen_reader,
@@ -1027,7 +1062,7 @@ fn ui_environment(env: &Environment, window: Size) -> nsh_core::ui::Environment 
 /// What class variants read from the environment.
 fn class_environment(env: &Environment) -> nsh_core::tailwind::ClassEnvironment {
     nsh_core::tailwind::ClassEnvironment {
-        dark: env.color_scheme == nsh_js::ColorScheme::Dark,
+        dark: env.color_scheme == ColorScheme::Dark,
         platform: if cfg!(target_os = "android") {
             nsh_core::tailwind::Platform::Android
         } else {
@@ -1038,7 +1073,7 @@ fn class_environment(env: &Environment) -> nsh_core::tailwind::ClassEnvironment 
 }
 
 /// Returns false on shutdown.
-fn handle<M: TextEngine>(host: &Host, state: &mut State<M>, message: Message) -> bool {
+fn handle<M: TextEngine>(script: Option<&Script>, state: &mut State<M>, message: Message) -> bool {
     match message {
         Message::Event(id, event, payload) => {
             if state.trace {
@@ -1062,12 +1097,15 @@ fn handle<M: TextEngine>(host: &Host, state: &mut State<M>, message: Message) ->
                     return true;
                 }
                 // Moves before a start, end or cancel go first.
-                state.dispatch_touch_move(host);
-                host.dispatch_event(id, event, &EventPayload::Touch(touch));
+                state.dispatch_touch_move(script);
+                if let Some(script) = script {
+                    script.dispatch_event(id, event, &EventPayload::Touch(touch));
+                }
                 return true;
             }
+            let Some(script) = script else { return true };
             let start = state.trace.then(Instant::now);
-            host.dispatch_event(id, event, &payload);
+            script.dispatch_event(id, event, &payload);
             if let Some(start) = start {
                 // The handler, its microtasks and the decode of what it
                 // committed.
@@ -1098,7 +1136,9 @@ fn handle<M: TextEngine>(host: &Host, state: &mut State<M>, message: Message) ->
         Message::AnimationsFinished(mut finished) => {
             // The components' animations end in the core, JS's in JS.
             state.core.animations_finished(&mut finished);
-            host.animations_finished(&finished);
+            if let Some(script) = script {
+                script.animations_finished(&finished);
+            }
         }
         Message::Resize(size) => state.core.set_viewport(size),
         Message::Wake => {}
@@ -1108,17 +1148,23 @@ fn handle<M: TextEngine>(host: &Host, state: &mut State<M>, message: Message) ->
             state.core.set_safe_area(insets(&env));
             let window = Size::new(env.window.0, env.window.1);
             state.core.set_environment(ui_environment(&env, window));
-            host.set_environment(&env);
+            if let Some(script) = script {
+                script.set_environment(&env);
+            }
         }
         Message::RootSize(id, size, insets) => state.core.set_root_size(id, size, insets),
         Message::Frame => {
             state.frame_requested = false;
-            host.run_frame();
+            if let Some(script) = script {
+                script.run_frame();
+            }
         }
         Message::States(id, states) => state.core.set_states(id, states),
         Message::FetchDone(id, result) => {
-            if let Some(result) = state.net.finished(id, result) {
-                host.finish_fetch(id, result);
+            if let Some(result) = state.net.finished(id, result)
+                && let Some(script) = script
+            {
+                script.finish_fetch(id, result);
             }
         }
         Message::Hot(update) => state.hot.push(update),

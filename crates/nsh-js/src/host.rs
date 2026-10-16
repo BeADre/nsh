@@ -4,7 +4,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use nsh_core::{EventKind, EventPayload, NodeId, Op, PayloadValue, TouchPhase};
+use nsh_core::{
+    EventKind, EventPayload, NodeId, Op, PayloadValue, TouchPhase,
+    js::Limits,
+    platform::{ColorScheme, Environment, Idiom},
+};
 use rquickjs::{
     Array, CatchResultExt, Context, Ctx, Function, Module, Persistent, Runtime, Value,
     function::Opt,
@@ -12,11 +16,10 @@ use rquickjs::{
 
 use crate::{
     console,
-    env::{ColorScheme, Environment, Idiom},
     error::JsError,
     net::{HttpResponse, NetworkQueue, RequestId},
     protocol::{self, Warnings},
-    sandbox::{self, Budget, Limits, Phase},
+    sandbox::{self, Budget, Phase},
     timers::Timers,
     web,
 };

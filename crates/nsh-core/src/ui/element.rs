@@ -15,7 +15,8 @@ use std::{
 use rustc_hash::FxHashMap;
 
 use super::{
-    Component, Event, JsValue, PropError, SharedString, Theme,
+    Component, ComponentSpec, Event, JsValue, PropError, SharedString, Theme,
+    component::AnyInstance,
     env::{self, Environment},
     events::{self, GestureEvent, PanEvent},
     status_bar::{StatusBarEntry, StatusBars},
@@ -587,6 +588,11 @@ impl<P: Clone + 'static> AnyProps for P {
 /// A nested component of a render.
 pub(crate) struct ComponentEl {
     pub(crate) name: &'static str,
+    /// Makes an instance: a component rendered by Rust need not be
+    /// registered (the registry is what JS can render by name).
+    pub(crate) make: fn() -> Box<dyn AnyInstance>,
+    /// Its spec (made once per type and kept by the core).
+    pub(crate) spec: fn() -> ComponentSpec,
     pub(crate) props: Box<dyn AnyProps>,
     /// The rendering component's handler of its events.
     pub(crate) on_event: Option<Listener<dyn Any>>,
@@ -596,6 +602,8 @@ impl Clone for ComponentEl {
     fn clone(&self) -> Self {
         Self {
             name: self.name,
+            make: self.make,
+            spec: self.spec,
             props: self.props.clone_box(),
             on_event: self.on_event.clone(),
         }
@@ -1459,6 +1467,8 @@ impl<C: Component> ComponentElement<C> {
         let mut node = ElNode::new(Tag::View);
         node.kind = ElKind::Component(ComponentEl {
             name: C::NAME,
+            make: super::component::make_instance::<C>,
+            spec: ComponentSpec::of::<C>,
             props: Box::new(props),
             on_event: None,
         });

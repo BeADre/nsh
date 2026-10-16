@@ -373,7 +373,7 @@ impl RootView {
         let access = Arc::new(bundle.policy.access());
         let mounter: SharedMounter = Arc::new(MainThreadBound::new(RefCell::new(None), mtm));
         let config = EngineConfig {
-            bundle,
+            app: nsh_engine::App::Js(bundle),
             viewport,
             trace: self.ivars().options.trace,
             network: Some(crate::net::network()),
@@ -385,6 +385,8 @@ impl RootView {
             limits: self.ivars().options.limits,
             components: nsh_ui_mobile::registry(),
             runtime: None,
+            theme: None,
+            fonts: Vec::new(),
         };
         let sink = MainThreadSink {
             mounter: mounter.clone(),

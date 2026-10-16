@@ -74,7 +74,7 @@ fn list_scrolls_with_recycled_cells() {
     let (tx, rx) = mpsc::channel();
     let config = EngineConfig {
         // SAFETY: compiled just now by this runtime.
-        bundle: unsafe { Bundle::bytecode(bytecode) },
+        app: nsh_engine::App::Js(unsafe { Bundle::bytecode(bytecode) }),
         viewport: Size::new(320.0, 500.0),
         trace: false,
         network: None,
@@ -84,6 +84,8 @@ fn list_scrolls_with_recycled_cells() {
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
         runtime: None,
+        theme: None,
+        fonts: Vec::new(),
     };
     let engine = Engine::start(config, || ApproxTextEngine, Sink(tx)).unwrap();
     let first = rx.recv_timeout(Duration::from_secs(5)).unwrap();

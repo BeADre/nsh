@@ -15,7 +15,9 @@ impl MountSink for NullSink {
 #[test]
 fn dropping_an_engine_aborts_running_js() {
     let config = EngineConfig {
-        bundle: Bundle::source("let n = 0; while (true) { n++; }".to_owned()),
+        app: nsh_engine::App::Js(Bundle::source(
+            "let n = 0; while (true) { n++; }".to_owned(),
+        )),
         viewport: Size::new(390.0, 844.0),
         trace: false,
         network: None,
@@ -25,6 +27,8 @@ fn dropping_an_engine_aborts_running_js() {
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
         runtime: None,
+        theme: None,
+        fonts: Vec::new(),
     };
     let engine = Engine::start(config, || ApproxTextEngine, NullSink).unwrap();
     // Let the script start spinning.

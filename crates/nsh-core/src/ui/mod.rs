@@ -47,7 +47,7 @@ pub use self::{
     animated::{AnimOperand, Animated, AnimationEnd, NativeNode, NativeValue, Spring},
     component::{
         Component, ComponentError, ComponentSpec, Event, EventSpec, Method, MethodSpec, NoEvent,
-        Param, PropKind, PropSpec, Props, Registry, typescript,
+        Param, PropKind, PropSpec, Props, Registry, Root, typescript,
     },
     element::{
         Accessible, AnyElement, Attrs, Child, Children, ComponentElement, Context, ElNode, Element,

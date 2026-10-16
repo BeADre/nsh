@@ -38,7 +38,7 @@ fn counter(build_number: u64, bytecode_version: &str) -> Contents {
 fn first_texts(bundle: nsh_engine::Bundle) -> Vec<String> {
     let (tx, rx) = crossbeam_channel::unbounded();
     let config = EngineConfig {
-        bundle,
+        app: nsh_engine::App::Js(bundle),
         viewport: Size::new(390.0, 844.0),
         trace: false,
         network: None,
@@ -48,6 +48,8 @@ fn first_texts(bundle: nsh_engine::Bundle) -> Vec<String> {
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
         runtime: None,
+        theme: None,
+        fonts: Vec::new(),
     };
     let _engine = Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap();
     let first = rx

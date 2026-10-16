@@ -20,14 +20,14 @@ use rustc_hash::FxHashMap;
 use super::{Core, Kind, NO_KEY};
 use crate::{
     ApplyError, Command, EdgeInsets, EventKind, EventMask, EventPayload, JsonValue, NodeId, Op,
-    Prop, Tag, TextEngine,
+    Prop, ROOT_ID, Tag, TextEngine,
     tailwind::ClassList,
     ui::{
         Action, AnswerSlot, AnyInstance, AsyncCx, Attrs, Child, ComponentError, ComponentSpec,
         ElKind, ElNode, Environment, ErasedCx, Executor, Function, FunctionCall, Globals,
         ImageSize, IntoElement, ListConfig, Listener, ModuleCx, ParentElement, PlaceFn, Position,
-        PropError, Provided, Registry, RenderReads, RenderScope, SharedString, StyleRefinement,
-        Theme, caught, view,
+        PropError, Provided, Registry, RenderReads, RenderScope, Root, SharedString,
+        StyleRefinement, Theme, caught, view,
         virtual_list::{RowFn, VirtualListEl},
     },
 };
@@ -203,6 +203,9 @@ impl Expanded {
 /// The core's component state.
 pub(super) struct Components {
     registry: Registry,
+    /// The specs of the components made by type (not by name from the
+    /// registry), one per type.
+    specs: FxHashMap<&'static str, Arc<ComponentSpec>>,
     theme: Arc<Theme>,
     /// Boxed: a render takes its instance out of the map and back.
     pub(super) instances: FxHashMap<NodeId, Box<Instance>>,
@@ -246,6 +249,7 @@ impl Default for Components {
     fn default() -> Self {
         Self {
             registry: Registry::default(),
+            specs: FxHashMap::default(),
             theme: Arc::new(Theme::default()),
             instances: FxHashMap::default(),
             owners: FxHashMap::default(),
@@ -369,19 +373,43 @@ impl<M: TextEngine> Core<M> {
         self.components.registry = registry;
     }
 
-    /// `uiTheme` on the root: the app's theme (`nsh.json`); every component
-    /// renders again.
+    /// `uiTheme` on the root: the app's theme (`nsh.json`).
     pub(super) fn set_ui_theme(&mut self, json: &str) {
         match Theme::from_json(json) {
-            Ok(theme) => {
-                self.components.theme = Arc::new(theme);
-                let hosts: Vec<NodeId> = self.components.instances.keys().copied().collect();
-                for host in hosts {
-                    self.components.mark(host);
-                }
-            }
+            Ok(theme) => self.set_theme(theme),
             Err(e) => log::warn!("theme: {e}"),
         }
+    }
+
+    /// The theme components render with; every component renders again.
+    pub fn set_theme(&mut self, theme: Theme) {
+        self.components.theme = Arc::new(theme);
+        let hosts: Vec<NodeId> = self.components.instances.keys().copied().collect();
+        for host in hosts {
+            self.components.mark(host);
+        }
+    }
+
+    /// Mounts a Rust app's root component as the content of the root view;
+    /// it renders in the next commit.
+    pub fn mount_root(&mut self, root: &Root) {
+        let mut el = root.element().0;
+        let ElKind::Component(c) = std::mem::replace(&mut el.kind, ElKind::Plain) else {
+            return log::error!("the root is not a component");
+        };
+        let id = self.components.alloc();
+        let _ = self.apply_op(Op::Create { id, tag: el.tag });
+        self.create_instance_of(id, c.name, c.make, c.spec);
+        if let Some(inst) = self.components.instances.get_mut(&id)
+            && let Inner::Component(inner) = &mut inst.inner
+        {
+            inner.set_props(c.props.as_any());
+        }
+        let _ = self.apply_op(Op::Insert {
+            parent: ROOT_ID,
+            child: id,
+            before: None,
+        });
     }
 
     /// The environment components read ([`crate::ui::RenderCx::window`]
@@ -922,6 +950,31 @@ impl<M: TextEngine> Core<M> {
                 (None, Inner::Missing)
             }
         };
+        self.insert_instance(host, spec, inner);
+    }
+
+    /// View `host` becomes the host of the component `make` creates (a
+    /// component a Rust render or the app's root names by type).
+    pub(super) fn create_instance_of(
+        &mut self,
+        host: NodeId,
+        name: &'static str,
+        make: fn() -> Box<dyn AnyInstance>,
+        spec: fn() -> ComponentSpec,
+    ) {
+        if self.is_host(host) {
+            return;
+        }
+        let spec = self
+            .components
+            .specs
+            .entry(name)
+            .or_insert_with(|| Arc::new(spec()))
+            .clone();
+        self.insert_instance(host, Some(spec), Inner::Component(make()));
+    }
+
+    fn insert_instance(&mut self, host: NodeId, spec: Option<Arc<ComponentSpec>>, inner: Inner) {
         // A style JS set before the component prop.
         let app_style = self
             .key(host)
@@ -1508,11 +1561,8 @@ impl<M: TextEngine> Core<M> {
                 let id = self.components.alloc();
                 let _ = self.apply_op(Op::Create { id, tag: el.tag });
                 self.components.owners.insert(id, host);
-                if let Part::Component(name) = part {
-                    let _ = self.apply_op(Op::SetProp {
-                        id,
-                        prop: Prop::Component(name.into()),
-                    });
+                if let ElKind::Component(c) = &el.kind {
+                    self.create_instance_of(id, c.name, c.make, c.spec);
                 }
                 (
                     id,

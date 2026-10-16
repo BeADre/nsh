@@ -58,10 +58,10 @@ pub(crate) fn trace(
 
     let (tx, rx) = crossbeam_channel::unbounded();
     let config = EngineConfig {
-        bundle: match bundle.source_map {
+        app: nsh_engine::App::Js(match bundle.source_map {
             Some(map) => bytecode.with_source_map(map),
             None => bytecode,
-        },
+        }),
         viewport: Size::new(width, height),
         trace: true,
         network: Some(std::sync::Arc::new(crate::net::UreqNetwork::new())),
@@ -73,6 +73,8 @@ pub(crate) fn trace(
         limits: nsh_engine::Limits::default(),
         components: nsh_ui_mobile::registry(),
         runtime: None,
+        theme: None,
+        fonts: Vec::new(),
     };
     let control = Arc::new(OnceLock::new());
     let sink = ChannelSink {

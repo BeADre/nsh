@@ -53,7 +53,7 @@ fn uncaught_errors_point_at_app_sources() {
         errors: Arc::new(Mutex::new(tx)),
     };
     let config = EngineConfig {
-        bundle,
+        app: nsh_engine::App::Js(bundle),
         viewport: Size::new(100.0, 100.0),
         trace: false,
         network: None,
@@ -63,6 +63,8 @@ fn uncaught_errors_point_at_app_sources() {
         limits: nsh_engine::Limits::default(),
         components: Default::default(),
         runtime: None,
+        theme: None,
+        fonts: Vec::new(),
     };
     let _engine = Engine::start(config, || ApproxTextEngine, sink).unwrap();
     let error = rx

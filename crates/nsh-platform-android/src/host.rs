@@ -78,7 +78,7 @@ impl Host {
         *self.anim_queue.lock().expect("queue") = VecDeque::new();
         *self.ui.lock().expect("ui") = UiAnim::default();
         let config = EngineConfig {
-            bundle,
+            app: nsh_engine::App::Js(bundle),
             viewport,
             trace: self.trace,
             network: Some(crate::net::network()),
@@ -89,6 +89,8 @@ impl Host {
             limits: *self.limits.lock().expect("limits"),
             components: nsh_ui_mobile::registry(),
             runtime: None,
+            theme: None,
+            fonts: Vec::new(),
         };
         let density = self.density;
         let sink = Sink(self.clone());
