@@ -473,3 +473,78 @@ fn rust_components_hear_layouts_and_scrolls() {
     engine.control().scroll(scroll, 0.0, 120.0, 0);
     assert!(wait("width 390 scrolled 120", &mut None), "the scroll came");
 }
+
+/// A nested component's events in a row of a component's own list reach
+/// the component whose list it is.
+#[derive(Default)]
+struct ButtonRows {
+    pressed: Option<usize>,
+}
+
+impl Component for ButtonRows {
+    const NAME: &'static str = "app.button_rows";
+    type Props = ();
+    type Event = NoEvent;
+
+    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        let press = cx.listener(|this: &mut Self, row: &usize, cx| {
+            this.pressed = Some(*row);
+            cx.notify();
+        });
+        view()
+            .flex_1()
+            .child(text(format!("pressed {:?}", self.pressed)))
+            .child(
+                virtual_list(20, move |i, _| {
+                    nsh_ui_mobile::Button::element(nsh_ui_mobile::ButtonProps {
+                        title: format!("row {i}").into(),
+                        ..Default::default()
+                    })
+                    .on_event(press.clone().map(move |_: &nsh_ui_mobile::ButtonEvent| i))
+                })
+                .flex_1(),
+            )
+    }
+}
+
+#[test]
+fn nested_components_in_list_rows_reach_the_list_owner() {
+    let (tx, rx) = crossbeam_channel::unbounded();
+    let config = EngineConfig {
+        app: App::Rust(Root::of::<ButtonRows>()),
+        viewport: Size::new(390.0, 844.0),
+        trace: false,
+        network: None,
+        assets: None,
+        environment: Environment::default(),
+        header_heights: (44.0, 96.0),
+        limits: nsh_engine::Limits::default(),
+        ui_sets: Vec::new(),
+        runtime: None,
+    };
+    let engine = Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap();
+    let mut parents = std::collections::HashMap::new();
+    let mut texts = Vec::new();
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while let Ok(batch) = rx.recv_deadline(deadline) {
+        for item in &batch.items {
+            match item {
+                MountItem::Insert { parent, child, .. } => {
+                    parents.insert(*child, *parent);
+                }
+                MountItem::Text { id, text, .. } => texts.push((*id, text.text.clone())),
+                _ => {}
+            }
+        }
+        if texts.iter().any(|t| t.1 == "row 3") {
+            break;
+        }
+    }
+    let label = texts.iter().find(|t| t.1 == "row 3").expect("row 3").0;
+    // The button's root (its pressable) holds the label.
+    engine
+        .control()
+        .dispatch_event(parents[&label], EventKind::Press, EventPayload::None);
+    let (text, _) = shown(&rx, Duration::from_secs(5), "pressed Some(3)").unwrap();
+    assert_eq!(text, "pressed Some(3)");
+}

@@ -1933,21 +1933,8 @@ impl<M: TextEngine> Core<M> {
         else {
             return false;
         };
-        // A list row's handlers are the component's whose list it is.
-        let owner = match &inst.inner {
-            Inner::Component(_) => host,
-            Inner::VirtualRow { list, .. } => match self.components.virtual_lists.get(list) {
-                Some(state) => state.owner,
-                None => return false,
-            },
-            Inner::Row { .. } => match self
-                .list_of(host)
-                .and_then(|l| self.components.slot_hosts.get(&l))
-            {
-                Some(&owner) => owner,
-                None => return false,
-            },
-            Inner::Missing => return false,
+        let Some(owner) = self.state_owner(host) else {
+            return false;
         };
         if owner != host {
             cx = self.erased_cx(owner);
@@ -1965,6 +1952,22 @@ impl<M: TextEngine> Core<M> {
             self.component_failed(owner, message);
         }
         true
+    }
+
+    /// The component whose state `host`'s handlers change: its own, or for
+    /// a list row the component's whose list it is.
+    fn state_owner(&self, host: NodeId) -> Option<NodeId> {
+        match &self.components.instances.get(&host)?.inner {
+            Inner::Component(_) => Some(host),
+            Inner::VirtualRow { list, .. } => {
+                self.components.virtual_lists.get(list).map(|s| s.owner)
+            }
+            Inner::Row { .. } => self
+                .list_of(host)
+                .and_then(|l| self.components.slot_hosts.get(&l))
+                .copied(),
+            Inner::Missing => None,
+        }
     }
 
     /// The code of `host`'s component panicked: the nearest component above
@@ -2312,18 +2315,23 @@ impl<M: TextEngine> Core<M> {
         for event in cx.emits {
             match self.components.owners.get(&host).copied() {
                 // A nested component: the component that rendered it gets
-                // the event, if it handles it.
+                // the event, if it handles it (a list row's handlers run
+                // with the component whose list it is).
                 Some(parent) => {
-                    let mut cx = self.erased_cx(parent);
-                    let Some(inst) = self.components.instances.get_mut(&parent) else {
-                        continue;
-                    };
-                    let Some(listener) = inst
-                        .event_handlers
-                        .iter()
-                        .find(|(n, _)| *n == host)
+                    let Some(listener) = self
+                        .components
+                        .instances
+                        .get(&parent)
+                        .and_then(|inst| inst.event_handlers.iter().find(|(n, _)| *n == host))
                         .map(|(_, l)| l.clone())
                     else {
+                        continue;
+                    };
+                    let Some(parent) = self.state_owner(parent) else {
+                        continue;
+                    };
+                    let mut cx = self.erased_cx(parent);
+                    let Some(inst) = self.components.instances.get_mut(&parent) else {
                         continue;
                     };
                     let mut failed = None;
