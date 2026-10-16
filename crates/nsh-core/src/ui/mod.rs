@@ -61,8 +61,8 @@ pub use self::{
         VideoProgress, WebNavigation,
     },
     host::{
-        CanvasArg, CanvasView, Input, Modal, NativeView, Painter, Scroll, Video, WebView, canvas,
-        input, modal, native, scroll, video, web_view,
+        CanvasArg, CanvasView, Input, Modal, NativeView, Painter, Screen, Scroll, Stack, Video,
+        WebView, canvas, input, modal, native, screen, scroll, stack, video, web_view,
     },
     module::{
         Function, FunctionCall, FunctionSpec, Module, ModuleCx, ModuleFuture, ModuleParam,
@@ -84,8 +84,9 @@ pub use crate::{
     AccessibilityRole, AccessibilityState, AutoCapitalize, AutoFill, Dialog, DialogButton,
     DialogButtonStyle, EdgeInsets, EllipsizeMode, EventKind, EventPayload, KeyboardDismissMode,
     KeyboardTaps, KeyboardType, LayoutAnimation, LayoutCurve, LayoutProperty, LayoutTransition,
-    ModalAnimation, ModalPresentation, PointerEvents, ResizeMode, ReturnKeyType, SnapAlignment,
-    StatusBarConfig, StatusBarSetting, StatusBarStyle, TouchEvent, TransformKind, style::Color,
+    ModalAnimation, ModalPresentation, PointerEvents, ResizeMode, ReturnKeyType, ScreenAnimation,
+    SnapAlignment, StatusBarConfig, StatusBarSetting, StatusBarStyle, TouchEvent, TransformKind,
+    style::Color,
 };
 
 /// Everything a component's module needs: `use nsh_core::ui::prelude::*;`.
@@ -151,6 +152,8 @@ pub mod prelude {
         RenderCx,
         ResizeMode,
         ReturnKeyType,
+        Screen,
+        ScreenAnimation,
         Scroll,
         ScrollEvent,
         ScrollOffset,
@@ -158,6 +161,7 @@ pub mod prelude {
         SharedString,
         Slot,
         Spring,
+        Stack,
         Styled,
         Task,
         Theme,
@@ -179,7 +183,9 @@ pub mod prelude {
         relative,
         rgb,
         rgba,
+        screen,
         scroll,
+        stack,
         text,
         video,
         view,
