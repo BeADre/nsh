@@ -24,6 +24,10 @@ pub fn compile_bytecode(source: &str, strip: bool) -> Result<Vec<u8>, JsError> {
     let rt = Runtime::new()?;
     let ctx = Context::full(&rt)?;
     ctx.with(|ctx| {
+        // Imports resolve while compiling: the native modules declare
+        // their exports.
+        // SAFETY: the context's own runtime.
+        crate::modules::set_loader(unsafe { rquickjs::qjs::JS_GetRuntime(ctx.as_raw().as_ptr()) });
         let module = Module::declare(ctx.clone(), BUNDLE_NAME, source)
             .catch(&ctx)
             .map_err(JsError::caught)?;

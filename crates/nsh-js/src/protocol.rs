@@ -23,12 +23,32 @@ use rustc_hash::FxHashSet;
 #[derive(Default)]
 pub(crate) struct Warnings {
     seen: FxHashSet<String>,
+    /// Collecting for [`Warnings::merge`] instead of logging.
+    deferred: Option<Vec<String>>,
 }
 
 impl Warnings {
-    fn warn(&mut self, message: String) {
-        if self.seen.len() < 1024 && self.seen.insert(message.clone()) {
+    /// Warnings that are only collected, to be merged into the VM's
+    /// (when decoding runs JS that may itself decode).
+    pub(crate) fn deferred() -> Warnings {
+        Warnings {
+            seen: FxHashSet::default(),
+            deferred: Some(Vec::new()),
+        }
+    }
+
+    pub(crate) fn warn(&mut self, message: String) {
+        if let Some(pending) = &mut self.deferred {
+            pending.push(message);
+        } else if self.seen.len() < 1024 && self.seen.insert(message.clone()) {
             log::warn!("{message}");
+        }
+    }
+
+    /// Logs what `other` collected and was not reported yet.
+    pub(crate) fn merge(&mut self, other: Warnings) {
+        for message in other.deferred.unwrap_or_default() {
+            self.warn(message);
         }
     }
 }
@@ -402,7 +422,7 @@ impl<'js> HostInput for Js<'js> {
 
 /// The op setting prop `name` to `value`: a style, a registered native
 /// component's prop, one of the core's host props or an event listener.
-fn decode_prop<'js>(
+pub(crate) fn decode_prop<'js>(
     id: NodeId,
     name: &str,
     value: Value<'js>,

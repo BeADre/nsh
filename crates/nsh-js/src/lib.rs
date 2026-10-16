@@ -11,12 +11,15 @@
 
 mod bytecode;
 mod console;
+mod dom;
 mod error;
 mod host;
+mod modules;
 mod net;
 mod protocol;
 mod reactive;
 mod sandbox;
+mod state;
 mod timers;
 mod web;
 

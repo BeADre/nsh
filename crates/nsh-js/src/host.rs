@@ -31,9 +31,12 @@ pub type ErrorHandler = Box<dyn Fn(&JsError)>;
 /// Only touched on the JS thread.
 #[derive(Default)]
 pub(crate) struct Shared {
-    ops: RefCell<Vec<Op>>,
+    pub(crate) ops: RefCell<Vec<Op>>,
+    /// Native nodes collected since the last [`Host::take_ops`] (their
+    /// finalizers queue here: the op queue may be borrowed meanwhile).
+    pub(crate) releases: RefCell<Vec<NodeId>>,
     timers: RefCell<Timers>,
-    warnings: RefCell<Warnings>,
+    pub(crate) warnings: RefCell<Warnings>,
     pub(crate) net: RefCell<NetworkQueue>,
     /// Font assets imported by the app, not yet registered.
     fonts: RefCell<Vec<String>>,
@@ -105,7 +108,8 @@ impl Host {
             ..Shared::default()
         });
         ctx.with(|ctx| {
-            crate::reactive::install(&ctx);
+            crate::state::install(&ctx, shared.clone());
+            crate::reactive::install_globals(&ctx);
             install(&ctx, &shared)?;
             if options.harden {
                 sandbox::harden(&ctx)?;
@@ -266,10 +270,21 @@ impl Host {
                     (_, EventPayload::Value(value)) => payload_value(&ctx, value),
                     _ => payload_object(&ctx, payload),
                 };
+                let raw = ctx.as_raw().as_ptr();
                 let result = payload.and_then(|payload| {
-                    ctx.globals()
-                        .get::<_, Function>("__nsh_dispatch")?
-                        .call::<_, ()>((id, event.prop_name(), payload))
+                    // A node of compiled JSX holds its handlers natively.
+                    if let Some(handler) = crate::dom::handler(raw, id, event) {
+                        // SAFETY: an owned function value of this context.
+                        let handler = unsafe { Value::from_raw(ctx.clone(), handler) };
+                        return match handler.into_function() {
+                            Some(f) => f.call::<_, ()>((payload,)),
+                            None => Ok(()),
+                        };
+                    }
+                    match ctx.globals().get::<_, Option<Function>>("__nsh_dispatch")? {
+                        Some(dispatch) => dispatch.call::<_, ()>((id, event.prop_name(), payload)),
+                        None => Ok(()),
+                    }
                 });
                 self.report(&ctx, result);
             });
@@ -326,6 +341,9 @@ impl Host {
         } else {
             out.append(&mut ops);
         }
+        drop(ops);
+        let mut releases = self.shared.releases.borrow_mut();
+        out.extend(releases.drain(..).map(|id| Op::Release { id }));
     }
 
     /// Earliest timer deadline, if any timer is pending.
@@ -383,6 +401,9 @@ impl Host {
         self.guarded(Phase::Call, || {
             self.ctx.with(|ctx| {
                 let result = (|| {
+                    let raw = ctx.as_raw().as_ptr();
+                    // SAFETY: the state of this host's context.
+                    unsafe { &(*crate::state::state(raw)).dom }.set_environment(env.os, env.rtl);
                     let value = environment_object(&ctx, env)?;
                     let globals = ctx.globals();
                     globals.set("__nsh_env_value", value.clone())?;
@@ -474,7 +495,7 @@ impl Drop for Host {
         // Persistent JS values must be freed before the runtime.
         self.shared.timers.borrow_mut().clear();
         self.shared.frames.borrow_mut().clear();
-        self.ctx.with(|ctx| crate::reactive::uninstall(&ctx));
+        self.ctx.with(|ctx| crate::state::uninstall(&ctx));
     }
 }
 
