@@ -46,4 +46,9 @@ after `nsh trace` timings and item counts. Current baselines (Apple Silicon):
   (`cargo test --release -p nsh-js --lib bench_canvas_decode -- --ignored --nocapture`), as the hand-written decoder
   it replaced did (0.57ms).
 
+- Where JS time goes (release `nsh trace`, which logs `event js` per dispatched event; 2026-10-16, the baseline of the
+  native JS runtime): the empty app's eval is ~250µs (all of it the runtime and Solid starting), counter's ~380µs
+  (first frame ~500µs); a counter tap spends a median 52µs in JS (handler, Solid's updates, the microtask flush and
+  the op decode) against 17µs of core commit (11 ops, 10 items); a gallery list rebind frame is 24µs, 16µs of it JS.
+
 The dev profile builds `rquickjs-sys` and `taffy` with `opt-level = 3`, so debug timings are meaningful too; release uses fat LTO.

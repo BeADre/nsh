@@ -1066,7 +1066,13 @@ fn handle<M: TextEngine>(host: &Host, state: &mut State<M>, message: Message) ->
                 host.dispatch_event(id, event, &EventPayload::Touch(touch));
                 return true;
             }
-            host.dispatch_event(id, event, &payload)
+            let start = state.trace.then(Instant::now);
+            host.dispatch_event(id, event, &payload);
+            if let Some(start) = start {
+                // The handler, its microtasks and the decode of what it
+                // committed.
+                log::info!(target: "nsh::perf", "event js: {}µs", start.elapsed().as_micros());
+            }
         }
         Message::Scroll(id, x, y, applied) => {
             state.core.set_scroll_offset(id, x, y, applied);
