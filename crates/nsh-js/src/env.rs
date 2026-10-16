@@ -1,0 +1,711 @@
+//! The surface's environment for apps compiled by nsh: one signal per part
+//! (window, safe area, keyboard, color scheme, font scale, screen reader,
+//! reduced motion, layout direction) written when the platform reports a
+//! change, read through read-only accessors; `nsh/device` (`Platform`,
+//! `PixelRatio`, `I18nManager`) and `nsh/accessibility`; the insets
+//! context screens and modals provide (`useSafeAreaInsets`).
+
+use std::{
+    cell::{Cell, RefCell},
+    ffi::{CStr, c_int},
+    ptr,
+};
+
+use nsh_core::platform::{ColorScheme, Environment, Idiom, Os};
+use rquickjs::qjs;
+
+use crate::{
+    modules::Export,
+    reactive::{self, Native, arg},
+};
+
+type JsValue = qjs::JSValue;
+type JsContext = qjs::JSContext;
+
+const UNDEFINED: JsValue = qjs::JS_UNDEFINED;
+
+/// The parts of the environment, each a signal.
+#[derive(Clone, Copy)]
+enum Part {
+    Window,
+    SafeArea,
+    Keyboard,
+    ColorScheme,
+    FontScale,
+    ScreenReader,
+    ReduceMotion,
+    Rtl,
+}
+
+const PARTS: usize = 8;
+
+/// The environment's part of a context's state.
+pub(crate) struct Env {
+    /// What the platform reported last (`None`: nothing yet).
+    current: RefCell<Option<Environment>>,
+    /// One signal per part (owned).
+    signals: [Cell<JsValue>; PARTS],
+    /// Read-only accessors of the signals (owned memos).
+    accessors: [Cell<JsValue>; PARTS],
+    /// `I18nManager.allowRTL` / `forceRTL`.
+    allow_rtl: Cell<bool>,
+    force_rtl: Cell<bool>,
+    /// The insets context (owned): screens and modals provide theirs.
+    insets: Cell<JsValue>,
+    /// `AccessibilityInfo.addEventListener` listeners: (id, screen reader
+    /// (else reduced motion), function owned).
+    listeners: RefCell<Vec<(u32, bool, JsValue)>>,
+    next_listener: Cell<u32>,
+}
+
+impl Default for Env {
+    fn default() -> Self {
+        Env {
+            current: RefCell::new(None),
+            signals: std::array::from_fn(|_| Cell::new(UNDEFINED)),
+            accessors: std::array::from_fn(|_| Cell::new(UNDEFINED)),
+            allow_rtl: Cell::new(true),
+            force_rtl: Cell::new(false),
+            insets: Cell::new(UNDEFINED),
+            listeners: RefCell::new(Vec::new()),
+            next_listener: Cell::new(1),
+        }
+    }
+}
+
+fn env<'a>(ctx: *mut JsContext) -> &'a Env {
+    // SAFETY: a projection of the state's field, reached by shared
+    // reference only.
+    unsafe { &(*crate::state::state(ctx)).env }
+}
+
+impl Env {
+    /// Frees the values the environment holds (the state is unregistered).
+    pub(crate) fn free_all(&mut self, raw: *mut JsContext) {
+        // SAFETY: the environment's own values; no JS runs from here on.
+        unsafe {
+            for c in self.signals.iter().chain(&self.accessors) {
+                qjs::JS_FreeValue(raw, c.replace(UNDEFINED));
+            }
+            qjs::JS_FreeValue(raw, self.insets.replace(UNDEFINED));
+            for (_, _, f) in self.listeners.borrow_mut().drain(..) {
+                qjs::JS_FreeValue(raw, f);
+            }
+        }
+    }
+}
+
+/// Makes the signals and accessors (after the graph and the renderer).
+pub(crate) fn init(ctx: *mut JsContext) {
+    let e = env(ctx);
+    for i in 0..PARTS {
+        let signal = reactive::new_signal(ctx, UNDEFINED);
+        let mut data = [signal];
+        // SAFETY: the function keeps a dup of the signal.
+        let func = unsafe { qjs::JS_NewCFunctionData(ctx, Some(read), 0, 0, 1, data.as_mut_ptr()) };
+        e.signals[i].set(signal);
+        e.accessors[i].set(reactive::memo(ctx, func, false));
+    }
+    // The insets of the nearest screen or modal: the surface's safe area
+    // outside of them.
+    let safe_area = e.accessors[Part::SafeArea as usize].get();
+    let mut args = [safe_area];
+    // SAFETY: a context whose default is the accessor (borrowed).
+    let insets = unsafe { crate::dom::context(ctx, UNDEFINED, 1, args.as_mut_ptr()) };
+    e.insets.set(insets);
+}
+
+/// An accessor's run: reads its signal (tracked).
+unsafe extern "C" fn read(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    _argc: c_int,
+    _argv: *mut JsValue,
+    _magic: c_int,
+    data: *mut JsValue,
+) -> JsValue {
+    // SAFETY: one data value: a signal object.
+    unsafe { qjs::JS_Call(ctx, *data, UNDEFINED, 0, ptr::null_mut()) }
+}
+
+fn object(ctx: *mut JsContext, fields: &[(&CStr, JsValue)]) -> JsValue {
+    // SAFETY: a new object taking the field values.
+    unsafe {
+        let o = qjs::JS_NewObject(ctx);
+        for (k, v) in fields {
+            qjs::JS_SetPropertyStr(ctx, o, k.as_ptr(), *v);
+        }
+        o
+    }
+}
+
+/// A number as JS shows it: the f32's shortest decimal (`51.809525`, not
+/// the f64 widening `51.80952453613281`).
+fn number(v: f32) -> JsValue {
+    let shortest = v.to_string().parse::<f64>().unwrap_or(v as f64);
+    qjs::JS_NewFloat64(shortest)
+}
+
+fn boolean(v: bool) -> JsValue {
+    if v { qjs::JS_TRUE } else { qjs::JS_FALSE }
+}
+
+fn string(ctx: *mut JsContext, s: &str) -> JsValue {
+    // SAFETY: a new string.
+    unsafe { qjs::JS_NewStringLen(ctx, s.as_ptr().cast(), s.len() as _) }
+}
+
+/// The layout direction: the user's language, unless the app turned it
+/// off or forced it.
+fn rtl(e: &Env, env: &Environment) -> bool {
+    (e.allow_rtl.get() && env.rtl) || e.force_rtl.get()
+}
+
+/// Takes in what the platform reports: writes the parts that changed.
+pub(crate) fn set_environment(ctx: *mut JsContext, next: &Environment) -> Result<(), ()> {
+    let e = env(ctx);
+    let previous = e.current.replace(Some(*next));
+    let changed = |f: &dyn Fn(&Environment) -> bool| match &previous {
+        Some(p) => !f(p),
+        None => true,
+    };
+    let insets = |i: &nsh_core::platform::Insets| {
+        [
+            (c"top", number(i.top)),
+            (c"right", number(i.right)),
+            (c"bottom", number(i.bottom)),
+            (c"left", number(i.left)),
+        ]
+    };
+    let mut writes: Vec<(Part, JsValue)> = Vec::new();
+    if changed(&|p| p.window == next.window) {
+        let (w, h) = next.window;
+        writes.push((
+            Part::Window,
+            object(ctx, &[(c"width", number(w)), (c"height", number(h))]),
+        ));
+    }
+    if changed(&|p| p.safe_area == next.safe_area) {
+        writes.push((Part::SafeArea, object(ctx, &insets(&next.safe_area))));
+    }
+    if changed(&|p| {
+        p.keyboard_height == next.keyboard_height && p.keyboard_duration == next.keyboard_duration
+    }) {
+        writes.push((
+            Part::Keyboard,
+            object(
+                ctx,
+                &[
+                    (c"height", number(next.keyboard_height)),
+                    (c"duration", number(next.keyboard_duration)),
+                ],
+            ),
+        ));
+    }
+    if changed(&|p| p.color_scheme == next.color_scheme) {
+        let scheme = match next.color_scheme {
+            ColorScheme::Light => "light",
+            ColorScheme::Dark => "dark",
+        };
+        writes.push((Part::ColorScheme, string(ctx, scheme)));
+    }
+    if changed(&|p| p.font_scale == next.font_scale) {
+        writes.push((Part::FontScale, number(next.font_scale)));
+    }
+    let screen_reader = changed(&|p| p.screen_reader == next.screen_reader);
+    if screen_reader {
+        writes.push((Part::ScreenReader, boolean(next.screen_reader)));
+    }
+    let reduce_motion = changed(&|p| p.reduce_motion == next.reduce_motion);
+    if reduce_motion {
+        writes.push((Part::ReduceMotion, boolean(next.reduce_motion)));
+    }
+    if changed(&|p| rtl(e, p) == rtl(e, next)) {
+        writes.push((Part::Rtl, boolean(rtl(e, next))));
+    }
+    // SAFETY: the state's renderer, by shared reference.
+    unsafe { &(*crate::state::state(ctx)).dom }.set_direction(rtl(e, next));
+    reactive::batch_with(ctx, || {
+        for (part, value) in writes {
+            reactive::set_signal(ctx, e.signals[part as usize].get(), value);
+        }
+    });
+    let mut failed = reactive::finish_value(ctx, UNDEFINED);
+    // Settings listeners hear about changes after the first report.
+    if previous.is_some() {
+        for (screen, now) in [
+            (true, screen_reader.then_some(next.screen_reader)),
+            (false, reduce_motion.then_some(next.reduce_motion)),
+        ] {
+            let Some(now) = now else { continue };
+            let listeners: Vec<JsValue> = e
+                .listeners
+                .borrow()
+                .iter()
+                .filter(|(_, s, _)| *s == screen)
+                // SAFETY: dups for the calls below.
+                .map(|&(_, _, f)| unsafe { qjs::JS_DupValue(ctx, f) })
+                .collect();
+            for f in listeners {
+                let mut args = [boolean(now)];
+                // SAFETY: an owned function, freed after the call.
+                let r = unsafe { qjs::JS_Call(ctx, f, UNDEFINED, 1, args.as_mut_ptr()) };
+                unsafe {
+                    qjs::JS_FreeValue(ctx, f);
+                    if qjs::JS_IsException(r) {
+                        failed = r;
+                    } else {
+                        qjs::JS_FreeValue(ctx, r);
+                    }
+                }
+            }
+        }
+    }
+    // SAFETY: an inline tag check.
+    if unsafe { qjs::JS_IsException(failed) } {
+        Err(())
+    } else {
+        Ok(())
+    }
+}
+
+fn accessor(ctx: *mut JsContext, part: Part) -> JsValue {
+    // SAFETY: a dup of an accessor the environment owns.
+    unsafe { qjs::JS_DupValue(ctx, env(ctx).accessors[part as usize].get()) }
+}
+
+fn current(ctx: *mut JsContext) -> Environment {
+    (*env(ctx).current.borrow()).unwrap_or_default()
+}
+
+/// `useSafeAreaInsets()`: the insets of the nearest screen or modal (an
+/// accessor).
+unsafe extern "C" fn use_safe_area_insets(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    _argc: c_int,
+    _argv: *mut JsValue,
+) -> JsValue {
+    let insets = env(ctx).insets.get();
+    // SAFETY: calling the context reads its nearest value.
+    unsafe { qjs::JS_Call(ctx, insets, UNDEFINED, 0, ptr::null_mut()) }
+}
+
+/// A runtime value a registry exports as it is.
+pub(crate) fn reexport(ctx: *mut JsContext, name: &str) -> JsValue {
+    match name {
+        "safeArea" => accessor(ctx, Part::SafeArea),
+        "keyboard" => accessor(ctx, Part::Keyboard),
+        "windowSize" => accessor(ctx, Part::Window),
+        "colorScheme" => accessor(ctx, Part::ColorScheme),
+        "useSafeAreaInsets" => {
+            reactive::new_function(ctx, c"useSafeAreaInsets", use_safe_area_insets, 0)
+        }
+        other => {
+            let message =
+                std::ffi::CString::new(format!("nsh: the runtime has no native `{other}` yet"))
+                    .unwrap_or_default();
+            // SAFETY: throws on a live context.
+            unsafe { qjs::JS_ThrowReferenceError(ctx, c"%s".as_ptr(), message.as_ptr()) }
+        }
+    }
+}
+
+// --- nsh/device ---------------------------------------------------------------------
+
+fn os_version(ctx: *mut JsContext, env: &Environment) -> JsValue {
+    let (major, minor) = env.os_version;
+    // React Native: a string on iOS ("17.5"), the API level on Android.
+    if env.os == Os::Android {
+        qjs::JS_NewFloat64(major as f64)
+    } else {
+        string(ctx, &format!("{major}.{minor}"))
+    }
+}
+
+fn idiom(env: &Environment) -> &'static str {
+    match env.idiom {
+        Idiom::Phone => "phone",
+        Idiom::Pad => "pad",
+        Idiom::Mac => "mac",
+        Idiom::Tv => "tv",
+        Idiom::Desktop => "desktop",
+    }
+}
+
+fn is_desktop(os: Os) -> bool {
+    matches!(os, Os::MacOs | Os::Windows | Os::Linux)
+}
+
+/// `Platform`: the OS and form factor, constant while the app runs.
+fn platform(ctx: *mut JsContext) -> JsValue {
+    let e = current(ctx);
+    let constants = object(
+        ctx,
+        &[
+            (c"osVersion", os_version(ctx, &e)),
+            (c"interfaceIdiom", string(ctx, idiom(&e))),
+        ],
+    );
+    let select = reactive::new_function(ctx, c"select", platform_select, 1);
+    object(
+        ctx,
+        &[
+            (c"OS", string(ctx, e.os.name())),
+            (c"isDesktop", boolean(is_desktop(e.os))),
+            (c"Version", os_version(ctx, &e)),
+            (c"isPad", boolean(e.idiom == Idiom::Pad)),
+            (c"isTV", boolean(e.idiom == Idiom::Tv)),
+            (c"isMacCatalyst", boolean(e.idiom == Idiom::Mac)),
+            (c"constants", constants),
+            (c"select", select),
+        ],
+    )
+}
+
+/// `Platform.select(spec)`: this OS's value, else `mobile` / `desktop`,
+/// else `native`, else `default`.
+unsafe extern "C" fn platform_select(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+) -> JsValue {
+    let spec = arg(argc, argv, 0);
+    // SAFETY: an inline check, then property reads of a live object.
+    if !unsafe { qjs::JS_IsObject(spec) } {
+        return UNDEFINED;
+    }
+    let os = current(ctx).os;
+    let kind = if is_desktop(os) { "desktop" } else { "mobile" };
+    for key in [os.name(), kind, "native", "default"] {
+        let key = std::ffi::CString::new(key).unwrap_or_default();
+        let v = unsafe { qjs::JS_GetPropertyStr(ctx, spec, key.as_ptr()) };
+        if !unsafe { qjs::JS_IsUndefined(v) } {
+            return v;
+        }
+    }
+    UNDEFINED
+}
+
+/// `PixelRatio`.
+fn pixel_ratio(ctx: *mut JsContext) -> JsValue {
+    let natives: [(&CStr, Native, c_int); 4] = [
+        (c"get", pixel_ratio_get, 0),
+        (c"getFontScale", pixel_ratio_font_scale, 0),
+        (c"getPixelSizeForLayoutSize", pixel_size_for_layout_size, 1),
+        (c"roundToNearestPixel", round_to_nearest_pixel, 1),
+    ];
+    let fields: Vec<(&CStr, JsValue)> = natives
+        .iter()
+        .map(|&(name, f, length)| (name, reactive::new_function(ctx, name, f, length)))
+        .collect();
+    object(ctx, &fields)
+}
+
+unsafe extern "C" fn pixel_ratio_get(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    _argc: c_int,
+    _argv: *mut JsValue,
+) -> JsValue {
+    number(current(ctx).pixel_ratio)
+}
+
+unsafe extern "C" fn pixel_ratio_font_scale(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    _argc: c_int,
+    _argv: *mut JsValue,
+) -> JsValue {
+    number(current(ctx).font_scale)
+}
+
+fn number_arg(ctx: *mut JsContext, argc: c_int, argv: *mut JsValue) -> f64 {
+    let mut v = 0f64;
+    // SAFETY: converting a live value.
+    unsafe { qjs::JS_ToFloat64(ctx, &mut v, arg(argc, argv, 0)) };
+    v
+}
+
+unsafe extern "C" fn pixel_size_for_layout_size(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+) -> JsValue {
+    let ratio = current(ctx).pixel_ratio as f64;
+    qjs::JS_NewFloat64((number_arg(ctx, argc, argv) * ratio).round())
+}
+
+unsafe extern "C" fn round_to_nearest_pixel(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+) -> JsValue {
+    let ratio = (current(ctx).pixel_ratio as f64).max(f64::MIN_POSITIVE);
+    qjs::JS_NewFloat64((number_arg(ctx, argc, argv) * ratio).round() / ratio)
+}
+
+/// `I18nManager`: the layout direction.
+fn i18n_manager(ctx: *mut JsContext) -> JsValue {
+    // SAFETY: a new object with a getter and functions it takes.
+    unsafe {
+        let o = object(
+            ctx,
+            &[
+                (c"doLeftAndRightSwapInRTL", qjs::JS_TRUE),
+                (
+                    c"allowRTL",
+                    reactive::new_function(ctx, c"allowRTL", allow_rtl, 1),
+                ),
+                (
+                    c"forceRTL",
+                    reactive::new_function(ctx, c"forceRTL", force_rtl, 1),
+                ),
+                (
+                    c"getConstants",
+                    reactive::new_function(ctx, c"getConstants", i18n_constants, 0),
+                ),
+            ],
+        );
+        let getter = reactive::new_function(ctx, c"isRTL", is_rtl, 0);
+        let atom = qjs::JS_NewAtom(ctx, c"isRTL".as_ptr());
+        qjs::JS_DefineProperty(
+            ctx,
+            o,
+            atom,
+            UNDEFINED,
+            getter,
+            UNDEFINED,
+            (qjs::JS_PROP_HAS_GET | qjs::JS_PROP_HAS_ENUMERABLE | qjs::JS_PROP_ENUMERABLE) as c_int,
+        );
+        qjs::JS_FreeAtom(ctx, atom);
+        qjs::JS_FreeValue(ctx, getter);
+        o
+    }
+}
+
+/// The layout direction (tracked).
+unsafe extern "C" fn is_rtl(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    _argc: c_int,
+    _argv: *mut JsValue,
+) -> JsValue {
+    let rtl = env(ctx).accessors[Part::Rtl as usize].get();
+    // SAFETY: calling an accessor the environment owns.
+    unsafe { qjs::JS_Call(ctx, rtl, UNDEFINED, 0, ptr::null_mut()) }
+}
+
+unsafe extern "C" fn i18n_constants(
+    ctx: *mut JsContext,
+    this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+) -> JsValue {
+    // SAFETY: as `is_rtl`.
+    let rtl = unsafe { is_rtl(ctx, this, argc, argv) };
+    object(
+        ctx,
+        &[(c"isRTL", rtl), (c"doLeftAndRightSwapInRTL", qjs::JS_TRUE)],
+    )
+}
+
+fn set_rtl_flag(ctx: *mut JsContext, argc: c_int, argv: *mut JsValue, force: bool) -> JsValue {
+    // SAFETY: converting a live value.
+    let on = unsafe { qjs::JS_ToBool(ctx, arg(argc, argv, 0)) } == 1;
+    let e = env(ctx);
+    if force {
+        e.force_rtl.set(on);
+    } else {
+        e.allow_rtl.set(on);
+    }
+    let now = current(ctx);
+    let value = rtl(e, &now);
+    // SAFETY: the state's renderer, by shared reference.
+    unsafe { &(*crate::state::state(ctx)).dom }.set_direction(value);
+    reactive::set_signal(ctx, e.signals[Part::Rtl as usize].get(), boolean(value));
+    reactive::finish_value(ctx, UNDEFINED)
+}
+
+unsafe extern "C" fn allow_rtl(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+) -> JsValue {
+    set_rtl_flag(ctx, argc, argv, false)
+}
+
+unsafe extern "C" fn force_rtl(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+) -> JsValue {
+    set_rtl_flag(ctx, argc, argv, true)
+}
+
+/// The exports of `nsh/device`.
+pub(crate) const DEVICE_EXPORTS: &[(&str, Export)] = &[
+    (
+        "windowSize",
+        Export::Value(|ctx| accessor(ctx, Part::Window)),
+    ),
+    (
+        "colorScheme",
+        Export::Value(|ctx| accessor(ctx, Part::ColorScheme)),
+    ),
+    (
+        "fontScale",
+        Export::Value(|ctx| accessor(ctx, Part::FontScale)),
+    ),
+    ("Platform", Export::Value(platform)),
+    ("PixelRatio", Export::Value(pixel_ratio)),
+    ("I18nManager", Export::Value(i18n_manager)),
+];
+
+// --- nsh/accessibility --------------------------------------------------------------
+
+/// `AccessibilityInfo`: the runtime module's commands, and the settings.
+fn accessibility_info(ctx: *mut JsContext) -> JsValue {
+    let registry = nsh_core::runtime::registries()
+        .iter()
+        .find(|r| r.specifier() == Some("nsh/accessibility"));
+    let info = match registry.and_then(|r| {
+        r.module_specs()
+            .into_iter()
+            .find(|m| m.name == "AccessibilityInfo")
+            .map(|m| (m, r.namespace()))
+    }) {
+        Some((spec, namespace)) => crate::components::module(ctx, &spec, namespace),
+        // SAFETY: a new object.
+        None => unsafe { qjs::JS_NewObject(ctx) },
+    };
+    let natives: [(&CStr, Native, c_int); 3] = [
+        (c"isScreenReaderEnabled", is_screen_reader_enabled, 0),
+        (c"isReduceMotionEnabled", is_reduce_motion_enabled, 0),
+        (c"addEventListener", add_event_listener, 2),
+    ];
+    for (name, f, length) in natives {
+        let func = reactive::new_function(ctx, name, f, length);
+        // SAFETY: the object takes the function.
+        unsafe { qjs::JS_SetPropertyStr(ctx, info, name.as_ptr(), func) };
+    }
+    info
+}
+
+/// A promise resolved with `value` (owned).
+fn resolved(ctx: *mut JsContext, value: JsValue) -> JsValue {
+    let mut funcs = [UNDEFINED; 2];
+    // SAFETY: a new promise; its functions and `value` are freed after the
+    // call.
+    unsafe {
+        let promise = qjs::JS_NewPromiseCapability(ctx, funcs.as_mut_ptr());
+        let mut args = [value];
+        let r = qjs::JS_Call(ctx, funcs[0], UNDEFINED, 1, args.as_mut_ptr());
+        qjs::JS_FreeValue(ctx, r);
+        qjs::JS_FreeValue(ctx, value);
+        qjs::JS_FreeValue(ctx, funcs[0]);
+        qjs::JS_FreeValue(ctx, funcs[1]);
+        promise
+    }
+}
+
+unsafe extern "C" fn is_screen_reader_enabled(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    _argc: c_int,
+    _argv: *mut JsValue,
+) -> JsValue {
+    resolved(ctx, boolean(current(ctx).screen_reader))
+}
+
+unsafe extern "C" fn is_reduce_motion_enabled(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    _argc: c_int,
+    _argv: *mut JsValue,
+) -> JsValue {
+    resolved(ctx, boolean(current(ctx).reduce_motion))
+}
+
+/// `addEventListener("screenReaderChanged" | "reduceMotionChanged", f)`:
+/// `{ remove() }`.
+unsafe extern "C" fn add_event_listener(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+) -> JsValue {
+    let screen = match crate::dom::string_arg(ctx, arg(argc, argv, 0)).as_deref() {
+        Some("screenReaderChanged") => true,
+        Some("reduceMotionChanged") => false,
+        _ => {
+            // SAFETY: throws on a live context.
+            return unsafe {
+                qjs::JS_ThrowTypeError(
+                    ctx,
+                    c"addEventListener: \"screenReaderChanged\" or \"reduceMotionChanged\""
+                        .as_ptr(),
+                )
+            };
+        }
+    };
+    let f = arg(argc, argv, 1);
+    // SAFETY: an inline check, then a dup the environment owns.
+    if !unsafe { qjs::JS_IsFunction(ctx, f) } {
+        return unsafe { qjs::JS_ThrowTypeError(ctx, c"addEventListener: a function".as_ptr()) };
+    }
+    let e = env(ctx);
+    let id = e.next_listener.get();
+    e.next_listener.set(id + 1);
+    e.listeners
+        .borrow_mut()
+        .push((id, screen, unsafe { qjs::JS_DupValue(ctx, f) }));
+    let mut data = [qjs::JS_NewFloat64(id as f64)];
+    // SAFETY: the function keeps a dup of `data`.
+    let remove =
+        unsafe { qjs::JS_NewCFunctionData(ctx, Some(remove_listener), 0, 0, 1, data.as_mut_ptr()) };
+    object(ctx, &[(c"remove", remove)])
+}
+
+unsafe extern "C" fn remove_listener(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    _argc: c_int,
+    _argv: *mut JsValue,
+    _magic: c_int,
+    data: *mut JsValue,
+) -> JsValue {
+    let mut id = 0f64;
+    // SAFETY: one data value, a number.
+    unsafe { qjs::JS_ToFloat64(ctx, &mut id, *data) };
+    let removed: Vec<JsValue> = {
+        let mut listeners = env(ctx).listeners.borrow_mut();
+        let (gone, kept): (Vec<_>, Vec<_>) =
+            listeners.drain(..).partition(|(i, ..)| *i == id as u32);
+        *listeners = kept;
+        gone.into_iter().map(|(.., f)| f).collect()
+    };
+    for f in removed {
+        // SAFETY: values the environment owned.
+        unsafe { qjs::JS_FreeValue(ctx, f) };
+    }
+    UNDEFINED
+}
+
+/// The exports of `nsh/accessibility` (with the runtime registry's).
+pub(crate) const ACCESSIBILITY_EXPORTS: &[(&str, Export)] = &[
+    (
+        "reduceMotion",
+        Export::Value(|ctx| accessor(ctx, Part::ReduceMotion)),
+    ),
+    (
+        "screenReaderEnabled",
+        Export::Value(|ctx| accessor(ctx, Part::ScreenReader)),
+    ),
+    ("AccessibilityInfo", Export::Value(accessibility_info)),
+];

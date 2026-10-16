@@ -602,6 +602,8 @@ pub struct Registry {
     /// The runtime module the functions belong to (`nsh/android`): JS
     /// calls them as `nsh/android:Toast.show`, apart from any UI set's.
     namespace: Option<&'static str>,
+    /// The JS module a UI set is imported as (`nsh/ui/mobile`).
+    ui_set: Option<&'static str>,
 }
 
 impl fmt::Debug for Registry {
@@ -648,6 +650,27 @@ impl Registry {
         r.0.extend_from_slice(values);
         r.1.extend_from_slice(types);
         self
+    }
+
+    /// The registry of a UI set apps import as `specifier`
+    /// (`nsh/ui/mobile`).
+    pub fn ui_set(specifier: &'static str) -> Self {
+        Self {
+            ui_set: Some(specifier),
+            ..Self::default()
+        }
+    }
+
+    /// The JS module the registry is imported as: a UI set's, or the
+    /// runtime module's (`None`: a Rust app's components).
+    pub fn specifier(&self) -> Option<&'static str> {
+        self.ui_set.or(self.namespace)
+    }
+
+    /// The runtime values and types exported as they are
+    /// ([`Registry::reexport`]).
+    pub fn reexports(&self) -> (&[&'static str], &[&'static str]) {
+        (&self.reexports.0, &self.reexports.1)
     }
 
     /// A registry of the runtime's module `namespace` (`nsh/android`).

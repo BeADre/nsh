@@ -657,6 +657,7 @@ fn run<M: TextEngine + 'static, S: MountSink>(
         App::Js(bundle) => match Script::start(
             bundle,
             config.limits,
+            &config.components,
             &environment,
             text_engine,
             stop,

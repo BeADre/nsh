@@ -52,7 +52,8 @@ pub(crate) fn trace(
         bundle.elapsed_ms,
         bundle.code.len()
     );
-    let bytecode = nsh_js::compile_bytecode(&bundle.code, false)?;
+    let bytecode =
+        nsh_js::compile_bytecode_with(&bundle.code, false, &[nsh_ui_mobile::registry()])?;
     // SAFETY: compiled just now by this runtime.
     let bytecode = unsafe { Bundle::bytecode(bytecode) };
 

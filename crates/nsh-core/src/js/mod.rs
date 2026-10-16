@@ -13,10 +13,12 @@
 
 use std::time::Duration;
 
-/// The native ES modules a bundle compiled with nsh's JSX compiler imports
-/// (served by `nsh-js`, left as imports by the bundler): `nsh`, the API
-/// apps write against, and `nsh:rt`, the renderer compiled JSX calls.
-pub const NATIVE_MODULES: &[&str] = &["nsh", "nsh:rt"];
+/// nsh's own native ES modules, which bundles compiled with nsh's JSX
+/// compiler import (served by `nsh-js`, left as imports by the bundler):
+/// `nsh`, the API apps write against; `nsh:rt`, the renderer compiled JSX
+/// calls; `nsh/device` and `nsh/accessibility`, the environment. Registries
+/// add theirs (`Registry::specifier`: `nsh/ui/mobile`, `nsh/android`, ...).
+pub const NATIVE_MODULES: &[&str] = &["nsh", "nsh:rt", "nsh/device", "nsh/accessibility"];
 
 /// Resource limits of one VM.
 #[derive(Debug, Clone, Copy, PartialEq)]

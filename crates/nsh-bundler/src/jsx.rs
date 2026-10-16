@@ -896,6 +896,17 @@ impl<'a> Compiler<'a, '_> {
                         }
                         Some(JSXAttributeValue::ExpressionContainer(c)) => {
                             if let Some(e) = self.expression(c.unbox().expression) {
+                                // `ref={el}` assigns the variable, `ref={fn}`
+                                // calls it, with what the component gives.
+                                if name == "ref"
+                                    && let Expression::Identifier(id) = e.without_parentheses()
+                                {
+                                    let id = id.name.to_string();
+                                    props.push(format!(
+                                        "ref({HOLE}r) {{ typeof {id} === \"function\" ? {id}({HOLE}r) : ({id} = {HOLE}r); }}"
+                                    ));
+                                    continue;
+                                }
                                 let dynamic = is_dynamic(&e);
                                 let hole = g.hole(e);
                                 props.push(if dynamic {
@@ -1273,6 +1284,28 @@ mod tests {
         assert!(err.contains("<each> takes one child"), "{err}");
         let err = compile("export const a = <if>x</if>;").unwrap_err();
         assert!(err.contains("<if> needs `when`"), "{err}");
+    }
+
+    #[test]
+    fn imports_only_kebab_tags_use_stay_and_type_only_ones_go() {
+        let code = flat(
+            &compile(
+                r#"import { Stepper, StepperRef, Card } from "nsh/ui/mobile";
+            let r: StepperRef | undefined;
+            export const a = <stepper ref={r} />;"#,
+            )
+            .unwrap(),
+        );
+        assert!(
+            code.contains(r#"import { Stepper } from "nsh/ui/mobile";"#),
+            "{code}"
+        );
+        assert!(
+            code.contains(
+                "ref(__nsh_hr) { typeof r === \"function\" ? r(__nsh_hr) : r = __nsh_hr; }"
+            ),
+            "{code}"
+        );
     }
 
     #[test]

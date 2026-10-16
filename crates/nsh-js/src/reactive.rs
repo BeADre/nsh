@@ -1546,6 +1546,11 @@ pub(crate) fn memo(ctx: *mut JsContext, func: JsValue, equals_truthy: bool) -> J
     obj
 }
 
+/// Runs `f` as one batch: its writes apply together at the end.
+pub(crate) fn batch_with<R>(ctx: *mut JsContext, f: impl FnOnce() -> R) -> R {
+    run_updates(ctx, false, f)
+}
+
 /// Runs `f` with no listener (untracked).
 pub(crate) fn untracked_with<R>(ctx: *mut JsContext, f: impl FnOnce() -> R) -> R {
     let g = unsafe { graph(ctx) };
@@ -1617,7 +1622,7 @@ mod tests {
         let rt = Runtime::new().unwrap();
         let ctx = Context::full(&rt).unwrap();
         ctx.with(|ctx| {
-            crate::state::install(&ctx, std::rc::Rc::default());
+            crate::state::install(&ctx, std::rc::Rc::default(), &[]);
             super::install_globals(&ctx);
             let out: String = ctx
                 .eval(format!(
@@ -1768,26 +1773,29 @@ mod tests {
         // Collected (also during the loop): slots are reused, none is left.
         let rt = rquickjs::Runtime::new().unwrap();
         let ctx = rquickjs::Context::full(&rt).unwrap();
-        ctx.with(|ctx| {
-            crate::state::install(&ctx, std::rc::Rc::default());
+        // The nodes the state itself keeps (the environment's).
+        let live = |raw| {
+            // SAFETY: the graph `install` made; no JS runs meanwhile.
+            let g = unsafe { super::graph(raw) };
+            (g.nodes.len() - g.free.len(), g.nodes.len())
+        };
+        let before = ctx.with(|ctx| {
+            crate::state::install(&ctx, std::rc::Rc::default(), &[]);
             super::install_globals(&ctx);
+            let before = live(ctx.as_raw().as_ptr()).0;
             let _: () = ctx
                 .eval("const R = globalThis.__nsh_reactive; for (let i = 0; i < 5000; i++) { const [g, w] = R.createSignal(0); w({ g }); }")
                 .unwrap();
+            before
         });
         rt.run_gc();
-        ctx.with(|ctx| {
-            let raw = ctx.as_raw().as_ptr();
-            // SAFETY: the graph `install` made.
-            let g = unsafe { super::graph(raw) };
-            assert!(
-                g.nodes.len() < 5000,
-                "{} nodes for 5000 signals",
-                g.nodes.len()
-            );
-            assert_eq!(g.free.len(), g.nodes.len(), "every signal collected");
+        let (after, slots) = ctx.with(|ctx| {
+            let counts = live(ctx.as_raw().as_ptr());
             crate::state::uninstall(&ctx);
+            counts
         });
+        assert!(slots < 5000, "{slots} nodes for 5000 signals");
+        assert_eq!(after, before, "every signal collected");
     }
 
     #[test]

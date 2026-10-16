@@ -39,9 +39,12 @@ pub use crate::{
     text_field::{TextField, TextFieldEvent, TextFieldProps},
 };
 
+/// The JS module apps import the mobile UI as.
+pub const SPECIFIER: &str = "nsh/ui/mobile";
+
 /// Every component of the mobile set, for an engine to render.
 pub fn registry() -> Registry {
-    let mut registry = Registry::new();
+    let mut registry = Registry::ui_set(SPECIFIER);
     registry
         .register::<Button>()
         .register::<Card>()

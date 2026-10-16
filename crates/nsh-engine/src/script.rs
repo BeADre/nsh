@@ -37,6 +37,7 @@ mod imp {
         pub(crate) fn start<M: TextEngine + 'static>(
             bundle: &Bundle,
             limits: Limits,
+            ui_set: &nsh_core::ui::Registry,
             environment: &Environment,
             text_engine: Rc<M>,
             stop: Arc<AtomicBool>,
@@ -45,6 +46,7 @@ mod imp {
             let options = HostOptions {
                 limits,
                 harden: bundle.policy.harden,
+                ui_sets: vec![ui_set.clone()],
             };
             let mut host = match Host::with_options(options) {
                 Ok(host) => host,
@@ -196,6 +198,7 @@ mod stub {
         pub(crate) fn start<M: TextEngine + 'static>(
             _: &Bundle,
             _: Limits,
+            _: &nsh_core::ui::Registry,
             _: &Environment,
             _: Rc<M>,
             _: Arc<AtomicBool>,

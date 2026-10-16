@@ -9,14 +9,21 @@
 
 use std::{cell::RefCell, ffi::c_void, ptr, rc::Rc};
 
+use nsh_core::ui::Registry;
 use rquickjs::{Ctx, qjs};
 use rustc_hash::FxHashMap;
 
-use crate::{dom::Dom, host::Shared, reactive::Graph};
+use crate::{
+    components::Components, dom::Dom, env::Env, host::Shared, modules::ModuleTable, reactive::Graph,
+};
 
 pub(crate) struct State {
     pub(crate) graph: Graph,
     pub(crate) dom: Dom,
+    pub(crate) env: Env,
+    pub(crate) components: Components,
+    /// The native modules the context serves (the loader reads it).
+    pub(crate) modules: ModuleTable,
 }
 
 thread_local! {
@@ -39,8 +46,9 @@ pub(crate) fn of_runtime(rt: *mut qjs::JSRuntime) -> Option<*mut State> {
 }
 
 /// Makes the state of `ctx`: the graph, the renderer and their classes,
-/// and the module loader of the native modules.
-pub(crate) fn install(ctx: &Ctx<'_>, shared: Rc<Shared>) {
+/// the environment, and the module loader of the native modules (with the
+/// UI sets `ui_sets`).
+pub(crate) fn install(ctx: &Ctx<'_>, shared: Rc<Shared>, ui_sets: &[Registry]) {
     let raw = ctx.as_raw().as_ptr();
     // SAFETY: registering classes on the context's runtime; the state is
     // freed by `uninstall`.
@@ -48,11 +56,18 @@ pub(crate) fn install(ctx: &Ctx<'_>, shared: Rc<Shared>) {
         let rt = qjs::JS_GetRuntime(raw);
         let graph = Graph::new(raw);
         let dom = Dom::new(raw, shared);
-        let state = Box::into_raw(Box::new(State { graph, dom }));
+        let state = Box::into_raw(Box::new(State {
+            graph,
+            dom,
+            env: Env::default(),
+            components: Components::default(),
+            modules: ModuleTable::new(ui_sets),
+        }));
         qjs::JS_SetContextOpaque(raw, state as *mut c_void);
         STATES.with(|m| m.borrow_mut().insert(rt as usize, state as usize));
         crate::dom::init(raw);
-        crate::modules::set_loader(rt);
+        crate::env::init(raw);
+        crate::modules::set_loader(rt, &(*state).modules);
     }
 }
 
@@ -72,6 +87,8 @@ pub(crate) fn uninstall(ctx: &Ctx<'_>) {
         STATES.with(|m| m.borrow_mut().remove(&(rt as usize)));
         qjs::JS_SetContextOpaque(raw, ptr::null_mut());
         let mut state = Box::from_raw(p);
+        state.components.free_all(raw);
+        state.env.free_all(raw);
         state.dom.free_all(raw);
         state.graph.free_all(raw);
     }

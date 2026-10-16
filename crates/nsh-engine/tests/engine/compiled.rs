@@ -52,7 +52,8 @@ fn start() -> (Engine, Receiver<MountBatch>) {
     })
     .unwrap();
     assert!(!bundle.code.contains("solid"), "only the app's code");
-    let bytecode = nsh_js::compile_bytecode(&bundle.code, true).unwrap();
+    let bytecode =
+        nsh_js::compile_bytecode_with(&bundle.code, true, &[nsh_ui_mobile::registry()]).unwrap();
     let (tx, rx) = crossbeam_channel::unbounded();
     let config = EngineConfig {
         // SAFETY: compiled just now by this runtime.

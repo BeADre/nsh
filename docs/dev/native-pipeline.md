@@ -32,9 +32,20 @@ serves them (`modules.rs`):
   `context` (`Theme()`, `<Theme.Provider value>`), `mount`.
 - `nsh:rt` (only compiled code imports it): `element`, `text`, `append`, `insert`, `prop`, `bindProp`, `spread`,
   `component`, `cond`, `each`, `merge`, `setup`.
+- `nsh/device` (`windowSize`, `colorScheme`, `fontScale`, `Platform`, `PixelRatio`, `I18nManager`) and
+  `nsh/accessibility` (`reduceMotion`, `screenReaderEnabled`, `AccessibilityInfo`): the environment (`env.rs`), one
+  signal per part written when the platform reports a change, read through read-only accessors.
+- The modules of registries (`Registry::specifier`): the UI sets a host serves (`HostOptions::ui_sets`,
+  `nsh/ui/mobile`) and the runtime's (`nsh/android`, `nsh/image`, the registry part of `nsh/accessibility`). Their
+  components, modules and re-exports become exports (`components.rs`, the port of `_core.ts`'s `component()` /
+  `module()`): a component is a host view naming it, with its props sent as `$name` by one render effect, events
+  delivered to `on<Event>` handlers, children and slot holders; a module function sends a call to the core and, when
+  it has a result, returns a promise settled by the core's `$return` event. nsh's own export wins over a registry's
+  of the same name.
 
-QuickJS-NG resolves imports when it compiles a module, so the bytecode compiler installs the same loader; names are
-checked when the module links (evaluation). The exports are native functions made on first import.
+QuickJS-NG resolves imports when it compiles a module, so the bytecode compiler installs the same loader
+(`compile_bytecode_with` with the UI sets); names are checked when the module links (evaluation). The exports are made
+on first import.
 
 ## The compiler (`crates/nsh-bundler/src/jsx.rs`)
 
@@ -79,8 +90,11 @@ components (`nsh/jsx-runtime.d.ts`, rewritten after every build): an exported or
 its own type; one that is neither is not checked (TypeScript's intrinsic elements are global, so the compiler stays the
 reference for which tag names what). `<each>` items are not typed (intrinsic elements cannot be generic).
 
+TypeScript's import elision runs after the JSX is compiled (`plugin.rs` `elide_unused_imports`): an import only a
+kebab tag uses (`Card` for `<card>`) stays, one only types use goes even without `type`.
+
 ## Not there yet
 
-The `nsh/*` runtime modules (`List`, `animated`, `canvas`, gestures and the responder system, device, accessibility,
-platform modules), `nsh/ui/mobile` (its Rust components and navigation), node methods (`focus`, `scrollTo`, …) and hot
-module replacement (a development build reloads the whole bundle).
+`List` (and so `ListView`'s rows), navigation (`Stack`, `Screen`, `Modal`), `animated`, `canvas`, gestures and the
+responder system, `webview` / `video` / `native`, the hand-written parts of `nsh/android` and `nsh/ios`, node methods
+(`focus`, `scrollTo`, …) and hot module replacement (a development build reloads the whole bundle).

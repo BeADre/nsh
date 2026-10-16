@@ -74,13 +74,16 @@ pub struct Host {
 }
 
 /// How a VM is set up.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct HostOptions {
     /// Resource limits.
     pub limits: Limits,
     /// Removes `eval` and the function constructors and freezes the shared
     /// prototypes (see `sandbox`). Off for development bundles.
     pub harden: bool,
+    /// The UI sets apps compiled by nsh import as native modules
+    /// (`nsh_ui_mobile::registry()`, served as `nsh/ui/mobile`).
+    pub ui_sets: Vec<nsh_core::ui::Registry>,
 }
 
 impl Host {
@@ -108,7 +111,7 @@ impl Host {
             ..Shared::default()
         });
         ctx.with(|ctx| {
-            crate::state::install(&ctx, shared.clone());
+            crate::state::install(&ctx, shared.clone(), &options.ui_sets);
             crate::reactive::install_globals(&ctx);
             install(&ctx, &shared)?;
             if options.harden {
@@ -403,7 +406,10 @@ impl Host {
                 let result = (|| {
                     let raw = ctx.as_raw().as_ptr();
                     // SAFETY: the state of this host's context.
-                    unsafe { &(*crate::state::state(raw)).dom }.set_environment(env.os, env.rtl);
+                    unsafe { &(*crate::state::state(raw)).dom }.set_os(env.os);
+                    if crate::env::set_environment(raw, env).is_err() {
+                        return Err(rquickjs::Error::Exception);
+                    }
                     let value = environment_object(&ctx, env)?;
                     let globals = ctx.globals();
                     globals.set("__nsh_env_value", value.clone())?;
@@ -951,6 +957,7 @@ mod tests {
         Host::with_options(HostOptions {
             limits,
             harden: true,
+            ..HostOptions::default()
         })
         .unwrap()
     }

@@ -110,6 +110,16 @@ fn density(path: &Path) -> f64 {
     }
 }
 
+/// Whether `spec` is a native module of apps compiled by nsh: nsh's own,
+/// the mobile UI's or a runtime registry's.
+fn native_module(spec: &str) -> bool {
+    nsh_core::js::NATIVE_MODULES.contains(&spec)
+        || spec == nsh_ui_mobile::SPECIFIER
+        || nsh_core::runtime::registries()
+            .iter()
+            .any(|r| r.specifier() == Some(spec))
+}
+
 /// The components of the mobile UI, for hints about tags they would be.
 fn ui_components() -> &'static [String] {
     static NAMES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
@@ -181,7 +191,7 @@ impl Plugin for NshPlugin {
         }
         if self.compiler == Compiler::Nsh {
             let spec = args.specifier;
-            if nsh_core::js::NATIVE_MODULES.contains(&spec) {
+            if native_module(spec) {
                 return Ok(Some(HookResolveIdOutput {
                     external: Some(true.into()),
                     ..HookResolveIdOutput::from_id(spec)
@@ -465,6 +475,12 @@ pub(crate) fn compile_native(
         .into_scoping();
     let options = TransformOptions {
         jsx: JsxOptions::disable(),
+        // Imports only kebab tags use (`<card>` for `Card`) look unused to
+        // TypeScript: only type imports go.
+        typescript: oxc::transformer::TypeScriptOptions {
+            only_remove_type_imports: true,
+            ..Default::default()
+        },
         ..TransformOptions::default()
     };
     let ret =
@@ -481,6 +497,7 @@ pub(crate) fn compile_native(
         prologue,
         &components,
     )?;
+    elide_unused_imports(&mut program);
     let out = Codegen::new()
         .with_options(CodegenOptions {
             source_map_path: Some(path.to_path_buf()),
@@ -492,6 +509,42 @@ pub(crate) fn compile_native(
         out.map.expect("source map requested").into_owned(),
         uses,
     ))
+}
+
+/// TypeScript's import elision, once the JSX is compiled (kebab tags now
+/// reference what they name): import specifiers nothing references go (an
+/// import of types only, without `type`), and declarations left without
+/// any.
+fn elide_unused_imports(program: &mut oxc::ast::ast::Program<'_>) {
+    use oxc::ast::ast::{ImportDeclarationSpecifier as S, Statement};
+    let scoping = SemanticBuilder::new()
+        .build(program)
+        .semantic
+        .into_scoping();
+    let used = |local: &oxc::ast::ast::BindingIdentifier<'_>| {
+        local
+            .symbol_id
+            .get()
+            .is_none_or(|id| !scoping.get_resolved_reference_ids(id).is_empty())
+    };
+    program.body.retain_mut(|statement| {
+        let Statement::ImportDeclaration(import) = statement else {
+            return true;
+        };
+        let Some(specifiers) = &mut import.specifiers else {
+            // `import "x"`: for its effects.
+            return true;
+        };
+        if specifiers.is_empty() {
+            return true;
+        }
+        specifiers.retain(|s| match s {
+            S::ImportSpecifier(s) => used(&s.local),
+            S::ImportDefaultSpecifier(s) => used(&s.local),
+            S::ImportNamespaceSpecifier(s) => used(&s.local),
+        });
+        !specifiers.is_empty()
+    });
 }
 
 /// TSX -> JSX: removes TypeScript syntax and keeps JSX for the Solid

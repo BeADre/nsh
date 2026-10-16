@@ -38,6 +38,15 @@ fn start(app: &str) -> (Engine, Receiver<MountBatch>) {
 }
 
 fn start_in(app: &str, environment: Environment) -> (Engine, Receiver<MountBatch>) {
+    start_with(app, environment, false)
+}
+
+/// An app compiled by nsh (`"compiler": "nsh"`), through bytecode.
+fn start_native(app: &str, environment: Environment) -> (Engine, Receiver<MountBatch>) {
+    start_with(app, environment, true)
+}
+
+fn start_with(app: &str, environment: Environment, native: bool) -> (Engine, Receiver<MountBatch>) {
     static APPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let dir = std::env::temp_dir().join(format!(
         "nsh-components-{}-{}",
@@ -45,6 +54,9 @@ fn start_in(app: &str, environment: Environment) -> (Engine, Receiver<MountBatch
         APPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&dir).unwrap();
+    if native {
+        std::fs::write(dir.join("nsh.json"), r#"{ "compiler": "nsh" }"#).unwrap();
+    }
     let entry = dir.join("App.tsx");
     std::fs::write(&entry, app).unwrap();
     let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {
@@ -52,9 +64,18 @@ fn start_in(app: &str, environment: Environment) -> (Engine, Receiver<MountBatch
         minify: false,
     })
     .unwrap();
+    let app = if native {
+        let bytecode =
+            nsh_js::compile_bytecode_with(&bundle.code, false, &[nsh_ui_mobile::registry()])
+                .unwrap();
+        // SAFETY: compiled just now by this runtime.
+        unsafe { Bundle::bytecode(bytecode) }
+    } else {
+        Bundle::source(bundle.code)
+    };
     let (tx, rx) = crossbeam_channel::unbounded();
     let config = EngineConfig {
-        app: nsh_engine::App::Js(Bundle::source(bundle.code)),
+        app: nsh_engine::App::Js(app),
         viewport: Size::new(390.0, 844.0),
         trace: false,
         network: None,
@@ -808,4 +829,290 @@ fn a_sibling_coming_back_does_not_move_a_rust_input() {
         inserts.iter().any(|&(_, before)| before.is_none()),
         "{inserts:?}"
     );
+}
+
+// --- The same through apps compiled by nsh (native modules) -------------------
+
+const NATIVE_CARD: &str = r#"import { signal, mount } from "nsh";
+import { Button, Card } from "nsh/ui/mobile";
+
+function App() {
+  const titled = signal(true);
+  return (
+    <card
+      header={<if when={titled()}><text>Title</text></if>}
+      footer={<button title="Hide title" onPress={() => titled.set(false)} />}
+    >
+      <text>Body</text>
+    </card>
+  );
+}
+
+mount(App);
+"#;
+
+#[test]
+fn native_slots_children_and_events() {
+    let (engine, rx) = start_native(NATIVE_CARD, Environment::default());
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    for wanted in ["Title", "Body", "Hide title"] {
+        assert!(text_ids(&first, wanted).is_some(), "{wanted} rendered");
+    }
+    let parent_of = |id| {
+        first.items.iter().find_map(|i| match i {
+            MountItem::Insert { parent, child, .. } if *child == id => Some(*parent),
+            _ => None,
+        })
+    };
+    let frame = |id| {
+        first.items.iter().find_map(|i| match i {
+            MountItem::Frame { id: f, frame } if *f == id => Some(*frame),
+            _ => None,
+        })
+    };
+    let title_parent = parent_of(text_ids(&first, "Title").unwrap()).unwrap();
+    let body_parent = parent_of(text_ids(&first, "Body").unwrap()).unwrap();
+    assert!(frame(title_parent).unwrap().y < frame(body_parent).unwrap().y);
+    let button = first
+        .items
+        .iter()
+        .find_map(|i| match i {
+            MountItem::Events { id, events } if events.contains(EventKind::Press) => Some(*id),
+            _ => None,
+        })
+        .expect("a pressable button");
+    engine
+        .control()
+        .dispatch_event(button, EventKind::Press, EventPayload::None);
+    let batch = rx.recv_timeout(Duration::from_secs(5)).expect("a batch");
+    assert!(
+        batch
+            .items
+            .iter()
+            .any(|i| matches!(i, MountItem::Remove { id } if *id == title_parent)),
+        "{:?}",
+        batch.items
+    );
+}
+
+const NATIVE_METHODS: &str = r#"import { signal, mount } from "nsh";
+import { Stepper, type StepperRef } from "nsh/ui/mobile";
+
+const shown = signal("waiting");
+let stepper!: StepperRef;
+setTimeout(async () => {
+  stepper.setValue(42.4);
+  const value = await stepper.value();
+  shown.set(`got ${value}`);
+}, 0);
+
+mount(() => (
+  <view>
+    <stepper ref={stepper} defaultValue={1} max={50} />
+    <text>{shown()}</text>
+  </view>
+));
+"#;
+
+#[test]
+fn native_calls_of_a_components_methods() {
+    let (_engine, rx) = start_native(NATIVE_METHODS, Environment::default());
+    let mut shown = Vec::new();
+    while let Ok(batch) = rx.recv_timeout(Duration::from_millis(500)) {
+        for item in batch.items {
+            if let MountItem::Text { text, .. } = item {
+                shown.push(text.text.clone());
+            }
+        }
+        if shown.iter().any(|t| t.starts_with("got")) {
+            break;
+        }
+    }
+    assert!(shown.contains(&"42".to_owned()), "{shown:?}");
+    assert!(shown.contains(&"got 42".to_owned()), "{shown:?}");
+}
+
+const NATIVE_ALERT: &str = r#"import { signal, mount } from "nsh";
+import { Alert } from "nsh/ui/mobile";
+
+const shown = signal("waiting");
+setTimeout(async () => {
+  const i = await Alert.alert("Delete the photo?", "It is gone then.", [
+    { text: "Cancel", style: "cancel" },
+    { text: "Delete", style: "destructive" },
+  ], { cancelable: true });
+  shown.set(`answer ${i}`);
+}, 0);
+
+mount(() => <text>{shown()}</text>);
+"#;
+
+#[test]
+fn native_alert_resolves_with_the_button_pressed() {
+    let (engine, rx) = start_native(NATIVE_ALERT, Environment::default());
+    let mut dialog = None;
+    until(&rx, |batch| {
+        dialog = dialog.take().or_else(|| {
+            batch.items.iter().find_map(|i| match i {
+                MountItem::Command {
+                    id: ROOT_ID,
+                    command: Command::Dialog(d),
+                } => Some(d.clone()),
+                _ => None,
+            })
+        });
+        dialog.is_some()
+    });
+    let dialog = dialog.expect("the alert");
+    assert_eq!(dialog.title.as_deref(), Some("Delete the photo?"));
+    engine.control().dispatch_event(
+        ROOT_ID,
+        EventKind::Dialog,
+        EventPayload::Map(vec![
+            ("id", PayloadValue::Number(dialog.id as f64)),
+            ("index", PayloadValue::Number(1.0)),
+        ]),
+    );
+    let batches = until(&rx, |b| shows(b, "answer 1"));
+    assert!(batches.iter().any(|b| shows(b, "answer 1")));
+}
+
+const NATIVE_SAFE_AREA: &str = r#"import { mount } from "nsh";
+import { KeyboardAvoidingView, SafeAreaView, safeArea } from "nsh/ui/mobile";
+
+mount(() => (
+  <keyboard-avoiding-view style={{ flex: 1 }}>
+    <safe-area-view style={{ flex: 1, padding: 4 }} edges={["top", "bottom"]}>
+      <text>inside</text>
+      <text>{`top ${safeArea().top}`}</text>
+    </safe-area-view>
+  </keyboard-avoiding-view>
+));
+"#;
+
+#[test]
+fn native_safe_area_and_keyboard_avoiding_views() {
+    let environment = Environment {
+        window: (390.0, 844.0),
+        safe_area: Insets {
+            top: 47.0,
+            right: 10.0,
+            bottom: 34.0,
+            left: 10.0,
+        },
+        ..Default::default()
+    };
+    let (engine, rx) = start_native(NATIVE_SAFE_AREA, environment);
+    let first = until(&rx, |b| shows(b, "inside"));
+    let text = first
+        .iter()
+        .find_map(|b| text_ids(b, "inside"))
+        .expect("the text");
+    let frame = frame_of(&first, text).expect("laid out");
+    assert_eq!((frame.x, frame.y), (4.0, 51.0));
+    assert!(
+        first.iter().any(|b| shows(b, "top 47")),
+        "the environment's accessor"
+    );
+    engine.control().set_environment(Environment {
+        keyboard_height: 300.0,
+        safe_area: Insets {
+            top: 20.0,
+            ..environment.safe_area
+        },
+        ..environment
+    });
+    let after = until(&rx, |b| shows(b, "top 20"));
+    assert!(
+        after.iter().any(|b| shows(b, "top 20")),
+        "the accessor follows"
+    );
+    assert!(
+        after
+            .iter()
+            .flat_map(|b| &b.items)
+            .any(|i| matches!(i, MountItem::Frame { frame, .. } if frame.height == 844.0 - 300.0)),
+        "the safe area view above the keyboard"
+    );
+}
+
+const NATIVE_RUNTIME_MODULES: &str = r#"import { signal, mount } from "nsh";
+import { AccessibilityInfo } from "nsh/accessibility";
+import { Platform } from "nsh/device";
+import { Toast } from "nsh/android";
+import { Image } from "nsh/image";
+
+const shown = signal("waiting");
+let note: unknown;
+setTimeout(async () => {
+  Toast.show("hello", "long");
+  AccessibilityInfo.setAccessibilityFocus(note);
+  const size = await Image.getSize({ uri: "https://example.com/a.png" });
+  let failed = "no";
+  try {
+    await Image.getSize("https://example.com/missing.png");
+  } catch (e) {
+    failed = String((e as Error).message);
+  }
+  shown.set(`${size.width}x${size.height} ${failed} ${Platform.OS} ${await AccessibilityInfo.isReduceMotionEnabled()}`);
+}, 0);
+
+mount(() => <text ref={note}>{shown()}</text>);
+"#;
+
+#[test]
+fn native_runtime_modules() {
+    let (engine, rx) = start_native(NATIVE_RUNTIME_MODULES, Environment::default());
+    let note = rx
+        .recv_timeout(Duration::from_secs(5))
+        .ok()
+        .and_then(|b| text_ids(&b, "waiting"))
+        .expect("first frame");
+    let mut toast = None;
+    let mut focused = None;
+    let mut requests = Vec::new();
+    let control = engine.control();
+    until(&rx, |batch| {
+        for item in &batch.items {
+            match item {
+                MountItem::Command {
+                    id: ROOT_ID,
+                    command: Command::Toast { text, long },
+                } => toast = Some((text.clone(), *long)),
+                MountItem::Command {
+                    id,
+                    command: Command::AccessibilityFocus,
+                } => focused = Some(*id),
+                MountItem::Command {
+                    id: ROOT_ID,
+                    command: Command::ImageInfo { id, uri },
+                } => {
+                    requests.push(uri.clone());
+                    let payload = if requests.len() == 1 {
+                        vec![
+                            ("id", PayloadValue::Number(*id as f64)),
+                            ("width", PayloadValue::Number(640.0)),
+                            ("height", PayloadValue::Number(480.0)),
+                        ]
+                    } else {
+                        vec![
+                            ("id", PayloadValue::Number(*id as f64)),
+                            ("error", PayloadValue::Str("not found".into())),
+                        ]
+                    };
+                    control.dispatch_event(
+                        ROOT_ID,
+                        EventKind::ImageInfo,
+                        EventPayload::Map(payload),
+                    );
+                }
+                _ => {}
+            }
+        }
+        shows(batch, "640x480 not found ios false")
+    });
+    assert_eq!(toast, Some(("hello".to_owned(), true)));
+    assert_eq!(focused, Some(note));
 }

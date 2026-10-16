@@ -10,8 +10,10 @@
 //! thread.
 
 mod bytecode;
+mod components;
 mod console;
 mod dom;
+mod env;
 mod error;
 mod host;
 mod modules;
@@ -29,7 +31,7 @@ pub use nsh_core::{
 };
 
 pub use crate::{
-    bytecode::{BUNDLE_NAME, BYTECODE_VERSION, compile_bytecode},
+    bytecode::{BUNDLE_NAME, BYTECODE_VERSION, compile_bytecode, compile_bytecode_with},
     error::JsError,
     host::{ErrorHandler, Host, HostOptions, TextMeasurer},
     net::{HttpRequest, HttpResponse, NetworkQueue, RequestId},

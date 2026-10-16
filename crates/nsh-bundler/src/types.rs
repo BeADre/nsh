@@ -167,6 +167,8 @@ pub fn type_definitions() -> Vec<(String, String)> {
 /// module's API (`nsh-js`'s `reactive.rs` and `dom.rs`).
 const NATIVE_NSH: &str = r#"import type { JSX } from "./jsx-runtime";
 export type { JSX };
+export type * from "./types";
+export type { YNode } from "./_core";
 
 /** A value that changes over time, read by calling it (tracked). */
 export interface Accessor<T> {
@@ -298,6 +300,12 @@ pub fn type_definitions_for(
         for (path, contents) in [
             ("nsh/index.d.ts", NATIVE_NSH.to_owned()),
             ("nsh/jsx-runtime.d.ts", native_jsx(elements)),
+            // Its Rust components and modules (navigation is not native
+            // yet).
+            (
+                "nsh/ui/mobile.d.ts",
+                "export * from \"./mobile/components.gen\";\n".to_owned(),
+            ),
         ] {
             match files.iter_mut().find(|(p, _)| p == path) {
                 Some(file) => file.1 = contents,

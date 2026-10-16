@@ -34,7 +34,8 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     host::Shared,
-    reactive::{self, Native, arg},
+    modules::Export,
+    reactive::{self, arg},
 };
 
 type JsValue = qjs::JSValue;
@@ -126,6 +127,11 @@ fn throw_type(ctx: *mut JsContext, message: &str) -> JsValue {
 }
 
 /// A JS value's string (`ToString`), or `None` when that throws.
+pub(crate) fn string_arg(ctx: *mut JsContext, v: JsValue) -> Option<String> {
+    to_string(ctx, v)
+}
+
+/// A JS value's string (`ToString`), or `None` when that throws.
 fn to_string(ctx: *mut JsContext, v: JsValue) -> Option<String> {
     // SAFETY: a live value; the C string is freed below.
     unsafe {
@@ -194,9 +200,13 @@ impl Dom {
         unsafe { qjs::JS_FreeValue(raw, self.root.replace(UNDEFINED)) };
     }
 
-    /// Takes in the surface's environment.
-    pub(crate) fn set_environment(&self, os: Os, rtl: bool) {
+    /// The platform `ios={{…}}` / `android={{…}}` props are for.
+    pub(crate) fn set_os(&self, os: Os) {
         self.os.set(os);
+    }
+
+    /// The surface's layout direction (sent once something is mounted).
+    pub(crate) fn set_direction(&self, rtl: bool) {
         self.env_rtl.set(rtl);
         if self.rtl.get().is_some_and(|sent| sent != rtl) {
             self.send_direction();
@@ -271,6 +281,81 @@ fn new_node(ctx: *mut JsContext, id: NodeId, text: bool) -> JsValue {
     }
     nodes[index] = data;
     obj
+}
+
+/// The id of node object `v`, if it is one.
+pub(crate) fn node_id(ctx: *mut JsContext, v: JsValue) -> Option<NodeId> {
+    let p = node_ptr(ctx, v);
+    // SAFETY: live node data.
+    (!p.is_null()).then(|| unsafe { (*p).id })
+}
+
+/// Queues `op` (for the components' glue).
+pub(crate) fn push_op(ctx: *mut JsContext, op: Op) -> Result<(), JsValue> {
+    dom(ctx).push(ctx, op)
+}
+
+/// A new host element (owned).
+pub(crate) fn create_element(ctx: *mut JsContext, tag: Tag) -> Result<JsValue, JsValue> {
+    let id = next_id(ctx);
+    dom(ctx).push(ctx, Op::Create { id, tag })?;
+    Ok(new_node(ctx, id, false))
+}
+
+/// Sets prop `name` of `node` (borrowed values) to `value`.
+pub(crate) fn set_prop_value(
+    ctx: *mut JsContext,
+    node: JsValue,
+    name: &str,
+    value: JsValue,
+) -> Result<(), JsValue> {
+    set_prop(ctx, node, name, value, UNDEFINED)
+}
+
+/// Sets prop `name` of `node` from `prev` to `value` (borrowed values).
+pub(crate) fn set_prop_with_prev(
+    ctx: *mut JsContext,
+    node: JsValue,
+    name: &str,
+    value: JsValue,
+    prev: JsValue,
+) -> Result<(), JsValue> {
+    set_prop(ctx, node, name, value, prev)
+}
+
+/// Sets node `id`'s handler of `event` to `f` (borrowed; not a function:
+/// none).
+pub(crate) fn set_handler(
+    ctx: *mut JsContext,
+    id: NodeId,
+    event: EventKind,
+    f: JsValue,
+) -> Result<(), JsValue> {
+    let p = dom(ctx).by_id(id);
+    if p.is_null() {
+        return Ok(());
+    }
+    set_event(ctx, p, event, f)
+}
+
+/// Inserts `value` into `parent` before `marker` (as `insert`).
+pub(crate) fn insert_value_at(
+    ctx: *mut JsContext,
+    parent: JsValue,
+    value: JsValue,
+    marker: Option<JsValue>,
+) -> Result<(), JsValue> {
+    insert_value(ctx, parent, value, marker)
+}
+
+/// Moves node `child` into `parent` before `before`.
+pub(crate) fn insert_node(
+    ctx: *mut JsContext,
+    parent: JsValue,
+    child: JsValue,
+    before: Option<JsValue>,
+) -> Result<(), JsValue> {
+    insert_before(ctx, parent, child, before)
 }
 
 fn next_id(ctx: *mut JsContext) -> NodeId {
@@ -565,37 +650,7 @@ fn set_prop(
         && name.as_bytes()[2].is_ascii_uppercase()
         && let Some(event) = EventKind::from_prop(name)
     {
-        // SAFETY: an inline check, then a dup the node owns.
-        let handler = unsafe { qjs::JS_IsFunction(ctx, value) }
-            .then(|| unsafe { qjs::JS_DupValue(ctx, value) });
-        let handlers = unsafe { &mut (*p).handlers };
-        let at = handlers.iter().position(|&(e, _)| e == event);
-        let (was, old) = match (at, handler) {
-            (Some(i), Some(h)) => (true, Some(std::mem::replace(&mut handlers[i].1, h))),
-            (Some(i), None) => (true, Some(handlers.remove(i).1)),
-            (None, Some(h)) => {
-                handlers.push((event, h));
-                (false, None)
-            }
-            (None, None) => (false, None),
-        };
-        let now = handler.is_some();
-        let pushed = if was != now {
-            dom(ctx).push(
-                ctx,
-                Op::Listen {
-                    id,
-                    event,
-                    enabled: now,
-                },
-            )
-        } else {
-            Ok(())
-        };
-        if let Some(old) = old {
-            unsafe { qjs::JS_FreeValue(ctx, old) };
-        }
-        return pushed;
+        return set_event(ctx, p, event, value);
     }
     // SAFETY: a context reference for the decoder, which reads `value`.
     let cx = unsafe { Ctx::from_raw(std::ptr::NonNull::new_unchecked(ctx)) };
@@ -610,6 +665,48 @@ fn set_prop(
         Err(rquickjs::Error::Exception) => Err(qjs::JS_EXCEPTION),
         Err(e) => Err(throw_type(ctx, &format!("nsh: prop `{name}`: {e}"))),
     }
+}
+
+/// Sets the handler of `event` on node `p` to `value` (borrowed; not a
+/// function: none) and tells the core whether the node listens.
+fn set_event(
+    ctx: *mut JsContext,
+    p: *mut NodeData,
+    event: EventKind,
+    value: JsValue,
+) -> Result<(), JsValue> {
+    // SAFETY: live node data; an inline check, then a dup the node owns.
+    let id = unsafe { (*p).id };
+    let handler =
+        unsafe { qjs::JS_IsFunction(ctx, value) }.then(|| unsafe { qjs::JS_DupValue(ctx, value) });
+    let handlers = unsafe { &mut (*p).handlers };
+    let at = handlers.iter().position(|&(e, _)| e == event);
+    let (was, old) = match (at, handler) {
+        (Some(i), Some(h)) => (true, Some(std::mem::replace(&mut handlers[i].1, h))),
+        (Some(i), None) => (true, Some(handlers.remove(i).1)),
+        (None, Some(h)) => {
+            handlers.push((event, h));
+            (false, None)
+        }
+        (None, None) => (false, None),
+    };
+    let now = handler.is_some();
+    let pushed = if was != now {
+        dom(ctx).push(
+            ctx,
+            Op::Listen {
+                id,
+                event,
+                enabled: now,
+            },
+        )
+    } else {
+        Ok(())
+    };
+    if let Some(old) = old {
+        unsafe { qjs::JS_FreeValue(ctx, old) };
+    }
+    pushed
 }
 
 /// `ios={{…}}` / `android={{…}}` / `desktop={{…}}`: the props of this
@@ -1900,19 +1997,19 @@ pub(crate) fn handler(ctx: *mut JsContext, id: NodeId, event: EventKind) -> Opti
 }
 
 /// The exports of `nsh:rt`.
-pub(crate) const RT_EXPORTS: &[(&CStr, Native, c_int)] = &[
-    (c"element", element, 1),
-    (c"text", text, 1),
-    (c"append", append, 2),
-    (c"insert", insert, 3),
-    (c"prop", prop, 3),
-    (c"bindProp", bind_prop, 3),
-    (c"spread", spread, 2),
-    (c"component", component, 2),
-    (c"cond", cond, 3),
-    (c"each", each, 3),
-    (c"merge", merge, 2),
-    (c"setup", setup, 2),
+pub(crate) const RT_EXPORTS: &[(&str, Export)] = &[
+    ("element", Export::Function(element, 1)),
+    ("text", Export::Function(text, 1)),
+    ("append", Export::Function(append, 2)),
+    ("insert", Export::Function(insert, 3)),
+    ("prop", Export::Function(prop, 3)),
+    ("bindProp", Export::Function(bind_prop, 3)),
+    ("spread", Export::Function(spread, 2)),
+    ("component", Export::Function(component, 2)),
+    ("cond", Export::Function(cond, 3)),
+    ("each", Export::Function(each, 3)),
+    ("merge", Export::Function(merge, 2)),
+    ("setup", Export::Function(setup, 2)),
 ];
 
 #[cfg(test)]
