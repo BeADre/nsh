@@ -393,3 +393,83 @@ fn rust_components_take_the_back_button() {
         }
     )));
 }
+
+/// The core's events (a layout) and throttled scroll events reach a Rust
+/// component with no JS.
+#[derive(Default)]
+struct Measured {
+    width: f32,
+    scrolled: f32,
+}
+
+impl Component for Measured {
+    const NAME: &'static str = "app.measured";
+    type Props = ();
+    type Event = NoEvent;
+
+    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        view()
+            .flex_1()
+            .on_layout(cx.listener(|this: &mut Self, frame: &nsh_core::Rect, cx| {
+                this.width = frame.width;
+                cx.notify();
+            }))
+            .child(text(format!(
+                "width {} scrolled {}",
+                self.width, self.scrolled
+            )))
+            .child(
+                scroll()
+                    .flex_1()
+                    .on_scroll(cx.listener(|this: &mut Self, e: &ScrollEvent, cx| {
+                        this.scrolled = e.y;
+                        cx.notify();
+                    }))
+                    .child(view().h(px(2000.0))),
+            )
+    }
+}
+
+#[test]
+fn rust_components_hear_layouts_and_scrolls() {
+    let (tx, rx) = crossbeam_channel::unbounded();
+    let config = EngineConfig {
+        app: App::Rust(Root::of::<Measured>()),
+        viewport: Size::new(390.0, 844.0),
+        trace: false,
+        network: None,
+        assets: None,
+        environment: Environment::default(),
+        header_heights: (44.0, 96.0),
+        limits: nsh_engine::Limits::default(),
+        ui_sets: Vec::new(),
+        runtime: None,
+    };
+    let engine = Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap();
+    // Until `until` shows; the scroll view's id on the way.
+    let wait = |until: &str, scroll: &mut Option<u32>| {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while let Ok(batch) = rx.recv_deadline(deadline) {
+            let mut done = false;
+            for item in &batch.items {
+                match item {
+                    MountItem::Create {
+                        id,
+                        kind: nsh_core::ViewKind::Scroll,
+                    } => *scroll = Some(*id),
+                    MountItem::Text { text, .. } if text.text == until => done = true,
+                    _ => {}
+                }
+            }
+            if done {
+                return true;
+            }
+        }
+        false
+    };
+    let mut scroll = None;
+    assert!(wait("width 390 scrolled 0", &mut scroll), "the layout came");
+    let scroll = scroll.expect("a scroll view");
+    engine.control().scroll(scroll, 0.0, 120.0, 0);
+    assert!(wait("width 390 scrolled 120", &mut None), "the scroll came");
+}
