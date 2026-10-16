@@ -296,6 +296,13 @@ fn rust_components_pass_content_to_rust_components() {
     for (id, name) in &texts {
         assert!(attached(*id), "{name} is in the tree");
     }
+    // Where the card's render places them: the header in its slot's
+    // holder, the body in the card's padded box (not in the host).
+    let id_of = |name: &str| texts.iter().find(|t| t.1 == name).unwrap().0;
+    let card = parents[&parents[&id_of("card header")]];
+    let body_box = parents[&id_of("card body 0")];
+    assert_ne!(body_box, card, "the body is in the card's box");
+    assert_eq!(parents[&body_box], card);
     // The body renders again with the parent's state.
     let body = texts.iter().find(|t| t.1 == "card body 0").unwrap().0;
     engine
@@ -547,4 +554,93 @@ fn nested_components_in_list_rows_reach_the_list_owner() {
         .dispatch_event(parents[&label], EventKind::Press, EventPayload::None);
     let (text, _) = shown(&rx, Duration::from_secs(5), "pressed Some(3)").unwrap();
     assert_eq!(text, "pressed Some(3)");
+}
+
+/// Content a nested component does not place (a closed sheet's) is not on
+/// screen; it is once the component places it.
+#[derive(Default)]
+struct WithSheet {
+    open: bool,
+}
+
+impl Component for WithSheet {
+    const NAME: &'static str = "app.with_sheet";
+    type Props = ();
+    type Event = NoEvent;
+
+    fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
+        view()
+            .flex_1()
+            .child(text("open").on_press(cx.listener(|this: &mut Self, _, cx| {
+                this.open = true;
+                cx.notify();
+            })))
+            .child(
+                nsh_ui_mobile::Sheet::element(nsh_ui_mobile::SheetProps {
+                    open: self.open,
+                    ..Default::default()
+                })
+                .child(text("sheet body")),
+            )
+    }
+}
+
+#[test]
+fn content_a_component_does_not_place_is_not_shown() {
+    let (tx, rx) = crossbeam_channel::unbounded();
+    let config = EngineConfig {
+        app: App::Rust(Root::of::<WithSheet>()),
+        viewport: Size::new(390.0, 844.0),
+        trace: false,
+        network: None,
+        assets: None,
+        environment: Environment::default(),
+        header_heights: (44.0, 96.0),
+        limits: nsh_engine::Limits::default(),
+        ui_sets: Vec::new(),
+        runtime: None,
+    };
+    let engine = Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap();
+    let mut parents: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
+    let mut texts = Vec::new();
+    let mut collect = |wait: Duration| {
+        let deadline = std::time::Instant::now() + wait;
+        while let Ok(batch) = rx.recv_deadline(deadline) {
+            for item in &batch.items {
+                match item {
+                    MountItem::Insert { parent, child, .. } => {
+                        parents.insert(*child, *parent);
+                    }
+                    MountItem::Remove { id } | MountItem::Delete { id } => {
+                        parents.remove(id);
+                    }
+                    MountItem::Text { id, text, .. } => texts.push((*id, text.text.clone())),
+                    _ => {}
+                }
+            }
+        }
+        (parents.clone(), texts.clone())
+    };
+    let attached = |parents: &std::collections::HashMap<u32, u32>, mut id: u32| loop {
+        if id == nsh_core::ROOT_ID {
+            return true;
+        }
+        match parents.get(&id) {
+            Some(&p) => id = p,
+            None => return false,
+        }
+    };
+    let (p, t) = collect(Duration::from_millis(300));
+    let body = t.iter().find(|t| t.1 == "sheet body").map(|t| t.0);
+    assert!(
+        body.is_none_or(|b| !attached(&p, b)),
+        "a closed sheet shows nothing"
+    );
+    let open = t.iter().find(|t| t.1 == "open").unwrap().0;
+    engine
+        .control()
+        .dispatch_event(open, EventKind::Press, EventPayload::None);
+    let (p, t) = collect(Duration::from_millis(300));
+    let body = t.iter().find(|t| t.1 == "sheet body").unwrap().0;
+    assert!(attached(&p, body), "the open sheet shows its content");
 }

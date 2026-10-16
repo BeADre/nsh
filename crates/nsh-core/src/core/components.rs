@@ -1458,8 +1458,19 @@ impl<M: TextEngine> Core<M> {
                 }
             }
         }
+        // Content of a nested component (`.child`, `.fill`): it leaves and
+        // joins the nested host as JS children and slots do, so the nested
+        // render places it.
+        let nested = parent != host && self.is_host(parent);
         for o in old.into_iter().flatten() {
+            if nested {
+                self.leave_nested(parent, o.id);
+            }
             self.release_expanded(o);
+        }
+        if nested {
+            self.join_nested(parent, &out);
+            return out;
         }
         if let Some(at) = placeholder {
             inst.children_at = Placement::At(parent, out.get(at + 1).map(|e| e.id));
@@ -1504,6 +1515,55 @@ impl<M: TextEngine> Core<M> {
             }
         }
         out
+    }
+
+    /// Node `child` of this render is no longer content of the nested
+    /// component hosted by `nested`.
+    fn leave_nested(&mut self, nested: NodeId, child: NodeId) {
+        if self.components.slot_names.remove(&child).is_some() {
+            self.unslot(child);
+        } else if let Ok(Some(op)) = self.intercept(Op::Remove {
+            parent: nested,
+            child,
+        }) {
+            let _ = self.apply_op(op);
+        }
+    }
+
+    /// The content `out` of the nested component hosted by `nested`, in
+    /// order: its children as the host's JS children, its slots' holders
+    /// in their slots (inserted only when that changed).
+    fn join_nested(&mut self, nested: NodeId, out: &[Expanded]) {
+        let insert = |core: &mut Self, child: NodeId, before: Option<NodeId>| {
+            if let Ok(Some(op)) = core.intercept(Op::Insert {
+                parent: nested,
+                child,
+                before,
+            }) {
+                let _ = core.apply_op(op);
+            }
+        };
+        let (slots, children): (Vec<NodeId>, Vec<NodeId>) = out
+            .iter()
+            .map(|e| e.id)
+            .partition(|id| self.components.slot_names.contains_key(id));
+        for slot in slots {
+            if self.components.slot_hosts.get(&slot) != Some(&nested) {
+                insert(self, slot, None);
+            }
+        }
+        let same = self
+            .components
+            .instances
+            .get(&nested)
+            .is_some_and(|i| i.js_children == children);
+        if !same {
+            let mut before = None;
+            for &child in children.iter().rev() {
+                insert(self, child, before);
+                before = Some(child);
+            }
+        }
     }
 
     /// Whether `child` is a child of `parent` right before `next` (the last
