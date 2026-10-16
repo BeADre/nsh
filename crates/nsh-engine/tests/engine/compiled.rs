@@ -1,4 +1,4 @@
-//! Apps compiled by nsh's JSX compiler (`"compiler": "nsh"`) end to end:
+//! Apps compiled by nsh's JSX compiler end to end:
 //! one TSX file importing only `nsh`, bundled as an ES module, run on the
 //! native modules through bytecode, tapped after the idle GC.
 
@@ -44,7 +44,6 @@ fn start() -> (Engine, Receiver<MountBatch>) {
     let dir = std::env::temp_dir().join(format!("nsh-compiled-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("nsh.json"), r#"{ "compiler": "nsh" }"#).unwrap();
     std::fs::write(dir.join("App.tsx"), APP).unwrap();
     let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {
         entry: dir.join("App.tsx"),
@@ -178,7 +177,6 @@ fn start_app(app: &str) -> (Engine, Receiver<MountBatch>) {
     ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("nsh.json"), r#"{ "compiler": "nsh" }"#).unwrap();
     std::fs::write(dir.join("App.tsx"), app).unwrap();
     let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {
         entry: dir.join("App.tsx"),
@@ -207,6 +205,17 @@ fn start_app(app: &str) -> (Engine, Receiver<MountBatch>) {
     )
 }
 
+/// The next batch `wanted` accepts (releases of popped screens' views may
+/// come in batches of their own first).
+fn next(rx: &Receiver<MountBatch>, wanted: impl Fn(&MountBatch) -> bool) -> MountBatch {
+    loop {
+        let batch = rx.recv_timeout(Duration::from_secs(5)).expect("a batch");
+        if wanted(&batch) {
+            return batch;
+        }
+    }
+}
+
 fn text_id(batch: &MountBatch, wanted: &str) -> Option<u32> {
     batch.items.iter().find_map(|i| match i {
         MountItem::Text { id, text, .. } if text.text == wanted => Some(*id),
@@ -228,7 +237,7 @@ fn titles(batch: &MountBatch) -> Vec<(u32, String)> {
 }
 
 #[test]
-fn native_navigation_stacks_screens_and_modals() {
+fn navigation_stacks_screens_and_modals() {
     let (engine, rx) = start_app(NAVIGATION);
     let control = engine.control();
     let first = rx
@@ -266,24 +275,21 @@ fn native_navigation_stacks_screens_and_modals() {
     control.dispatch_event(page_screen, EventKind::Dismiss, EventPayload::None);
     while rx.recv_timeout(Duration::from_millis(200)).is_ok() {}
     control.dispatch_event(push, EventKind::Press, EventPayload::None);
-    let batch = rx
-        .recv_timeout(Duration::from_secs(5))
-        .expect("pushed again");
+    let batch = next(&rx, |b| !titles(b).is_empty());
     assert_eq!(titles(&batch).last().map(|t| t.1.as_str()), Some("page1"));
     // The header's button opens the modal.
     let open = text_id(&first, "open").expect("a header item");
     control.dispatch_event(open, EventKind::Press, EventPayload::None);
-    let batch = rx.recv_timeout(Duration::from_secs(5)).expect("modal");
-    assert!(
-        batch.items.iter().any(|i| matches!(
-            i,
-            MountItem::Create {
-                kind: nsh_core::ViewKind::Modal,
-                ..
-            }
-        )),
-        "{:?}",
-        batch.items
-    );
+    let batch = next(&rx, |b| {
+        b.items.iter().any(|i| {
+            matches!(
+                i,
+                MountItem::Create {
+                    kind: nsh_core::ViewKind::Modal,
+                    ..
+                }
+            )
+        })
+    });
     assert!(text_id(&batch, "in modal").is_some());
 }

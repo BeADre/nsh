@@ -14,24 +14,8 @@ impl MountSink for Sink {
     }
 }
 
+/// `<list>`, the built-in.
 const APP: &str = r#"
-import { createSignal } from "solid-js";
-import { render, root } from "nsh";
-import { List } from "nsh/list";
-const [rows, setRows] = createSignal(Array.from({ length: 100 }, (_, i) => i));
-function App() {
-  return (
-    <List each={rows()} estimatedItemSize={50} style={{ flex: 1 }}
-          onEndReached={() => { console.log("end"); setRows([...rows(), ...Array.from({ length: 100 }, (_, i) => rows().length + i)]); }}>
-      {(row) => <view style={{ height: 50 }}><text>{`row ${row()}`}</text></view>}
-    </List>
-  );
-}
-render(() => <App />, root);
-"#;
-
-/// The same app compiled by nsh: `<list>` on the native modules.
-const NATIVE_APP: &str = r#"
 import { signal, mount } from "nsh";
 const rows = signal(Array.from({ length: 100 }, (_, i) => i));
 function App() {
@@ -75,18 +59,13 @@ fn cells_created(batch: &MountBatch) -> usize {
 
 #[test]
 fn list_scrolls_with_recycled_cells() {
-    scrolls_with_recycled_cells(APP, false);
-}
-
-#[test]
-fn native_list_scrolls_with_recycled_cells() {
-    scrolls_with_recycled_cells(NATIVE_APP, true);
+    scrolls_with_recycled_cells(APP);
 }
 
 /// `List` imported from `nsh/list` is the same component as `<list>`.
 #[test]
-fn native_imported_list_scrolls_with_recycled_cells() {
-    let app = NATIVE_APP
+fn imported_list_scrolls_with_recycled_cells() {
+    let app = APP
         .replace("<list ", "<List ")
         .replace("</list>", "</List>")
         .replace(
@@ -94,10 +73,10 @@ fn native_imported_list_scrolls_with_recycled_cells() {
             "import { signal, mount } from \"nsh\";\nimport { List } from \"nsh/list\";",
         );
     assert!(app.contains("<List "));
-    scrolls_with_recycled_cells(&app, true);
+    scrolls_with_recycled_cells(&app);
 }
 
-fn scrolls_with_recycled_cells(app: &str, native: bool) {
+fn scrolls_with_recycled_cells(app: &str) {
     static APPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let dir = std::env::temp_dir().join(format!(
         "nsh-list-{}-{}",
@@ -105,9 +84,6 @@ fn scrolls_with_recycled_cells(app: &str, native: bool) {
         APPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&dir).unwrap();
-    if native {
-        std::fs::write(dir.join("nsh.json"), r#"{ "compiler": "nsh" }"#).unwrap();
-    }
     let entry = dir.join("App.tsx");
     std::fs::write(&entry, app).unwrap();
     let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {

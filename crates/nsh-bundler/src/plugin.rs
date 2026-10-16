@@ -120,6 +120,16 @@ fn native_module(spec: &str) -> bool {
             .any(|r| r.specifier() == Some(spec))
 }
 
+/// Whether export `name` of `spec` is one of nsh's objects of functions
+/// (`Image` of `nsh/image`), not a component.
+pub(crate) fn native_object(spec: &str, name: &str) -> bool {
+    static UI: std::sync::OnceLock<nsh_core::ui::Registry> = std::sync::OnceLock::new();
+    std::iter::once(UI.get_or_init(nsh_ui_mobile::registry))
+        .chain(nsh_core::runtime::registries())
+        .filter(|r| r.specifier() == Some(spec))
+        .any(|r| r.module_specs().iter().any(|m| !m.flat && m.name == name))
+}
+
 /// The components of the mobile UI, for hints about tags they would be.
 fn ui_components() -> &'static [String] {
     static NAMES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();

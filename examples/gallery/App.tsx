@@ -1,5 +1,4 @@
-import { For } from "solid-js";
-import { render, root } from "nsh";
+import { mount } from "nsh";
 import { Screen, Stack } from "nsh/ui/mobile";
 import { Animations } from "./demos/Animations";
 import { CanvasDemo } from "./demos/CanvasDemo";
@@ -46,10 +45,10 @@ function Home() {
     <Screen title="Gallery">
       <scroll style={{ flex: 1, backgroundColor: colors.background }}>
         <view style={{ margin: 16, borderRadius: 12, backgroundColor: colors.surface, overflow: "hidden" }}>
-          <For each={demos}>
+          <each of={demos}>
             {(demo, i) => (
               <view
-                onPress={() => nav.push({ name: "demo", demo })}
+                onPress={() => nav.push({ name: "demo", demo: demo() })}
                 activeOpacity={0.5}
                 accessibilityRole="button"
                 style={{
@@ -60,11 +59,11 @@ function Home() {
                   borderTopColor: "#eaeef2",
                 }}
               >
-                <text style={{ fontSize: 17, color: colors.text }}>{demo.name}</text>
-                <text style={{ fontSize: 13, color: colors.muted }}>{demo.detail}</text>
+                <text style={{ fontSize: 17, color: colors.text }}>{demo().name}</text>
+                <text style={{ fontSize: 13, color: colors.muted }}>{demo().detail}</text>
               </view>
             )}
-          </For>
+          </each>
         </view>
       </scroll>
     </Screen>
@@ -96,4 +95,4 @@ function App() {
   );
 }
 
-render(() => <App />, root);
+mount(App);

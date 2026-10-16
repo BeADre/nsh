@@ -1,6 +1,5 @@
 //! `nsh/canvas` end to end: what a `draw` records (the generated methods and
-//! properties, and the hand-written ones) as the core decodes it; apps
-//! compiled by nsh (the native context) draw exactly what the JS one does.
+//! properties, and the hand-written ones) as the core decodes it.
 
 use std::time::Duration;
 
@@ -12,10 +11,10 @@ use nsh_engine::{Bundle, Engine, EngineConfig};
 
 use crate::ChannelSink;
 
-const APP: &str = r##"import { render, root } from "nsh";
+const APP: &str = r##"import { mount } from "nsh";
 import { Canvas, Path2D } from "nsh/canvas";
 
-render(
+mount(
   () => (
     <Canvas
       style={{ width: 100, height: 50 }}
@@ -40,20 +39,11 @@ render(
       }}
     />
   ),
-  root,
 );
 "##;
 
+/// The app, compiled by nsh and loaded as bytecode.
 fn start(app: &str) -> (Engine, crossbeam_channel::Receiver<MountBatch>) {
-    start_with(app, false)
-}
-
-/// An app compiled by nsh (`"compiler": "nsh"`), through bytecode.
-fn start_native(app: &str) -> (Engine, crossbeam_channel::Receiver<MountBatch>) {
-    start_with(app, true)
-}
-
-fn start_with(app: &str, native: bool) -> (Engine, crossbeam_channel::Receiver<MountBatch>) {
     static APPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let dir = std::env::temp_dir().join(format!(
         "nsh-canvas-{}-{}",
@@ -61,9 +51,6 @@ fn start_with(app: &str, native: bool) -> (Engine, crossbeam_channel::Receiver<M
         APPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&dir).unwrap();
-    if native {
-        std::fs::write(dir.join("nsh.json"), r#"{ "compiler": "nsh" }"#).unwrap();
-    }
     let entry = dir.join("App.tsx");
     std::fs::write(&entry, app).unwrap();
     let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {
@@ -71,15 +58,10 @@ fn start_with(app: &str, native: bool) -> (Engine, crossbeam_channel::Receiver<M
         minify: false,
     })
     .unwrap();
-    let app = if native {
-        let bytecode =
-            nsh_js::compile_bytecode_with(&bundle.code, false, &[nsh_ui_mobile::registry()])
-                .unwrap();
-        // SAFETY: compiled just now by this runtime.
-        unsafe { Bundle::bytecode(bytecode) }
-    } else {
-        Bundle::source(bundle.code)
-    };
+    let bytecode =
+        nsh_js::compile_bytecode_with(&bundle.code, false, &[nsh_ui_mobile::registry()]).unwrap();
+    // SAFETY: compiled just now by this runtime.
+    let app = unsafe { Bundle::bytecode(bytecode) };
     let (tx, rx) = crossbeam_channel::unbounded();
     let config = EngineConfig {
         app: nsh_engine::App::Js(app),
@@ -222,35 +204,46 @@ const color = v.interpolate({ inputRange: [0, 1], outputRange: ["#000000", "#fff
 "##;
 
 #[test]
-fn the_native_context_draws_what_the_js_one_does() {
-    let solid = format!(
-        r#"import {{ render, root }} from "nsh";
-{DRAW_IMPORTS}
-render(() => <Canvas style={{{{ width: 100, height: 50 }}}} draw={{{DRAW}}} />, root);
-"#
-    );
-    let native = format!(
+fn the_hand_written_parts_record_as_in_canvas() {
+    let app = format!(
         r#"import {{ mount }} from "nsh";
 {DRAW_IMPORTS}
 mount(() => <Canvas style={{{{ width: 100, height: 50 }}}} draw={{{DRAW}}} />);
 "#
     );
-    let (_a, rx) = start(&solid);
-    let js = drawings(&rx, 1).pop().expect("a drawing");
-    let (_b, rx) = start_native(&native);
-    let native = drawings(&rx, 1).pop().expect("a native drawing");
-    let (js, native) = (format!("{js:#?}"), format!("{native:#?}"));
-    assert_eq!(js, native);
-    // What the getters read.
+    let (_engine, rx) = start(&app);
+    let drawing = drawings(&rx, 1).pop().expect("a drawing");
+    let text = format!("{drawing:#?}");
+    // What the getters read, drawn as the last text.
     assert!(
-        js.contains("2|3|butt|1|4,2,1,4,2,1|bold 14px system-ui|23.100000381469727|10px sans-serif|1|100|50|true|true|true"),
-        "{js}"
+        text.contains("2|3|butt|1|4,2,1,4,2,1|bold 14px system-ui|23.100000381469727|10px sans-serif|1|100|50|true|true|true"),
+        "{text}"
     );
+    // The native value reads are slots of the drawing.
+    assert_eq!(drawing.slots.len(), 2, "{:?}", drawing.slots);
+    let gradients = drawing
+        .ops
+        .iter()
+        .filter(|op| {
+            matches!(
+                op,
+                CanvasOp::FillStyle(nsh_core::canvas::Paint::Gradient(_))
+                    | CanvasOp::StrokeStyle(nsh_core::canvas::Paint::Gradient(_))
+            )
+        })
+        .count();
+    assert_eq!(gradients, 3, "{text}");
+    let images = drawing
+        .ops
+        .iter()
+        .filter(|op| matches!(op, CanvasOp::DrawImage { .. }))
+        .count();
+    assert_eq!(images, 4, "{text}");
 }
 
 /// Redrawn when a signal `draw` reads changes; a throwing `draw` still
 /// sends what it recorded, and the error reaches the app.
-const NATIVE_REDRAW: &str = r#"import { signal, mount } from "nsh";
+const REDRAW: &str = r#"import { signal, mount } from "nsh";
 import { Canvas } from "nsh/canvas";
 
 const n = signal(1);
@@ -269,8 +262,8 @@ mount(() => (
 "#;
 
 #[test]
-fn native_canvases_redraw_when_what_they_read_changes() {
-    let (_engine, rx) = start_native(NATIVE_REDRAW);
+fn canvases_redraw_when_what_they_read_changes() {
+    let (_engine, rx) = start(REDRAW);
     let d = drawings(&rx, 2);
     assert_eq!(d.len(), 2);
     assert!(matches!(d[0].ops[0], CanvasOp::LineWidth(Num::Const(1.0))));

@@ -8,10 +8,10 @@ use nsh_engine::{Bundle, Engine, EngineConfig, Environment, Os};
 
 use crate::ChannelSink;
 
-const APP: &str = r#"import { render, root } from "nsh";
+const APP: &str = r#"import { mount } from "nsh";
 import { Platform } from "nsh/device";
 
-render(
+mount(
   () => (
     <view
       ios={{ accessibilityLabel: "ios" }}
@@ -21,7 +21,6 @@ render(
       <text>{`${Platform.OS} ${Platform.isDesktop} ${Platform.select({ ios: "i", mobile: "m", desktop: "d" })}`}</text>
     </view>
   ),
-  root,
 );
 "#;
 

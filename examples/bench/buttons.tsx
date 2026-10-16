@@ -1,7 +1,7 @@
 // The two benchmark screens, parameterized by the Button under test, so the
 // Rust component (`nsh/ui/mobile`) and a TSX composition (`TsButton.tsx`) run
 // the same app.
-import { createSignal, For, type Component } from "solid-js";
+import { signal, type Component } from "nsh";
 import { List } from "nsh/list";
 
 /** The props both Buttons take. */
@@ -16,17 +16,17 @@ const rows = Array.from({ length: 200 }, (_, i) => i);
 /** 200 Buttons in a scroll view. The first press target bumps a counter
  * that every title shows: one tap updates all 200 titles. */
 export function Grid(props: { Button: Component<BenchButtonProps> }) {
-  const [count, setCount] = createSignal(0);
+  const count = signal(0);
   const Button = props.Button;
   return (
     <scroll style={{ flex: 1 }}>
       <view style={{ padding: 16, gap: 8 }}>
-        <view onPress={() => setCount((c) => c + 1)} style={{ padding: 12 }}>
+        <view onPress={() => count.update((c) => c + 1)} style={{ padding: 12 }}>
           <text>Bump</text>
         </view>
-        <For each={rows}>
-          {(i) => <Button title={`Row ${i} · ${count()}`} variant={i % 3 === 0 ? "primary" : i % 3 === 1 ? "secondary" : "plain"} />}
-        </For>
+        <each of={rows}>
+          {(i) => <Button title={`Row ${i()} · ${count()}`} variant={i() % 3 === 0 ? "primary" : i() % 3 === 1 ? "secondary" : "plain"} />}
+        </each>
       </view>
     </scroll>
   );

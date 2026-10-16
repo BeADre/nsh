@@ -6,7 +6,10 @@
 //! `<if when else>` / `<each of key>`, unless a capitalized binding in scope
 //! has that name in kebab case: `WeatherPanel` is also `<weather-panel>`,
 //! an imported `Button` also `<button>`, and the app's own bindings win over
-//! built-ins (`Text` in scope makes `<text>` that component). A capitalized
+//! built-ins (`Text` in scope makes `<text>` that component, an imported
+//! `Modal` makes `<modal>` it; an object of functions imported from one of
+//! nsh's modules is no component: `Image` from `nsh/image` leaves `<image>`
+//! the element). A capitalized
 //! or member tag (`<Theme.Provider>`) names a binding as usual. Props keep
 //! their camelCase names.
 //!
@@ -189,6 +192,12 @@ pub(crate) fn transform<'a>(
     components: &[&str],
 ) -> Result<Vec<KebabUse>, String> {
     let origins = Origins::of(program);
+    let native_objects = origins
+        .imports
+        .iter()
+        .filter(|(_, (module, name))| crate::plugin::native_object(module, name))
+        .map(|(local, _)| local.clone())
+        .collect();
     let mut compiler = Compiler {
         allocator,
         scoping,
@@ -198,6 +207,7 @@ pub(crate) fn transform<'a>(
         vars: Cell::new(0),
         components,
         kebab: Vec::new(),
+        native_objects,
     };
     compiler.visit_program(program);
     if let Some(err) = compiler.errors.into_iter().next() {
@@ -262,6 +272,13 @@ fn helper(name: &str) -> usize {
 }
 
 /// `WeatherPanel` -> `weather-panel`, `HTTPPanel` -> `http-panel`.
+/// Whether `tag` is a built-in (an element, `if`, `each`, `list`).
+fn is_built_in(tag: &str) -> bool {
+    matches!(tag, "if" | "each")
+        || ELEMENTS.iter().any(|(name, _)| *name == tag)
+        || RUNTIME_COMPONENTS.contains(&tag)
+}
+
 pub(crate) fn kebab(name: &str) -> String {
     let chars: Vec<char> = name.chars().collect();
     let mut out = String::with_capacity(name.len() + 4);
@@ -472,6 +489,9 @@ struct Compiler<'a, 's> {
     components: &'s [&'s str],
     /// Kebab tags that named bindings: (tag, binding, in the module scope).
     kebab: Vec<(String, String, bool)>,
+    /// Objects of functions the module imports from nsh's modules: they do
+    /// not replace built-ins.
+    native_objects: std::collections::HashSet<String>,
 }
 
 impl<'a> VisitMut<'a> for Compiler<'a, '_> {
@@ -529,6 +549,9 @@ impl<'a> Compiler<'a, '_> {
                 let name = name.as_str();
                 if name.starts_with(|c: char| c.is_ascii_uppercase()) && kebab(name) == tag {
                     let top = id == self.scoping.root_scope_id();
+                    if top && self.native_objects.contains(name) && is_built_in(tag) {
+                        return None;
+                    }
                     return Some((name.to_owned(), top));
                 }
             }
@@ -1219,6 +1242,30 @@ mod tests {
             "{code}"
         );
         assert!(code.contains(r#"_$element("text")"#), "{code}");
+    }
+
+    #[test]
+    fn nsh_modules_do_not_replace_built_ins() {
+        let code = flat(
+            &compile(
+                r#"import { Image } from "nsh/image";
+            import { Button } from "nsh/ui/mobile";
+            export const a = <view><image src="x" /><button title="b" /></view>;
+            Image.prefetch("x");"#,
+            )
+            .unwrap(),
+        );
+        assert!(code.contains(r#"_$element("image")"#), "{code}");
+        assert!(code.contains("_$component(Button"), "{code}");
+        // A component of nsh's replaces the built-in of its name.
+        let code = flat(
+            &compile(
+                r#"import { Modal } from "nsh/ui/mobile";
+            export const a = <modal visible={false}><text>m</text></modal>;"#,
+            )
+            .unwrap(),
+        );
+        assert!(code.contains("_$component(Modal"), "{code}");
     }
 
     #[test]

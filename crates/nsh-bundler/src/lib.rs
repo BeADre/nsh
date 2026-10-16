@@ -56,13 +56,13 @@ pub(crate) enum Compiler {
 /// The `"compiler"` of the `nsh.json` in `dir`.
 pub(crate) fn compiler(dir: &std::path::Path) -> Result<Compiler, BundleError> {
     let Ok(text) = std::fs::read_to_string(dir.join("nsh.json")) else {
-        return Ok(Compiler::Solid);
+        return Ok(Compiler::Nsh);
     };
     let config: serde_json::Value =
         serde_json::from_str(&text).map_err(|e| BundleError::other(format!("nsh.json: {e}")))?;
     match config.get("compiler").and_then(|c| c.as_str()) {
-        None | Some("solid") => Ok(Compiler::Solid),
-        Some("nsh") => Ok(Compiler::Nsh),
+        Some("solid") => Ok(Compiler::Solid),
+        None | Some("nsh") => Ok(Compiler::Nsh),
         Some(other) => Err(BundleError::other(format!(
             "nsh.json: unknown compiler `{other}` (\"nsh\" or \"solid\")"
         ))),

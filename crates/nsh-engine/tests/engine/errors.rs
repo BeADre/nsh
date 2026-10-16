@@ -28,14 +28,14 @@ fn uncaught_errors_point_at_app_sources() {
     // The throw is on line 5, column 9.
     std::fs::write(
         &entry,
-        "import { render, root } from \"nsh\";\n\
+        "import { mount } from \"nsh\";\n\
          const message: string = \"boom\";\n\
          function fail(): void {\n\
          \x20 // line 4\n\
          \x20 throw new Error(message);\n\
          }\n\
          setTimeout(fail, 0);\n\
-         render(() => <view />, root);\n",
+         mount(() => <view />);\n",
     )
     .unwrap();
     let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {

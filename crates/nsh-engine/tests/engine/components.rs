@@ -7,46 +7,19 @@ use std::time::Duration;
 
 use crossbeam_channel::Receiver;
 use nsh_core::{
-    ApproxTextEngine, Command, DialogButtonStyle, EventKind, EventPayload, MountBatch, MountItem,
-    PayloadValue, ROOT_ID, Size, StatusBarStyle,
+    ApproxTextEngine, Command, EventKind, EventPayload, MountBatch, MountItem, PayloadValue,
+    ROOT_ID, Size, StatusBarStyle,
 };
 use nsh_engine::{Bundle, Engine, EngineConfig, Environment, Insets};
 
 use crate::ChannelSink;
 
-const APP: &str = r#"import { createSignal, Show } from "solid-js";
-import { render, root } from "nsh";
-import { Button, Card } from "nsh/ui/mobile";
-
-function App() {
-  const [titled, setTitled] = createSignal(true);
-  return (
-    <Card
-      header={<Show when={titled()}><text>Title</text></Show>}
-      footer={<Button title="Hide title" onPress={() => setTitled(false)} />}
-    >
-      <text>Body</text>
-    </Card>
-  );
-}
-
-render(() => <App />, root);
-"#;
-
 fn start(app: &str) -> (Engine, Receiver<MountBatch>) {
     start_in(app, Environment::default())
 }
 
+/// The app, compiled by nsh and loaded as bytecode.
 fn start_in(app: &str, environment: Environment) -> (Engine, Receiver<MountBatch>) {
-    start_with(app, environment, false)
-}
-
-/// An app compiled by nsh (`"compiler": "nsh"`), through bytecode.
-fn start_native(app: &str, environment: Environment) -> (Engine, Receiver<MountBatch>) {
-    start_with(app, environment, true)
-}
-
-fn start_with(app: &str, environment: Environment, native: bool) -> (Engine, Receiver<MountBatch>) {
     static APPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let dir = std::env::temp_dir().join(format!(
         "nsh-components-{}-{}",
@@ -54,9 +27,6 @@ fn start_with(app: &str, environment: Environment, native: bool) -> (Engine, Rec
         APPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&dir).unwrap();
-    if native {
-        std::fs::write(dir.join("nsh.json"), r#"{ "compiler": "nsh" }"#).unwrap();
-    }
     let entry = dir.join("App.tsx");
     std::fs::write(&entry, app).unwrap();
     let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {
@@ -64,18 +34,12 @@ fn start_with(app: &str, environment: Environment, native: bool) -> (Engine, Rec
         minify: false,
     })
     .unwrap();
-    let app = if native {
-        let bytecode =
-            nsh_js::compile_bytecode_with(&bundle.code, false, &[nsh_ui_mobile::registry()])
-                .unwrap();
-        // SAFETY: compiled just now by this runtime.
-        unsafe { Bundle::bytecode(bytecode) }
-    } else {
-        Bundle::source(bundle.code)
-    };
+    let bytecode =
+        nsh_js::compile_bytecode_with(&bundle.code, false, &[nsh_ui_mobile::registry()]).unwrap();
     let (tx, rx) = crossbeam_channel::unbounded();
     let config = EngineConfig {
-        app: nsh_engine::App::Js(app),
+        // SAFETY: compiled just now by this runtime.
+        app: nsh_engine::App::Js(unsafe { Bundle::bytecode(bytecode) }),
         viewport: Size::new(390.0, 844.0),
         trace: false,
         network: None,
@@ -99,135 +63,13 @@ fn text_ids(batch: &MountBatch, wanted: &str) -> Option<u32> {
     })
 }
 
-#[test]
-fn slots_children_and_events_through_the_glue() {
-    let (engine, rx) = start(APP);
-    let first = rx
-        .recv_timeout(Duration::from_secs(5))
-        .expect("first frame");
-    for wanted in ["Title", "Body", "Hide title"] {
-        assert!(text_ids(&first, wanted).is_some(), "{wanted} rendered");
-    }
-    // The title (header slot) is above the body (the children).
-    let frame = |id| {
-        first.items.iter().find_map(|i| match i {
-            MountItem::Frame { id: f, frame } if *f == id => Some(*frame),
-            _ => None,
-        })
-    };
-    let title_parent = first.items.iter().find_map(|i| match i {
-        MountItem::Insert { parent, child, .. } if Some(*child) == text_ids(&first, "Title") => {
-            Some(*parent)
-        }
-        _ => None,
-    });
-    let body_parent = first.items.iter().find_map(|i| match i {
-        MountItem::Insert { parent, child, .. } if Some(*child) == text_ids(&first, "Body") => {
-            Some(*parent)
-        }
-        _ => None,
-    });
-    let (title_parent, body_parent) = (title_parent.unwrap(), body_parent.unwrap());
-    assert!(frame(title_parent).unwrap().y < frame(body_parent).unwrap().y);
-    // The Button's host is the one with a press listener.
-    let button = first
-        .items
-        .iter()
-        .find_map(|i| match i {
-            MountItem::Events { id, events } if events.contains(EventKind::Press) => Some(*id),
-            _ => None,
-        })
-        .expect("a pressable button");
-
-    // Its press hides the title: the header slot empties and is not rendered.
-    engine
-        .control()
-        .dispatch_event(button, EventKind::Press, EventPayload::None);
-    let batch = rx.recv_timeout(Duration::from_secs(5)).expect("a batch");
-    assert!(
-        batch
-            .items
-            .iter()
-            .any(|i| matches!(i, MountItem::Remove { id } if *id == title_parent))
-    );
-}
-
-const ROWS: &str = r#"import { render, root } from "nsh";
-import { Group, ListView } from "nsh/ui/mobile";
-
-const rows = Array.from({ length: 100 }, (_, i) => ({ id: i, label: `Row ${i}` }));
-
-render(
-  () => (
-    <ListView
-      each={rows}
-      ListHeaderComponent={() => (
-        <Group>
-          <text>First</text>
-          <text>Second</text>
-        </Group>
-      )}
-    >
-      {(row) => <text>{row().label}</text>}
-    </ListView>
-  ),
-  root,
-);
-"#;
-
-#[test]
-fn components_place_the_apps_children_and_rows() {
-    let (_engine, rx) = start(ROWS);
-    let first = rx
-        .recv_timeout(Duration::from_secs(5))
-        .expect("first frame");
-    let parent_of = |id| {
-        first.items.iter().find_map(|i| match i {
-            MountItem::Insert { parent, child, .. } if *child == id => Some(*parent),
-            _ => None,
-        })
-    };
-    let frame = |id| {
-        first.items.iter().find_map(|i| match i {
-            MountItem::Frame { id: f, frame } if *f == id => Some(*frame),
-            _ => None,
-        })
-    };
-    let top_border = |id| {
-        first.items.iter().any(|i| {
-            matches!(i, MountItem::ViewStyle { id: v, style } if *v == id && style.borders.widths[0] == 1.0)
-        })
-    };
-    // Each child of the Group in a wrapper of the core's (odd ids), with
-    // a divider above all but the first.
-    let a = parent_of(text_ids(&first, "First").expect("First")).unwrap();
-    let b = parent_of(text_ids(&first, "Second").expect("Second")).unwrap();
-    assert!(a % 2 == 1 && b % 2 == 1 && a != b);
-    assert!(!top_border(a) && top_border(b));
-    // The rows the app renders, recycled by the list, wrapped by the
-    // ListView: 16pt in, dividers between them.
-    let row0 = parent_of(text_ids(&first, "Row 0").expect("Row 0")).unwrap();
-    let row1 = parent_of(text_ids(&first, "Row 1").expect("Row 1")).unwrap();
-    assert!(row0 % 2 == 1 && row1 % 2 == 1);
-    assert_eq!(
-        frame(text_ids(&first, "Row 0").unwrap()).map(|f| f.x),
-        Some(16.0)
-    );
-    assert!(!top_border(row0) && top_border(row1));
-    assert!(
-        text_ids(&first, "Row 99").is_none(),
-        "only rows near the viewport exist"
-    );
-}
-
-const INSET: &str = r#"import { createSignal } from "solid-js";
-import { render, root } from "nsh";
+const INSET: &str = r#"import { mount, signal } from "nsh";
 import { ListView } from "nsh/ui/mobile";
 
-const [rows, setRows] = createSignal(["A", "B", "C"]);
-setTimeout(() => setRows([...rows(), "D"]), 0);
+const rows = signal(["A", "B", "C"]);
+setTimeout(() => rows.update((r) => [...r, "D"]), 0);
 
-render(() => <ListView variant="inset" each={rows()}>{(row) => <text>{row()}</text>}</ListView>, root);
+mount(() => <ListView variant="inset" each={rows()}>{(row) => <text>{row()}</text>}</ListView>);
 "#;
 
 #[test]
@@ -280,30 +122,9 @@ fn rows_know_whether_they_are_last() {
     );
 }
 
-const STEPPER: &str = r#"import { createSignal } from "solid-js";
-import { render, root } from "nsh";
-import { Stepper } from "nsh/ui/mobile";
-
-const [changes, setChanges] = createSignal(0);
-render(
-  () => (
-    <view>
-      <Stepper defaultValue={5} min={0} max={100} onChange={() => setChanges(changes() + 1)} />
-      <text>{`changes ${changes()}`}</text>
-    </view>
-  ),
-  root,
-);
-"#;
-
 #[test]
 fn a_stateful_component_steps_while_held() {
     a_stateful_component_steps_while_held_on(start(STEPPER));
-}
-
-#[test]
-fn native_a_stateful_component_steps_while_held() {
-    a_stateful_component_steps_while_held_on(start_native(NATIVE_STEPPER, Environment::default()));
 }
 
 fn a_stateful_component_steps_while_held_on((engine, rx): (Engine, Receiver<MountBatch>)) {
@@ -351,49 +172,6 @@ fn a_stateful_component_steps_while_held_on((engine, rx): (Engine, Receiver<Moun
     assert!(rx.recv_timeout(Duration::from_millis(300)).is_err());
 }
 
-const METHODS: &str = r#"import { createSignal } from "solid-js";
-import { render, root } from "nsh";
-import { Stepper, type StepperRef } from "nsh/ui/mobile";
-
-const [shown, setShown] = createSignal("waiting");
-let stepper!: StepperRef;
-setTimeout(async () => {
-  stepper.setValue(42.4);
-  const value = await stepper.value();
-  setShown(`got ${value}`);
-}, 0);
-
-render(
-  () => (
-    <view>
-      <Stepper ref={stepper} defaultValue={1} max={50} />
-      <text>{shown()}</text>
-    </view>
-  ),
-  root,
-);
-"#;
-
-#[test]
-fn js_calls_a_components_methods() {
-    let (_engine, rx) = start(METHODS);
-    let mut shown = Vec::new();
-    while let Ok(batch) = rx.recv_timeout(Duration::from_millis(500)) {
-        for item in batch.items {
-            if let MountItem::Text { text, .. } = item {
-                shown.push(text.text.clone());
-            }
-        }
-        if shown.iter().any(|t| t.starts_with("got")) {
-            break;
-        }
-    }
-    // The call runs in order with the ops before it; the one JS waits for
-    // resolves with the component's answer.
-    assert!(shown.contains(&"42".to_owned()), "{shown:?}");
-    assert!(shown.contains(&"got 42".to_owned()), "{shown:?}");
-}
-
 /// The batches until `done` holds for one (or nothing came for 500ms).
 fn until(rx: &Receiver<MountBatch>, mut done: impl FnMut(&MountBatch) -> bool) -> Vec<MountBatch> {
     let mut batches = Vec::new();
@@ -411,98 +189,9 @@ fn shows(batch: &MountBatch, wanted: &str) -> bool {
     text_ids(batch, wanted).is_some()
 }
 
-const ALERT: &str = r#"import { createSignal } from "solid-js";
-import { render, root } from "nsh";
-import { Alert } from "nsh/ui/mobile";
-
-const [shown, setShown] = createSignal("waiting");
-setTimeout(async () => {
-  const i = await Alert.alert("Delete the photo?", "It is gone then.", [
-    { text: "Cancel", style: "cancel" },
-    { text: "Delete", style: "destructive" },
-  ], { cancelable: true });
-  setShown(`answer ${i}`);
-}, 0);
-
-render(() => <text>{shown()}</text>, root);
-"#;
-
-#[test]
-fn an_alert_resolves_with_the_button_pressed() {
-    let (engine, rx) = start(ALERT);
-    let mut dialog = None;
-    until(&rx, |batch| {
-        dialog = dialog.take().or_else(|| {
-            batch.items.iter().find_map(|i| match i {
-                MountItem::Command {
-                    id: ROOT_ID,
-                    command: Command::Dialog(d),
-                } => Some(d.clone()),
-                _ => None,
-            })
-        });
-        dialog.is_some()
-    });
-    let dialog = dialog.expect("the alert");
-    assert_eq!(dialog.title.as_deref(), Some("Delete the photo?"));
-    assert_eq!(dialog.message.as_deref(), Some("It is gone then."));
-    assert!(dialog.cancelable && !dialog.sheet);
-    let looks: Vec<_> = dialog
-        .buttons
-        .iter()
-        .map(|b| (b.text.as_str(), b.style))
-        .collect();
-    assert_eq!(
-        looks,
-        [
-            ("Cancel", DialogButtonStyle::Cancel),
-            ("Delete", DialogButtonStyle::Destructive)
-        ]
-    );
-    engine.control().dispatch_event(
-        ROOT_ID,
-        EventKind::Dialog,
-        EventPayload::Map(vec![
-            ("id", PayloadValue::Number(dialog.id as f64)),
-            ("index", PayloadValue::Number(1.0)),
-        ]),
-    );
-    let batches = until(&rx, |b| shows(b, "answer 1"));
-    assert!(batches.iter().any(|b| shows(b, "answer 1")));
-}
-
-const STATUS_BAR: &str = r##"import { createSignal, Show } from "solid-js";
-import { render, root } from "nsh";
-import { setStatusBarBackgroundColor } from "nsh/android";
-import { StatusBar } from "nsh/ui/mobile";
-
-const [rendered, setRendered] = createSignal(true);
-setStatusBarBackgroundColor("#ff0000");
-StatusBar.setBarStyle("dark-content");
-setTimeout(() => StatusBar.setHidden(true), 50);
-setTimeout(() => setRendered(false), 100);
-
-render(
-  () => (
-    <Show when={rendered()}>
-      <StatusBar barStyle="light-content" android={{ backgroundColor: "#00ff00" }} />
-    </Show>
-  ),
-  root,
-);
-"##;
-
 #[test]
 fn rendered_status_bars_win_over_what_functions_set() {
     rendered_status_bars_win_over_what_functions_set_on(start(STATUS_BAR));
-}
-
-#[test]
-fn native_rendered_status_bars_win_over_what_functions_set() {
-    rendered_status_bars_win_over_what_functions_set_on(start_native(
-        NATIVE_STATUS_BAR,
-        Environment::default(),
-    ));
 }
 
 fn rendered_status_bars_win_over_what_functions_set_on(
@@ -539,21 +228,6 @@ fn rendered_status_bars_win_over_what_functions_set_on(
     );
 }
 
-const SAFE_AREA: &str = r#"import { render, root } from "nsh";
-import { KeyboardAvoidingView, SafeAreaView } from "nsh/ui/mobile";
-
-render(
-  () => (
-    <KeyboardAvoidingView style={{ flex: 1 }}>
-      <SafeAreaView style={{ flex: 1, padding: 4 }} edges={["top", "bottom"]}>
-        <text>inside</text>
-      </SafeAreaView>
-    </KeyboardAvoidingView>
-  ),
-  root,
-);
-"#;
-
 fn frame_of(batches: &[MountBatch], id: u32) -> Option<nsh_core::Rect> {
     batches.iter().rev().find_map(|b| {
         b.items.iter().rev().find_map(|i| match i {
@@ -564,156 +238,8 @@ fn frame_of(batches: &[MountBatch], id: u32) -> Option<nsh_core::Rect> {
 }
 
 #[test]
-fn safe_area_and_keyboard_avoiding_views_pad_by_the_environment() {
-    let environment = Environment {
-        window: (390.0, 844.0),
-        safe_area: Insets {
-            top: 47.0,
-            right: 10.0,
-            bottom: 34.0,
-            left: 10.0,
-        },
-        ..Default::default()
-    };
-    let (engine, rx) = start_in(SAFE_AREA, environment);
-    let first = until(&rx, |b| shows(b, "inside"));
-    let text = first
-        .iter()
-        .find_map(|b| text_ids(b, "inside"))
-        .expect("the text");
-    // Its own padding, plus the edges it pads (not left and right).
-    let frame = frame_of(&first, text).expect("laid out");
-    assert_eq!((frame.x, frame.y), (4.0, 51.0));
-    // The keyboard: the avoiding view pads its bottom, the safe area view
-    // shrinks, the text stays.
-    engine.control().set_environment(Environment {
-        keyboard_height: 300.0,
-        ..environment
-    });
-    let after = until(&rx, |b| {
-        b.items
-            .iter()
-            .any(|i| matches!(i, MountItem::Frame { frame, .. } if frame.height == 844.0 - 300.0))
-    });
-    assert!(
-        after
-            .iter()
-            .flat_map(|b| &b.items)
-            .any(|i| matches!(i, MountItem::Frame { frame, .. } if frame.height == 844.0 - 300.0)),
-        "the safe area view above the keyboard"
-    );
-}
-
-const RUNTIME_MODULES: &str = r#"import { createSignal } from "solid-js";
-import { render, root, type YNode } from "nsh";
-import { AccessibilityInfo } from "nsh/accessibility";
-import { Toast } from "nsh/android";
-import { Image } from "nsh/image";
-
-const [shown, setShown] = createSignal("waiting");
-let note!: YNode;
-setTimeout(async () => {
-  Toast.show("hello", "long");
-  AccessibilityInfo.setAccessibilityFocus(note);
-  const size = await Image.getSize({ uri: "https://example.com/a.png" });
-  let failed = "no";
-  try {
-    await Image.getSize("https://example.com/missing.png");
-  } catch (e) {
-    failed = String((e as Error).message);
-  }
-  setShown(`${size.width}x${size.height} ${failed}`);
-}, 0);
-
-render(() => <text ref={note}>{shown()}</text>, root);
-"#;
-
-#[test]
-fn runtime_modules_are_rust() {
-    let (engine, rx) = start(RUNTIME_MODULES);
-    let note = rx
-        .recv_timeout(Duration::from_secs(5))
-        .ok()
-        .and_then(|b| text_ids(&b, "waiting"))
-        .expect("first frame");
-    let mut toast = None;
-    let mut focused = None;
-    let mut requests = Vec::new();
-    let control = engine.control();
-    until(&rx, |batch| {
-        for item in &batch.items {
-            match item {
-                MountItem::Command {
-                    id: ROOT_ID,
-                    command: Command::Toast { text, long },
-                } => toast = Some((text.clone(), *long)),
-                MountItem::Command {
-                    id,
-                    command: Command::AccessibilityFocus,
-                } => focused = Some(*id),
-                MountItem::Command {
-                    id: ROOT_ID,
-                    command: Command::ImageInfo { id, uri },
-                } => {
-                    requests.push(uri.clone());
-                    // The first one has a size, the second fails.
-                    let payload = if requests.len() == 1 {
-                        vec![
-                            ("id", PayloadValue::Number(*id as f64)),
-                            ("width", PayloadValue::Number(640.0)),
-                            ("height", PayloadValue::Number(480.0)),
-                        ]
-                    } else {
-                        vec![
-                            ("id", PayloadValue::Number(*id as f64)),
-                            ("error", PayloadValue::Str("not found".into())),
-                        ]
-                    };
-                    control.dispatch_event(
-                        ROOT_ID,
-                        EventKind::ImageInfo,
-                        EventPayload::Map(payload),
-                    );
-                }
-                _ => {}
-            }
-        }
-        shows(batch, "640x480 not found")
-    });
-    assert_eq!(toast, Some(("hello".to_owned(), true)));
-    // The node JS passed, by id.
-    assert_eq!(focused, Some(note));
-    assert_eq!(
-        requests,
-        [
-            "https://example.com/a.png",
-            "https://example.com/missing.png"
-        ]
-    );
-}
-
-const BACK: &str = r#"import { createSignal } from "solid-js";
-import { render, root } from "nsh";
-import { BackHandler } from "nsh/android";
-
-const [presses, setPresses] = createSignal(0);
-BackHandler.addEventListener("hardwareBackPress", () => {
-  setPresses(presses() + 1);
-  // The first press is handled, the second one leaves the app.
-  return presses() === 1;
-});
-
-render(() => <text>{`presses ${presses()}`}</text>, root);
-"#;
-
-#[test]
 fn unhandled_back_presses_exit_through_rust() {
     unhandled_back_presses_exit_through_rust_on(start(BACK));
-}
-
-#[test]
-fn native_unhandled_back_presses_exit_through_rust() {
-    unhandled_back_presses_exit_through_rust_on(start_native(NATIVE_BACK, Environment::default()));
 }
 
 fn unhandled_back_presses_exit_through_rust_on((engine, rx): (Engine, Receiver<MountBatch>)) {
@@ -742,30 +268,9 @@ fn unhandled_back_presses_exit_through_rust_on((engine, rx): (Engine, Receiver<M
     assert_eq!(exits(&second), 1, "not handled: the app exits");
 }
 
-const FIELD: &str = r#"import { createSignal } from "solid-js";
-import { render, root } from "nsh";
-import { TextField } from "nsh/ui/mobile";
-
-const [name, setName] = createSignal("Ada");
-render(
-  () => (
-    <view>
-      <TextField value={name()} onChange={setName} />
-      <text>{`name ${name()}`}</text>
-    </view>
-  ),
-  root,
-);
-"#;
-
 #[test]
 fn a_rust_text_field_clears_after_typing() {
     a_rust_text_field_clears_after_typing_on(start(FIELD));
-}
-
-#[test]
-fn native_a_rust_text_field_clears_after_typing() {
-    a_rust_text_field_clears_after_typing_on(start_native(NATIVE_FIELD, Environment::default()));
 }
 
 fn a_rust_text_field_clears_after_typing_on((engine, rx): (Engine, Receiver<MountBatch>)) {
@@ -814,19 +319,9 @@ fn a_rust_text_field_clears_after_typing_on((engine, rx): (Engine, Receiver<Moun
     assert_eq!(value, Some((String::new(), 2)));
 }
 
-/// The clear button comes back with the first keystroke after a clear: the
-/// input stays where it is (moving its native view would end its focus).
 #[test]
 fn a_sibling_coming_back_does_not_move_a_rust_input() {
     a_sibling_coming_back_does_not_move_a_rust_input_on(start(FIELD));
-}
-
-#[test]
-fn native_a_sibling_coming_back_does_not_move_a_rust_input() {
-    a_sibling_coming_back_does_not_move_a_rust_input_on(start_native(
-        NATIVE_FIELD,
-        Environment::default(),
-    ));
 }
 
 fn a_sibling_coming_back_does_not_move_a_rust_input_on(
@@ -883,7 +378,7 @@ fn a_sibling_coming_back_does_not_move_a_rust_input_on(
 
 // --- The same through apps compiled by nsh (native modules) -------------------
 
-const NATIVE_CARD: &str = r#"import { signal, mount } from "nsh";
+const CARD: &str = r#"import { signal, mount } from "nsh";
 import { Button, Card } from "nsh/ui/mobile";
 
 function App() {
@@ -902,8 +397,8 @@ mount(App);
 "#;
 
 #[test]
-fn native_slots_children_and_events() {
-    let (engine, rx) = start_native(NATIVE_CARD, Environment::default());
+fn slots_children_and_events() {
+    let (engine, rx) = start(CARD);
     let first = rx
         .recv_timeout(Duration::from_secs(5))
         .expect("first frame");
@@ -947,7 +442,7 @@ fn native_slots_children_and_events() {
     );
 }
 
-const NATIVE_METHODS: &str = r#"import { signal, mount } from "nsh";
+const METHODS: &str = r#"import { signal, mount } from "nsh";
 import { Stepper, type StepperRef } from "nsh/ui/mobile";
 
 const shown = signal("waiting");
@@ -967,8 +462,8 @@ mount(() => (
 "#;
 
 #[test]
-fn native_calls_of_a_components_methods() {
-    let (_engine, rx) = start_native(NATIVE_METHODS, Environment::default());
+fn calls_of_a_components_methods() {
+    let (_engine, rx) = start(METHODS);
     let mut shown = Vec::new();
     while let Ok(batch) = rx.recv_timeout(Duration::from_millis(500)) {
         for item in batch.items {
@@ -984,7 +479,7 @@ fn native_calls_of_a_components_methods() {
     assert!(shown.contains(&"got 42".to_owned()), "{shown:?}");
 }
 
-const NATIVE_ALERT: &str = r#"import { signal, mount } from "nsh";
+const ALERT: &str = r#"import { signal, mount } from "nsh";
 import { Alert } from "nsh/ui/mobile";
 
 const shown = signal("waiting");
@@ -1000,8 +495,8 @@ mount(() => <text>{shown()}</text>);
 "#;
 
 #[test]
-fn native_alert_resolves_with_the_button_pressed() {
-    let (engine, rx) = start_native(NATIVE_ALERT, Environment::default());
+fn alert_resolves_with_the_button_pressed() {
+    let (engine, rx) = start(ALERT);
     let mut dialog = None;
     until(&rx, |batch| {
         dialog = dialog.take().or_else(|| {
@@ -1029,7 +524,7 @@ fn native_alert_resolves_with_the_button_pressed() {
     assert!(batches.iter().any(|b| shows(b, "answer 1")));
 }
 
-const NATIVE_SAFE_AREA: &str = r#"import { mount } from "nsh";
+const SAFE_AREA: &str = r#"import { mount } from "nsh";
 import { KeyboardAvoidingView, SafeAreaView, safeArea } from "nsh/ui/mobile";
 
 mount(() => (
@@ -1043,7 +538,7 @@ mount(() => (
 "#;
 
 #[test]
-fn native_safe_area_and_keyboard_avoiding_views() {
+fn safe_area_and_keyboard_avoiding_views() {
     let environment = Environment {
         window: (390.0, 844.0),
         safe_area: Insets {
@@ -1054,7 +549,7 @@ fn native_safe_area_and_keyboard_avoiding_views() {
         },
         ..Default::default()
     };
-    let (engine, rx) = start_native(NATIVE_SAFE_AREA, environment);
+    let (engine, rx) = start_in(SAFE_AREA, environment);
     let first = until(&rx, |b| shows(b, "inside"));
     let text = first
         .iter()
@@ -1088,7 +583,7 @@ fn native_safe_area_and_keyboard_avoiding_views() {
     );
 }
 
-const NATIVE_RUNTIME_MODULES: &str = r#"import { signal, mount } from "nsh";
+const RUNTIME_MODULES: &str = r#"import { signal, mount } from "nsh";
 import { AccessibilityInfo } from "nsh/accessibility";
 import { Platform } from "nsh/device";
 import { Toast } from "nsh/android";
@@ -1113,8 +608,8 @@ mount(() => <text ref={note}>{shown()}</text>);
 "#;
 
 #[test]
-fn native_runtime_modules() {
-    let (engine, rx) = start_native(NATIVE_RUNTIME_MODULES, Environment::default());
+fn runtime_modules() {
+    let (engine, rx) = start(RUNTIME_MODULES);
     let note = rx
         .recv_timeout(Duration::from_secs(5))
         .ok()
@@ -1167,7 +662,7 @@ fn native_runtime_modules() {
     assert_eq!(focused, Some(note));
 }
 
-const NATIVE_ROWS: &str = r#"import { mount } from "nsh";
+const ROWS: &str = r#"import { mount } from "nsh";
 import { Group, ListView } from "nsh/ui/mobile";
 
 const rows = Array.from({ length: 100 }, (_, i) => ({ id: i, label: `Row ${i}` }));
@@ -1188,8 +683,8 @@ mount(() => (
 "#;
 
 #[test]
-fn native_components_place_the_apps_children_and_rows() {
-    let (_engine, rx) = start_native(NATIVE_ROWS, Environment::default());
+fn components_place_the_apps_children_and_rows() {
+    let (_engine, rx) = start(ROWS);
     let first = rx
         .recv_timeout(Duration::from_secs(5))
         .expect("first frame");
@@ -1225,7 +720,7 @@ fn native_components_place_the_apps_children_and_rows() {
     assert!(text_ids(&first, "Row 99").is_none());
 }
 
-const NATIVE_STEPPER: &str = r#"import { signal, mount } from "nsh";
+const STEPPER: &str = r#"import { signal, mount } from "nsh";
 import { Stepper } from "nsh/ui/mobile";
 
 const changes = signal(0);
@@ -1237,7 +732,7 @@ mount(() => (
 ));
 "#;
 
-const NATIVE_STATUS_BAR: &str = r##"import { signal, mount } from "nsh";
+const STATUS_BAR: &str = r##"import { signal, mount } from "nsh";
 import { setStatusBarBackgroundColor } from "nsh/android";
 import { StatusBar } from "nsh/ui/mobile";
 
@@ -1254,7 +749,7 @@ mount(() => (
 ));
 "##;
 
-const NATIVE_BACK: &str = r#"import { signal, mount } from "nsh";
+const BACK: &str = r#"import { signal, mount } from "nsh";
 import { BackHandler } from "nsh/android";
 
 const presses = signal(0);
@@ -1267,7 +762,7 @@ BackHandler.addEventListener("hardwareBackPress", () => {
 mount(() => <text>{`presses ${presses()}`}</text>);
 "#;
 
-const NATIVE_FIELD: &str = r#"import { signal, mount } from "nsh";
+const FIELD: &str = r#"import { signal, mount } from "nsh";
 import { TextField } from "nsh/ui/mobile";
 
 const name = signal("Ada");

@@ -52,6 +52,7 @@ const NSH: &[(&str, Export)] = &[
     ("cleanup", Export::Function(reactive::on_cleanup, 1)),
     ("context", Export::Function(dom::context, 1)),
     ("mount", Export::Function(dom::mount, 2)),
+    ("split", Export::Function(dom::split, 2)),
 ];
 
 const MODULES: &[NativeModule] = &[

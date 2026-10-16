@@ -78,15 +78,14 @@ impl Network for EchoNetwork {
 }
 
 const APP: &str = r#"
-import { createSignal } from "solid-js";
-import { render, root } from "nsh";
-const [text, setText] = createSignal("loading");
+import { mount, signal } from "nsh";
+const text = signal("loading");
 const slow = new AbortController();
 fetch("https://example.com/slow", { signal: slow.signal }).catch((e) => console.log(e.name));
 fetch("https://example.com/echo", { method: "PUT", body: "hi" })
   .then((r) => r.text())
-  .then((t) => { setText(t); slow.abort(); });
-render(() => <text>{text()}</text>, root);
+  .then((t) => { text.set(t); slow.abort(); });
+mount(() => <text>{text()}</text>);
 "#;
 
 fn texts(batch: &MountBatch) -> Vec<String> {
@@ -187,16 +186,15 @@ impl Network for RedirectNetwork {
 }
 
 const CHECKED_APP: &str = r#"
-import { createSignal } from "solid-js";
-import { render, root } from "nsh";
-const [text, setText] = createSignal("loading");
+import { mount, signal } from "nsh";
+const text = signal("loading");
 const outcome = (p) => p.then((r) => r.text().then((t) => `${t}${r.redirected ? " (redirected)" : ""}`), (e) => e.message);
 Promise.all([
   outcome(fetch("https://evil.io/")),
   outcome(fetch("https://api.example.com/hop/https://api.example.com/final")),
   outcome(fetch("https://api.example.com/hop/https://evil.io/steal")),
-]).then((r) => setText(r.join(" | ")));
-render(() => <text>{text()}</text>, root);
+]).then((r) => text.set(r.join(" | ")));
+mount(() => <text>{text()}</text>);
 "#;
 
 #[test]

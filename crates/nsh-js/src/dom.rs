@@ -1770,40 +1770,99 @@ unsafe extern "C" fn merge(
                 return qjs::JS_EXCEPTION;
             }
             for j in 0..len as usize {
-                let atom = (*tab.add(j)).atom;
-                let mut desc = qjs::JSPropertyDescriptor {
-                    flags: 0,
-                    value: UNDEFINED,
-                    getter: UNDEFINED,
-                    setter: UNDEFINED,
-                };
-                if qjs::JS_GetOwnProperty(ctx, &mut desc, source, atom) <= 0 {
-                    continue;
-                }
-                let flags = if desc.flags & qjs::JS_PROP_GETSET as c_int != 0 {
-                    qjs::JS_PROP_HAS_GET | qjs::JS_PROP_HAS_SET
-                } else {
-                    qjs::JS_PROP_HAS_VALUE | qjs::JS_PROP_HAS_WRITABLE | qjs::JS_PROP_WRITABLE
-                } | qjs::JS_PROP_HAS_ENUMERABLE
-                    | qjs::JS_PROP_ENUMERABLE
-                    | qjs::JS_PROP_HAS_CONFIGURABLE
-                    | qjs::JS_PROP_CONFIGURABLE;
-                qjs::JS_DefineProperty(
-                    ctx,
-                    target,
-                    atom,
-                    desc.value,
-                    desc.getter,
-                    desc.setter,
-                    flags as c_int,
-                );
-                qjs::JS_FreeValue(ctx, desc.value);
-                qjs::JS_FreeValue(ctx, desc.getter);
-                qjs::JS_FreeValue(ctx, desc.setter);
+                copy_property(ctx, target, source, (*tab.add(j)).atom);
             }
             qjs::JS_FreePropertyEnum(ctx, tab, len);
         }
         target
+    }
+}
+
+/// Defines `source`'s own property `atom` on `target` as it is: a getter
+/// stays a getter (props keep following what they read).
+///
+/// # Safety
+///
+/// Live objects and atom.
+unsafe fn copy_property(ctx: *mut JsContext, target: JsValue, source: JsValue, atom: qjs::JSAtom) {
+    // SAFETY: per the contract; descriptor values are freed after use.
+    unsafe {
+        let mut desc = qjs::JSPropertyDescriptor {
+            flags: 0,
+            value: UNDEFINED,
+            getter: UNDEFINED,
+            setter: UNDEFINED,
+        };
+        if qjs::JS_GetOwnProperty(ctx, &mut desc, source, atom) <= 0 {
+            return;
+        }
+        let flags = if desc.flags & qjs::JS_PROP_GETSET as c_int != 0 {
+            qjs::JS_PROP_HAS_GET | qjs::JS_PROP_HAS_SET
+        } else {
+            qjs::JS_PROP_HAS_VALUE | qjs::JS_PROP_HAS_WRITABLE | qjs::JS_PROP_WRITABLE
+        } | qjs::JS_PROP_HAS_ENUMERABLE
+            | qjs::JS_PROP_ENUMERABLE
+            | qjs::JS_PROP_HAS_CONFIGURABLE
+            | qjs::JS_PROP_CONFIGURABLE;
+        qjs::JS_DefineProperty(
+            ctx,
+            target,
+            atom,
+            desc.value,
+            desc.getter,
+            desc.setter,
+            flags as c_int,
+        );
+        qjs::JS_FreeValue(ctx, desc.value);
+        qjs::JS_FreeValue(ctx, desc.getter);
+        qjs::JS_FreeValue(ctx, desc.setter);
+    }
+}
+
+/// `split(props, keys)`: `[picked, rest]`, the props named in `keys` and
+/// the others, getters kept (a component passing the rest on).
+pub(crate) unsafe extern "C" fn split(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+) -> JsValue {
+    let (source, keys) = (arg(argc, argv, 0), arg(argc, argv, 1));
+    // SAFETY: reads and definitions on live objects; what is made is
+    // returned or freed.
+    unsafe {
+        let mut names = Vec::new();
+        if qjs::JS_IsArray(keys) {
+            let mut n: i64 = 0;
+            qjs::JS_GetLength(ctx, keys, &mut n);
+            for i in 0..n.max(0) {
+                let k = qjs::JS_GetPropertyInt64(ctx, keys, i);
+                let atom = qjs::JS_ValueToAtom(ctx, k);
+                qjs::JS_FreeValue(ctx, k);
+                names.push(atom);
+            }
+        }
+        let picked = qjs::JS_NewObject(ctx);
+        let rest = qjs::JS_NewObject(ctx);
+        if qjs::JS_IsObject(source) {
+            let mut tab: *mut qjs::JSPropertyEnum = ptr::null_mut();
+            let mut len: u32 = 0;
+            let flags = (qjs::JS_GPN_STRING_MASK | qjs::JS_GPN_SYMBOL_MASK | qjs::JS_GPN_ENUM_ONLY)
+                as c_int;
+            if qjs::JS_GetOwnPropertyNames(ctx, &mut tab, &mut len, source, flags) == 0 {
+                for j in 0..len as usize {
+                    let atom = (*tab.add(j)).atom;
+                    let target = if names.contains(&atom) { picked } else { rest };
+                    copy_property(ctx, target, source, atom);
+                }
+                qjs::JS_FreePropertyEnum(ctx, tab, len);
+            }
+        }
+        for atom in names {
+            qjs::JS_FreeAtom(ctx, atom);
+        }
+        let mut items = [picked, rest];
+        qjs::JS_NewArrayFrom(ctx, 2, items.as_mut_ptr())
     }
 }
 

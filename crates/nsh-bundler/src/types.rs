@@ -213,6 +213,15 @@ export interface Context<T> extends Accessor<T> {
 /** A context with a default value. */
 export declare function context<T>(defaultValue: T): Context<T>;
 
+/**
+ * `[picked, rest]`: the props named in `keys` and the others, both still
+ * following what they read (a component passing the rest on: `<input {...rest} />`).
+ */
+export declare function split<T extends object, K extends readonly (keyof T)[]>(
+  props: T,
+  keys: K,
+): [Pick<T, K[number]>, Omit<T, K[number]>];
+
 /** A component: a function of its props rendering elements. */
 export type Component<P = {}> = (props: P) => JSX.Element;
 
