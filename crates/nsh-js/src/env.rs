@@ -579,19 +579,9 @@ pub(crate) const DEVICE_EXPORTS: &[(&str, Export)] = &[
 
 /// `AccessibilityInfo`: the runtime module's commands, and the settings.
 fn accessibility_info(ctx: *mut JsContext) -> JsValue {
-    let registry = nsh_core::runtime::registries()
-        .iter()
-        .find(|r| r.specifier() == Some("nsh/accessibility"));
-    let info = match registry.and_then(|r| {
-        r.module_specs()
-            .into_iter()
-            .find(|m| m.name == "AccessibilityInfo")
-            .map(|m| (m, r.namespace()))
-    }) {
-        Some((spec, namespace)) => crate::components::module(ctx, &spec, namespace),
+    let info = crate::components::runtime_module(ctx, "nsh/accessibility", "AccessibilityInfo")
         // SAFETY: a new object.
-        None => unsafe { qjs::JS_NewObject(ctx) },
-    };
+        .unwrap_or_else(|| unsafe { qjs::JS_NewObject(ctx) });
     let natives: [(&CStr, Native, c_int); 3] = [
         (c"isScreenReaderEnabled", is_screen_reader_enabled, 0),
         (c"isReduceMotionEnabled", is_reduce_motion_enabled, 0),

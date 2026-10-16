@@ -304,6 +304,44 @@ fn add_functions(ctx: *mut JsContext, obj: JsValue, module: &ModuleSpec, namespa
     }
 }
 
+/// The object of module `module` of the runtime registry `specifier`
+/// (owned), if there is one.
+pub(crate) fn runtime_module(
+    ctx: *mut JsContext,
+    specifier: &str,
+    module: &str,
+) -> Option<JsValue> {
+    let registry = nsh_core::runtime::registries()
+        .iter()
+        .find(|r| r.specifier() == Some(specifier))?;
+    let spec = registry
+        .module_specs()
+        .into_iter()
+        .find(|m| m.name == module)?;
+    Some(self::module(ctx, &spec, registry.namespace()))
+}
+
+/// Function `function` of module `module` of the runtime registry
+/// `specifier` (owned), if there is one.
+pub(crate) fn runtime_function(
+    ctx: *mut JsContext,
+    specifier: &str,
+    module: &str,
+    function: &str,
+) -> Option<JsValue> {
+    let registry = nsh_core::runtime::registries()
+        .iter()
+        .find(|r| r.specifier() == Some(specifier))?;
+    let spec = registry
+        .module_specs()
+        .into_iter()
+        .find(|m| m.name == module)?;
+    spec.functions
+        .iter()
+        .any(|f| f.name == function)
+        .then(|| module_function(ctx, &spec, registry.namespace(), function))
+}
+
 // --- Components --------------------------------------------------------------------
 
 /// The function rendering component `spec` (with the functions of a module

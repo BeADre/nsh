@@ -20,6 +20,7 @@ mod list;
 mod modules;
 mod navigation;
 mod net;
+mod platform_modules;
 mod protocol;
 mod reactive;
 mod sandbox;

@@ -298,7 +298,15 @@ render(
 
 #[test]
 fn a_stateful_component_steps_while_held() {
-    let (engine, rx) = start(STEPPER);
+    a_stateful_component_steps_while_held_on(start(STEPPER));
+}
+
+#[test]
+fn native_a_stateful_component_steps_while_held() {
+    a_stateful_component_steps_while_held_on(start_native(NATIVE_STEPPER, Environment::default()));
+}
+
+fn a_stateful_component_steps_while_held_on((engine, rx): (Engine, Receiver<MountBatch>)) {
     let first = rx
         .recv_timeout(Duration::from_secs(5))
         .expect("first frame");
@@ -486,7 +494,20 @@ render(
 
 #[test]
 fn rendered_status_bars_win_over_what_functions_set() {
-    let (_engine, rx) = start(STATUS_BAR);
+    rendered_status_bars_win_over_what_functions_set_on(start(STATUS_BAR));
+}
+
+#[test]
+fn native_rendered_status_bars_win_over_what_functions_set() {
+    rendered_status_bars_win_over_what_functions_set_on(start_native(
+        NATIVE_STATUS_BAR,
+        Environment::default(),
+    ));
+}
+
+fn rendered_status_bars_win_over_what_functions_set_on(
+    (_engine, rx): (Engine, Receiver<MountBatch>),
+) {
     let mut configs = Vec::new();
     until(&rx, |batch| {
         for item in &batch.items {
@@ -687,7 +708,15 @@ render(() => <text>{`presses ${presses()}`}</text>, root);
 
 #[test]
 fn unhandled_back_presses_exit_through_rust() {
-    let (engine, rx) = start(BACK);
+    unhandled_back_presses_exit_through_rust_on(start(BACK));
+}
+
+#[test]
+fn native_unhandled_back_presses_exit_through_rust() {
+    unhandled_back_presses_exit_through_rust_on(start_native(NATIVE_BACK, Environment::default()));
+}
+
+fn unhandled_back_presses_exit_through_rust_on((engine, rx): (Engine, Receiver<MountBatch>)) {
     until(&rx, |b| shows(b, "presses 0"));
     let exits = |batches: &[MountBatch]| {
         batches
@@ -731,7 +760,15 @@ render(
 
 #[test]
 fn a_rust_text_field_clears_after_typing() {
-    let (engine, rx) = start(FIELD);
+    a_rust_text_field_clears_after_typing_on(start(FIELD));
+}
+
+#[test]
+fn native_a_rust_text_field_clears_after_typing() {
+    a_rust_text_field_clears_after_typing_on(start_native(NATIVE_FIELD, Environment::default()));
+}
+
+fn a_rust_text_field_clears_after_typing_on((engine, rx): (Engine, Receiver<MountBatch>)) {
     let first = until(&rx, |b| shows(b, "name Ada"));
     let input = first
         .iter()
@@ -781,7 +818,20 @@ fn a_rust_text_field_clears_after_typing() {
 /// input stays where it is (moving its native view would end its focus).
 #[test]
 fn a_sibling_coming_back_does_not_move_a_rust_input() {
-    let (engine, rx) = start(FIELD);
+    a_sibling_coming_back_does_not_move_a_rust_input_on(start(FIELD));
+}
+
+#[test]
+fn native_a_sibling_coming_back_does_not_move_a_rust_input() {
+    a_sibling_coming_back_does_not_move_a_rust_input_on(start_native(
+        NATIVE_FIELD,
+        Environment::default(),
+    ));
+}
+
+fn a_sibling_coming_back_does_not_move_a_rust_input_on(
+    (engine, rx): (Engine, Receiver<MountBatch>),
+) {
     let first = until(&rx, |b| shows(b, "name Ada"));
     let items = || first.iter().flat_map(|b| &b.items);
     let input = items()
@@ -1174,3 +1224,57 @@ fn native_components_place_the_apps_children_and_rows() {
     assert!(!top_border(row0) && top_border(row1));
     assert!(text_ids(&first, "Row 99").is_none());
 }
+
+const NATIVE_STEPPER: &str = r#"import { signal, mount } from "nsh";
+import { Stepper } from "nsh/ui/mobile";
+
+const changes = signal(0);
+mount(() => (
+  <view>
+    <stepper defaultValue={5} min={0} max={100} onChange={() => changes.update((c) => c + 1)} />
+    <text>{`changes ${changes()}`}</text>
+  </view>
+));
+"#;
+
+const NATIVE_STATUS_BAR: &str = r##"import { signal, mount } from "nsh";
+import { setStatusBarBackgroundColor } from "nsh/android";
+import { StatusBar } from "nsh/ui/mobile";
+
+const rendered = signal(true);
+setStatusBarBackgroundColor("#ff0000");
+StatusBar.setBarStyle("dark-content");
+setTimeout(() => StatusBar.setHidden(true), 50);
+setTimeout(() => rendered.set(false), 100);
+
+mount(() => (
+  <if when={rendered()}>
+    <status-bar barStyle="light-content" android={{ backgroundColor: "#00ff00" }} />
+  </if>
+));
+"##;
+
+const NATIVE_BACK: &str = r#"import { signal, mount } from "nsh";
+import { BackHandler } from "nsh/android";
+
+const presses = signal(0);
+BackHandler.addEventListener("hardwareBackPress", () => {
+  presses.update((p) => p + 1);
+  // The first press is handled, the second one leaves the app.
+  return presses() === 1;
+});
+
+mount(() => <text>{`presses ${presses()}`}</text>);
+"#;
+
+const NATIVE_FIELD: &str = r#"import { signal, mount } from "nsh";
+import { TextField } from "nsh/ui/mobile";
+
+const name = signal("Ada");
+mount(() => (
+  <view>
+    <text-field value={name()} onChange={(v: string) => name.set(v)} />
+    <text>{`name ${name()}`}</text>
+  </view>
+));
+"#;

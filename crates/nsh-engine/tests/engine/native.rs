@@ -45,11 +45,46 @@ function App() {
 render(() => <App />, root);
 "#;
 
-fn start() -> (Engine, Receiver<MountBatch>) {
-    let dir = std::env::temp_dir().join(format!("nsh-native-{}", std::process::id()));
+/// The same app compiled by nsh (`nsh/native` natively).
+const NATIVE_APP: &str = r#"import { signal, mount } from "nsh";
+import { nativeComponent } from "nsh/native";
+
+const Map = nativeComponent<
+  { center: { lat: number; lng: number }; zoom?: number; title?: string },
+  { regionChange: { zoom: number } }
+>("com.example.map", { props: ["center", "zoom", "title"], events: ["regionChange"] });
+
+function App() {
+  const zoom = signal(3);
+  let map: any;
+  return (
+    <view>
+      <Map
+        ref={(n: any) => (map = n)}
+        center={{ lat: 1.5, lng: 2 }}
+        zoom={zoom()}
+        style={{ height: 100 }}
+        onRegionChange={(e: { zoom: number }) => {
+          zoom.set(e.zoom);
+          map?.command("flyTo", { zoom: e.zoom, animated: true });
+        }}
+      />
+      <text>{`zoom ${zoom()}`}</text>
+    </view>
+  );
+}
+
+mount(App);
+"#;
+
+fn start(app: &str, native: bool) -> (Engine, Receiver<MountBatch>) {
+    let dir = std::env::temp_dir().join(format!("nsh-native-{}-{native}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
+    if native {
+        std::fs::write(dir.join("nsh.json"), r#"{ "compiler": "nsh" }"#).unwrap();
+    }
     let entry = dir.join("App.tsx");
-    std::fs::write(&entry, APP).unwrap();
+    std::fs::write(&entry, app).unwrap();
     let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {
         entry,
         minify: false,
@@ -87,7 +122,15 @@ fn texts(batch: &MountBatch) -> Vec<String> {
 
 #[test]
 fn props_events_and_commands_cross_as_json() {
-    let (engine, rx) = start();
+    cross_as_json(start(APP, false));
+}
+
+#[test]
+fn native_props_events_and_commands_cross_as_json() {
+    cross_as_json(start(NATIVE_APP, true));
+}
+
+fn cross_as_json((engine, rx): (Engine, Receiver<MountBatch>)) {
     let first = rx
         .recv_timeout(Duration::from_secs(5))
         .expect("first frame");

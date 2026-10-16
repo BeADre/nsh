@@ -230,6 +230,11 @@ impl Dom {
         self.os.set(os);
     }
 
+    /// The platform the app runs on.
+    pub(crate) fn os(&self) -> Os {
+        self.os.get()
+    }
+
     /// The surface's layout direction (sent once something is mounted).
     pub(crate) fn set_direction(&self, rtl: bool) {
         self.env_rtl.set(rtl);
@@ -1014,6 +1019,25 @@ unsafe extern "C" fn prop(
     )
     .err()
     .unwrap_or(UNDEFINED)
+}
+
+/// A prop `name` of `node` following `get()` (all borrowed).
+pub(crate) fn bind_prop_with(
+    ctx: *mut JsContext,
+    node: JsValue,
+    name: &str,
+    get: JsValue,
+) -> Result<(), JsValue> {
+    let name = unsafe { qjs::JS_NewStringLen(ctx, name.as_ptr().cast(), name.len() as _) };
+    let mut args = [node, name, get];
+    // SAFETY: borrowed arguments, as `bindProp` takes them.
+    let r = unsafe { bind_prop(ctx, UNDEFINED, 3, args.as_mut_ptr()) };
+    unsafe { qjs::JS_FreeValue(ctx, name) };
+    if unsafe { qjs::JS_IsException(r) } {
+        Err(r)
+    } else {
+        Ok(())
+    }
 }
 
 /// `bindProp(node, name, get)`: a prop following `get()`.

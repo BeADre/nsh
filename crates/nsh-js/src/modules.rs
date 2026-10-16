@@ -19,7 +19,7 @@ use nsh_core::ui::{ComponentSpec, ModuleSpec, Registry};
 use rquickjs::qjs;
 
 use crate::{
-    components, dom, env,
+    components, dom, env, platform_modules,
     reactive::{self, Native},
 };
 
@@ -69,6 +69,26 @@ const MODULES: &[NativeModule] = &[
     NativeModule {
         name: "nsh/accessibility",
         exports: env::ACCESSIBILITY_EXPORTS,
+    },
+    NativeModule {
+        name: "nsh/android",
+        exports: platform_modules::ANDROID_EXPORTS,
+    },
+    NativeModule {
+        name: "nsh/ios",
+        exports: platform_modules::IOS_EXPORTS,
+    },
+    NativeModule {
+        name: "nsh/webview",
+        exports: platform_modules::WEBVIEW_EXPORTS,
+    },
+    NativeModule {
+        name: "nsh/video",
+        exports: platform_modules::VIDEO_EXPORTS,
+    },
+    NativeModule {
+        name: "nsh/native",
+        exports: platform_modules::NATIVE_EXPORTS,
     },
 ];
 
