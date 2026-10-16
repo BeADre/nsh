@@ -27,19 +27,27 @@ fn respond(host: &Host, id: u32, head: HttpHead, body: &[u8]) {
 /// Runs `script` (which sets `globalThis.out`) and returns `out` as a string.
 fn run(host: &Host, script: &str) -> String {
     host.eval_source(&format!(
-        "{script}\n;__nsh_commit([1, 1, typeof out === 'string' ? out : JSON.stringify(out)]);"
+        "{REPORT}{script}\n;report(typeof out === 'string' ? out : JSON.stringify(out));"
     ))
     .unwrap();
     output(host)
 }
 
+/// Defines `report(text)`: the text a test reads with [`output`].
+const REPORT: &str =
+    "import { text as __text } from \"nsh:rt\";\nconst report = (t) => __text(t);\n";
+
+/// The text the last `report` call made.
 fn output(host: &Host) -> String {
     let mut ops = Vec::new();
     host.take_ops(&mut ops);
-    match ops.pop() {
-        Some(Op::CreateText { text, .. }) => text.to_string(),
-        other => panic!("no output: {other:?}"),
-    }
+    ops.into_iter()
+        .rev()
+        .find_map(|op| match op {
+            Op::CreateText { text, .. } => Some(text.to_string()),
+            _ => None,
+        })
+        .expect("no output")
 }
 
 #[test]
@@ -165,7 +173,7 @@ fn fetch_goes_through_the_network_queue() {
         br#"{"ok":true}"#,
     );
     host.fetch_event(requests[1].0, FetchEvent::Failed("offline".into()));
-    host.eval_source("__nsh_commit([1, 1, JSON.stringify(out)]);")
+    host.eval_source(&(REPORT.to_owned() + "report(JSON.stringify(out));"))
         .unwrap();
     assert_eq!(
         output(&host),
@@ -193,7 +201,7 @@ fn aborting_an_inflight_fetch_cancels_it() {
     assert_eq!(queue.ops, vec![(id, FetchOp::Cancel)]);
     // A late completion is ignored.
     host.fetch_event(id, FetchEvent::Failed("cancelled".into()));
-    host.eval_source("__nsh_commit([1, 1, JSON.stringify(out)]);")
+    host.eval_source(&(REPORT.to_owned() + "report(JSON.stringify(out));"))
         .unwrap();
     assert_eq!(output(&host), r#"["AbortError"]"#);
 }
@@ -291,7 +299,7 @@ fn abort_signals_abort_once_and_propagate() {
     // Let the timer fire.
     std::thread::sleep(std::time::Duration::from_millis(5));
     host.run_timers(std::time::Instant::now());
-    host.eval_source("__nsh_commit([1, 1, JSON.stringify(out)]);")
+    host.eval_source(&(REPORT.to_owned() + "report(JSON.stringify(out));"))
         .unwrap();
     assert_eq!(
         output(&host),
@@ -379,7 +387,7 @@ fn run_async(host: &Host, body: &str) -> String {
     for _ in 0..4 {
         host.run_jobs();
     }
-    host.eval_source("__nsh_commit([1, 1, String(globalThis.result)]);")
+    host.eval_source(&(REPORT.to_owned() + "report(String(globalThis.result));"))
         .unwrap();
     output(host)
 }
@@ -730,7 +738,7 @@ fn head(status: u16, headers: &[(&str, &str)]) -> HttpHead {
 
 fn read_out(host: &Host) -> String {
     host.run_jobs();
-    host.eval_source("__nsh_commit([1, 1, JSON.stringify(out)]);")
+    host.eval_source(&(REPORT.to_owned() + "report(JSON.stringify(out));"))
         .unwrap();
     output(host)
 }
@@ -768,7 +776,7 @@ fn response_bodies_stream_with_back_pressure() {
     host.run_jobs();
     host.fetch_event(id, FetchEvent::Data(vec![2; 20]));
     host.run_jobs();
-    host.eval_source("__nsh_commit([1, 1, JSON.stringify(out)]);")
+    host.eval_source(&(REPORT.to_owned() + "report(JSON.stringify(out));"))
         .unwrap();
     assert_eq!(output(&host), r#"[200,"1",false,"immutable",10,20]"#);
     host.fetch_event(id, FetchEvent::End);

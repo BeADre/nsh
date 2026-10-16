@@ -3,8 +3,8 @@
 ## Data flow and threads
 
 ```
-JS (engine thread, QuickJS)  components on the native reactive graph -> js/runtime pushes changes into one flat array -> __nsh_commit(ops) in a microtask
-nsh-js                        decodes the op buffer in Rust (tags, style objects and event names are parsed here) -> Vec<Op>
+JS (engine thread, QuickJS)  the app's components on the native reactive graph; compiled JSX calls the native renderer (nsh:rt)
+nsh-js                        the renderer decodes each change from its JS values (tags, style objects, event names) -> Op, queued natively
 nsh-core (engine thread)      apply(Op) maintains the shadow tree -> commit(): render components, rebuild text, Taffy layout, diff frames -> MountBatch
 Platform (main thread)       one main-queue hop per commit, applying MountItems to native views in order
 Input                        native gestures -> EngineControl::dispatch_event -> engine thread -> JS handler
@@ -12,10 +12,12 @@ Input                        native gestures -> EngineControl::dispatch_event ->
 
 - The platform main thread never waits for JS.
 - **Reactivity is native**: signals, memos, effects, owners and context are a graph in Rust (`crates/nsh-js/src/reactive.rs`,
-  Solid 1.9's algorithm) whose nodes are QuickJS objects of native classes, so the QuickJS GC sees the cycles through them.
-  JS reaches it through `globalThis.__nsh_reactive`; `js/runtime/_reactive.js` (transitional) puts Solid's API on top of it.
-- **Apps compiled by nsh** (`"compiler": "nsh"`, `native-pipeline.md`) import the native modules `nsh` and `nsh:rt`
-  instead: the renderer pushes ops straight into the host's queue, with no JS runtime in the bundle.
+  scheduled by Solid 1.9's algorithm) whose nodes are QuickJS objects of native classes, so the QuickJS GC sees the
+  cycles through them. Apps reach it through `nsh` (`signal`, `computed`, `effect`, ...).
+- **The runtime is native** (`native-pipeline.md`): a bundle is one ES module of the app's code importing nsh's native
+  modules (`nsh`, `nsh:rt`, `nsh/*`, `js-modules.md`). The renderer pushes ops straight into the host's queue; one JS
+  turn's ops become one `Core::commit`. Events reach handlers held on the nodes, list cells are bound natively, and
+  animations settle natively.
 - **Text is laid out once**: `TextEngine` (defined in core) runs `prepare` on the engine thread (Apple: CTFramesetter) → `measure` at various widths →
   `layout` at the final size after layout (Apple: CTFrame). `MountItem::Text` hands the immutable result to the main thread, which only draws it
   (`CTFrameDraw` in `TextView`'s `drawRect`); the main thread never lays out text. Android's counterpart is `StaticLayout` (like RN's PreparedLayout).

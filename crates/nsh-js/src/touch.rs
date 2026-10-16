@@ -1,6 +1,5 @@
-//! Touches and the gesture responder system for apps compiled by nsh, and
-//! `PanResponder` (`nsh/gesture`): the port of `_core.ts`'s touch handling
-//! and `gesture.ts`, in Rust as it runs on every touch move.
+//! Touches and the gesture responder system, and `PanResponder`
+//! (`nsh/gesture`), in Rust as it runs on every touch move.
 //!
 //! Native views whose node has a touch or responder handler listen to
 //! touches (`onTouch`); their touches (and those on views inside them)

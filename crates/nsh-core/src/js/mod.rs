@@ -1,15 +1,12 @@
-//! What parts of the JS runtime are generated from, so the two sides of the
-//! op buffer cannot drift apart: its codes ([`protocol`]), the canvas API
-//! that records drawing operations and their decoding ([`canvas`], with
-//! [`ops`]' `#[derive(JsOps)]`), the style types
-//! ([`style`]), the host elements' props ([`host`]: their decoding and
-//! types, from `#[derive(HostProps)]` on [`crate::Prop`]) and the easings
-//! and layout animations ([`anim`]). The bundler
-//! embeds each generator's output as an internal module of `js/runtime`
-//! (`protocol.gen.ts`, `canvas.gen.ts`, `style.gen.ts`, `elements.gen.ts`,
-//! `anim.gen.ts`);
-//! the decoders in `nsh-js` match on the same constants and call the
-//! derived decoders.
+//! What the JS side is decoded with and typed from, so the two cannot
+//! drift apart: the animation graph's codes ([`protocol`]), the canvas
+//! operations and their decoding ([`canvas`], with [`ops`]'
+//! `#[derive(JsOps)]`), the style types ([`style`]), the host elements'
+//! props ([`host`]: their decoding and types, from `#[derive(HostProps)]`
+//! on [`crate::Prop`]) and the easings and layout animations ([`anim`]).
+//! The decoders in `nsh-js` match on the same constants and call the
+//! derived decoders; the bundler turns each generator's TypeScript into the
+//! declarations apps are checked against (`.nsh/types/nsh/*.gen.d.ts`).
 
 use std::time::Duration;
 
@@ -49,8 +46,8 @@ pub struct Limits {
     /// Any other call into JS: one event (with the rendering it causes), one
     /// list bind, one timer, one frame's callbacks, the microtask drain.
     pub call_budget: Duration,
-    /// Values one commit may send (the JS op buffer's length). The buffer is
-    /// decoded into Rust memory, which the heap limit does not cover.
+    /// Changes JS may make at once (the op queue's length): they are held in
+    /// Rust memory, which the heap limit does not cover.
     pub max_op_values: usize,
     /// Operations one canvas drawing may record.
     pub max_canvas_ops: usize,
@@ -73,7 +70,7 @@ impl Default for Limits {
     }
 }
 
-/// Constants of the op buffer and a table of them for the generators.
+/// Constants of encoded operations and a table of them for the generators.
 macro_rules! codes {
     ($table:ident: $($(#[doc = $doc:literal])* $name:ident = $value:literal),* $(,)?) => {
         $(
@@ -104,10 +101,6 @@ fn banner(what: &str) -> String {
 mod tests {
     #[test]
     fn the_generated_runtime_matches_the_tables() {
-        let protocol = super::protocol::typescript();
-        assert!(protocol.contains("export const OP_DRAW = 9;"));
-        assert!(protocol.contains("export const ANIM_RELEASE_COMPOSITE = 11;"));
-        assert!(protocol.contains("export const CV_SVG_PATH = 50;"));
         let canvas = super::canvas::typescript();
         assert!(canvas.contains("  moveTo(x, y) {\n    this.out.push(8, x, y);\n  },"));
         assert!(canvas.contains("counterclockwise = false) {"));

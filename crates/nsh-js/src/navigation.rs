@@ -1,5 +1,4 @@
-//! Navigation for apps compiled by nsh: `createNavigator`, `Stack`,
-//! `Screen` and `Modal`, the port of `js/ui/mobile/navigation.ts` (the
+//! Navigation: `createNavigator`, `Stack`, `Screen` and `Modal` (the
 //! mobile UI exports them: `Registry::native_values`).
 //!
 //! A stack renders each route of its navigator with the app's function into

@@ -1,4 +1,4 @@
-//! Handles to the elements a component renders (Solid: `ref`), to send
+//! Handles to the elements a component renders (TS: `ref`), to send
 //! them commands: focus an input, scroll a scroll view, drive a web view or
 //! a video, call a native component.
 

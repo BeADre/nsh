@@ -280,7 +280,7 @@ impl Executor {
 }
 
 /// A running task ([`super::Context::spawn`]). Dropping it cancels the
-/// task (Solid's `clearTimeout`, for timers); [`Task::detach`] lets it run
+/// task (TS's `clearTimeout`, for timers); [`Task::detach`] lets it run
 /// on its own. Awaited in another task, it gives the task's output.
 #[must_use = "a dropped task is cancelled: keep it, or detach it"]
 pub struct Task<T> {
@@ -435,7 +435,7 @@ impl AsyncCx {
         self.act(status_bar(patch));
     }
 
-    /// Completes after `delay` (Solid: what `setTimeout` waits for):
+    /// Completes after `delay` (TS: what `setTimeout` waits for):
     /// `tokio::time::sleep`.
     pub fn timer(&self, delay: Duration) -> tokio::time::Sleep {
         tokio::time::sleep(delay)

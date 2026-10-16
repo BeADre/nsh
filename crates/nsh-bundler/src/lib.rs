@@ -1,18 +1,12 @@
 //! JS bundler for nsh apps, written in Rust end to end (no Node.js).
 //!
-//! Pipeline per `.tsx`/`.jsx` module: Oxc strips TypeScript (keeping JSX),
-//! the Solid compiler lowers JSX in universal mode against the `nsh`
-//! runtime module, and rolldown bundles everything into one IIFE script.
-//! `solid-js` and the `nsh` runtime are embedded in the binary, so apps
-//! need no `node_modules` for them.
-//!
-//! Apps with `"compiler": "nsh"` in `nsh.json` are compiled by nsh's own
-//! JSX compiler ([`jsx`]) against the native modules (`nsh`, `nsh:rt`),
-//! which stay imports: the bundle is one ES module holding only the app's
-//! code.
+//! Each `.tsx`/`.jsx` module is compiled by nsh's JSX compiler ([`jsx`],
+//! TypeScript removed in the same pass) against the native modules (`nsh`,
+//! `nsh:rt`, ...), which stay imports; rolldown bundles the app into one
+//! ES module holding only the app's code. The runtime is native, so apps
+//! need no `node_modules` for it.
 
 mod classes;
-mod embedded;
 mod hot;
 mod jsx;
 mod plugin;
@@ -29,9 +23,9 @@ use rolldown::{
     plugin::Pluginable,
 };
 use rolldown_common::Output;
-pub use types::{TSCONFIG, type_definitions, type_definitions_for};
+pub use types::{TSCONFIG, type_definitions};
 
-/// A component an app compiled by nsh names in kebab case
+/// A component an app names in kebab case
 /// (`<weather-panel>`), for the editor's JSX types.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppElement {
@@ -41,32 +35,6 @@ pub struct AppElement {
     /// app directory, or a package) and its export; `None` when the
     /// component is not exported (its props are not checked).
     pub source: Option<(String, String)>,
-}
-
-/// The JSX compiler and runtime an app uses (`nsh.json` `"compiler"`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Compiler {
-    /// Solid's universal compiler and the embedded JS runtime (the default
-    /// while the native one is completed).
-    Solid,
-    /// nsh's compiler and the native modules (`"compiler": "nsh"`).
-    Nsh,
-}
-
-/// The `"compiler"` of the `nsh.json` in `dir`.
-pub(crate) fn compiler(dir: &std::path::Path) -> Result<Compiler, BundleError> {
-    let Ok(text) = std::fs::read_to_string(dir.join("nsh.json")) else {
-        return Ok(Compiler::Nsh);
-    };
-    let config: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| BundleError::other(format!("nsh.json: {e}")))?;
-    match config.get("compiler").and_then(|c| c.as_str()) {
-        Some("solid") => Ok(Compiler::Solid),
-        None | Some("nsh") => Ok(Compiler::Nsh),
-        Some(other) => Err(BundleError::other(format!(
-            "nsh.json: unknown compiler `{other}` (\"nsh\" or \"solid\")"
-        ))),
-    }
 }
 
 /// What to bundle and how.
@@ -141,8 +109,7 @@ fn strip_ansi(s: &str) -> String {
 /// A bundled app.
 #[derive(Debug, Clone)]
 pub struct Bundle {
-    /// The bundle: a single IIFE script, or with nsh's compiler an ES
-    /// module importing the native modules.
+    /// The bundle: an ES module importing the native modules.
     pub code: String,
     /// Source map (JSON) from `code` back to the app sources.
     pub source_map: Option<String>,
@@ -152,7 +119,7 @@ pub struct Bundle {
     /// What the app declares it may reach (`nsh.json` `capabilities`);
     /// `None` without a declaration.
     pub capabilities: Option<nsh_core::access::Capabilities>,
-    /// With nsh's compiler: the components the app names in kebab case.
+    /// The components the app names in kebab case.
     pub elements: Vec<AppElement>,
     /// Wall time spent bundling, in milliseconds.
     pub elapsed_ms: f64,
@@ -228,7 +195,6 @@ pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError
     let cwd_root = cwd.clone();
     let tailwind = tailwind_setup(&cwd)?;
     let capabilities = capabilities(&cwd)?;
-    let compiler = compiler(&cwd)?;
     let plugin_error = Arc::new(Mutex::new(None));
     let assets = Arc::new(Mutex::new(Vec::new()));
     let elements = Arc::new(Mutex::new(Vec::new()));
@@ -242,13 +208,10 @@ pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError
             // Nothing is written; this only makes source map paths relative
             // to the entry directory (`App.tsx`, not `../App.tsx`).
             dir: Some(".".into()),
-            // nsh's compiler: imports of the native modules stay.
-            format: Some(match compiler {
-                Compiler::Solid => OutputFormat::Iife,
-                Compiler::Nsh => OutputFormat::Esm,
-            }),
-            // Never `Node`: solid-js maps the `node` export condition to its
-            // non-reactive server build.
+            // Imports of the native modules stay.
+            format: Some(OutputFormat::Esm),
+            // npm packages resolve their browser builds: the runtime has the
+            // web APIs (fetch, streams, ...), not Node's.
             platform: Some(Platform::Browser),
             minify: Some(RawMinifyOptions::Bool(options.minify)),
             // Kept out of the code; used to symbolicate stack traces.
@@ -261,7 +224,6 @@ pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError
             assets: assets.clone(),
             hot: false,
             tailwind,
-            compiler,
             entry: entry.clone(),
             elements: elements.clone(),
             natives: Arc::default(),
@@ -305,9 +267,6 @@ pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError
     })
 }
 
-/// The hot runtime, run before every module of a development bundle.
-const HOT_RUNTIME: &str = include_str!("../../../js/runtime/hot.js");
-
 /// A development bundle with hot module replacement: the app's modules,
 /// each kept separate so an update can replace just the ones that changed.
 #[derive(Debug, Clone)]
@@ -315,9 +274,9 @@ pub struct HotBundle {
     modules: Vec<HotModule>,
     /// Module id of the entry.
     entry: String,
-    /// With nsh's compiler: the native modules the app imports (the
-    /// script imports their namespaces for `require`).
-    natives: Option<Vec<String>>,
+    /// The native modules the app imports (the script imports their
+    /// namespaces for the factories' `require`).
+    natives: Vec<String>,
     /// As in [`Bundle::elements`].
     pub elements: Vec<AppElement>,
     /// Asset files the app imports (as in [`Bundle::assets`]).
@@ -334,7 +293,7 @@ struct HotModule {
     id: String,
     code: String,
     map: Option<rolldown_sourcemap::SourceMap>,
-    /// solid-js or the nsh runtime: never replaced in place.
+    /// Rolldown's runtime helpers: never replaced in place.
     embedded: bool,
 }
 
@@ -356,26 +315,20 @@ pub enum HotPatch {
 }
 
 impl HotBundle {
-    /// The whole app as one script: the hot runtime, every module, and the
-    /// start of the entry. With nsh's compiler it is an ES module importing
-    /// the native hot runtime and the app's native modules.
+    /// The whole app as one script, an ES module: the native hot runtime
+    /// and the app's native modules imported, every module defined, and the
+    /// start of the entry.
     pub fn script(&self) -> (String, Option<String>) {
         let mut joiner = rolldown_sourcemap::SourceJoiner::default();
         joiner.enable_sourcemap = true;
-        let mut start = format!("{HOT}.start({:?});", self.entry);
-        match &self.natives {
-            Some(natives) => {
-                let mut imports = String::from("import \"nsh:hot\";");
-                let mut map = String::new();
-                for (i, spec) in natives.iter().enumerate() {
-                    imports.push_str(&format!("import * as __nsh_n{i} from {spec:?};"));
-                    map.push_str(&format!("{spec:?}: __nsh_n{i},"));
-                }
-                joiner.append_source(imports);
-                start = format!("{HOT}.start({:?}, {{{map}}});", self.entry);
-            }
-            None => joiner.append_source(HOT_RUNTIME),
+        let mut imports = String::from("import \"nsh:hot\";");
+        let mut map = String::new();
+        for (i, spec) in self.natives.iter().enumerate() {
+            imports.push_str(&format!("import * as __nsh_n{i} from {spec:?};"));
+            map.push_str(&format!("{spec:?}: __nsh_n{i},"));
         }
+        joiner.append_source(imports);
+        let start = format!("{HOT}.start({:?}, {{{map}}});", self.entry);
         for m in &self.modules {
             let open = format!(
                 "{HOT}.define({:?}, function (module, exports, require) {{",
@@ -395,17 +348,8 @@ impl HotBundle {
             return HotPatch::Reload;
         }
         // A native module the running script did not import.
-        let imported = |spec: &String| {
-            previous
-                .natives
-                .as_ref()
-                .is_some_and(|natives| natives.contains(spec))
-        };
-        match &self.natives {
-            Some(natives) if !natives.iter().all(imported) => return HotPatch::Reload,
-            Some(_) if previous.natives.is_none() => return HotPatch::Reload,
-            None if previous.natives.is_some() => return HotPatch::Reload,
-            _ => {}
+        if !self.natives.iter().all(|s| previous.natives.contains(s)) {
+            return HotPatch::Reload;
         }
         let old: std::collections::HashMap<&str, &HotModule> = previous
             .modules
@@ -443,7 +387,7 @@ impl HotBundle {
     }
 }
 
-/// Name of the hot runtime global (`js/runtime/hot.js`).
+/// Name of the hot runtime's global (`nsh-js` `hot.rs`).
 const HOT: &str = "__nsh_hot";
 
 /// Appends a module's code between `open` and `close` (each on its own
@@ -484,7 +428,6 @@ pub async fn bundle_hot_async(entry: &std::path::Path) -> Result<HotBundle, Bund
         .parent()
         .ok_or_else(|| BundleError::other("entry has no parent directory"))?
         .to_path_buf();
-    let compiler = compiler(&cwd)?;
     let elements = Arc::new(Mutex::new(Vec::new()));
     let natives = Arc::new(Mutex::new(std::collections::BTreeSet::new()));
     let plugin_error = Arc::new(Mutex::new(None));
@@ -505,8 +448,8 @@ pub async fn bundle_hot_async(entry: &std::path::Path) -> Result<HotBundle, Bund
             format: Some(OutputFormat::Cjs),
             preserve_modules: Some(true),
             // Every statement stays. Rolldown still leaves out the exports
-            // no module imports: an edit that starts using one changes that
-            // embedded module, and `patch` reloads.
+            // no module imports: an edit that starts using one changes the
+            // exporting module too, which then runs again.
             treeshake: rolldown_common::TreeshakeOptions::Boolean(false),
             platform: Some(Platform::Browser),
             sourcemap: Some(SourceMapType::Hidden),
@@ -518,7 +461,6 @@ pub async fn bundle_hot_async(entry: &std::path::Path) -> Result<HotBundle, Bund
             assets: assets.clone(),
             hot: true,
             tailwind,
-            compiler,
             entry: entry.clone(),
             elements: elements.clone(),
             natives: natives.clone(),
@@ -563,7 +505,7 @@ pub async fn bundle_hot_async(entry: &std::path::Path) -> Result<HotBundle, Bund
     let natives = std::mem::take(&mut *natives.lock().expect("natives lock"));
     Ok(HotBundle {
         modules,
-        natives: (compiler == Compiler::Nsh).then(|| natives.into_iter().collect()),
+        natives: natives.into_iter().collect(),
         elements,
         entry: entry_id.ok_or_else(|| BundleError::other("bundle produced no entry chunk"))?,
         assets,

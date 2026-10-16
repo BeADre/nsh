@@ -1,12 +1,11 @@
-//! `nsh/canvas` for apps compiled by nsh: `Canvas` (a view drawn with an
-//! HTML Canvas 2D context, replayed natively), `Path2D` and the classes of
-//! the context and gradients. The port of `js/runtime/canvas.ts`.
+//! `nsh/canvas`: `Canvas` (a view drawn with an HTML Canvas 2D context,
+//! replayed natively), `Path2D` and the classes of the context and
+//! gradients.
 //!
 //! A drawing makes thousands of calls, so the context's methods are raw
 //! natives that record into a Rust list ([`Rec`]) instead of a JS array;
-//! the core's decoder reads that list (`nsh_core::js::canvas::decode`, the
-//! one the JS runtime's recordings go through), so both runtimes draw the
-//! same. The methods and properties that only record are made from the
+//! the core's decoder reads that list (`nsh_core::js::canvas::decode`).
+//! The methods and properties that only record are made from the
 //! core's specs (`CanvasOp`'s and `PathOp`'s `#[derive(JsOps)]`); the
 //! rest (paints, the state stack, paths, text, images) is here.
 //!

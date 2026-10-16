@@ -1,8 +1,8 @@
 //! The easings of native animations and the layout animations, as JS
 //! passes them (`Easing.quad`, `LayoutAnimation.Presets.spring`): their
 //! names, parameters and defaults in one table each, from which they are
-//! decoded and `anim.gen.ts` (types, `Easing`'s curves, the presets) is
-//! generated.
+//! decoded, `nsh/animated` is made (`nsh-js` `animated.rs`) and
+//! `anim.gen.ts` (the declarations) is generated.
 
 use std::fmt::Write as _;
 
@@ -255,7 +255,8 @@ fn transition_js(t: &LayoutTransition) -> String {
 }
 
 /// `anim.gen.ts`: the easing and layout animation types, `Easing`'s curves
-/// and the layout animation presets.
+/// and the layout animation presets, from which the bundler takes the
+/// declarations (`anim.gen.d.ts`).
 pub fn typescript() -> String {
     let mut types = TsTypes::default();
     let layout = <LayoutAnimation as HostValue>::ts_type(&mut types);
@@ -366,8 +367,8 @@ pub fn typescript() -> String {
     out
 }
 
-/// What `anim.gen.ts` holds, as data for the native runtime's
-/// `nsh/animated` (apps compiled by nsh): `curves` (`[name, parameter,
+/// The easing and layout animation tables as data for `nsh/animated`
+/// (`nsh-js` `animated.rs`): `curves` (`[name, parameter,
 /// default]`, the parameter `null` for curves without one), `presets`
 /// (name -> config, as `layoutAnimationPresets`), `types` and
 /// `properties` (the names of `LayoutAnimation.Types` / `Properties`).

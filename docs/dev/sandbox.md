@@ -1,13 +1,13 @@
 # Sandbox and capabilities
 
-Each surface is one QuickJS VM. The JS runtime (solid-js, `js/runtime`) is compiled into every bundle, so it is as
-trusted as the app's own code: every limit and check is enforced in Rust, never in JS.
+Each surface is one QuickJS VM. A bundle holds only the app's code (nsh's runtime is native), so nothing in JS is
+trusted: every limit and check is enforced in Rust, never in JS.
 
 - **Limits** (`nsh_js::Limits`, `EngineConfig::limits`, per VM): the QuickJS heap (256 MB by default) and stack, a
   time budget per call from Rust into JS (`sandbox.rs`: loading the bundle 10 s, any other call 2 s — one event with the
   rendering it causes, one list bind, one timer, one frame's callbacks, the microtask drain; nested calls share the
-  outermost budget), and quotas for what the heap limit does not cover: values per commit (the op buffer is decoded into
-  Rust memory), ops per canvas drawing, nodes in the core (`Core::set_max_nodes`; each may hold a native view) and dense
+  outermost budget), and quotas for what the heap limit does not cover: changes at once (the op queue,
+  `max_op_values`: ops are Rust memory), ops per canvas drawing, nodes in the core (`Core::set_max_nodes`; each may hold a native view) and dense
   node ids (an id far past the ids in use would grow the id table: `ApplyError::IdOutOfRange`).
 - An overrun call is cut off by the interrupt handler with an exception no `catch` swallows, reported with the budget it
   exceeded; the VM goes on. Running out of memory or going over a quota **stops the VM** (`Host::fatal`): it is reported

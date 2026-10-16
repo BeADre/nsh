@@ -19,17 +19,17 @@
 On Android the same elements map to `Box` (ViewGroup), `TextBox`, `ImageBox`, `ScrollBox` (ScrollView), `InputBox` (EditText),
 `StackBox` (screens with a Toolbar, predictive back), `ModalHost` (a Dialog), `WebBox` (android.webkit.WebView) and `VideoBox`
 (MediaPlayer on a TextureView, MediaController); both are `WidgetBox`es. Every host element and runtime component is typed in
-`js/runtime/types.ts` and the runtime's modules.
+`crates/nsh-bundler/types/nsh/types.d.ts` and the declarations of the runtime's modules.
 
 **Host props are one definition.** A host prop is a variant of `nsh_core::Prop` (or of the enum it nests: `ScrollProp`,
 `NativeProp`, `AccessibilityProp`, ...) with `#[prop(js = "name", ...)]`: `#[derive(HostProps)]` (`nsh_core::js::host`)
 derives from it how `nsh-js` decodes the JS value (straight from QuickJS values, no JSON), the default clearing the
 prop sets (`HostProps::reset`, also used when a Rust component's render stops setting it) and the TypeScript of
-`elements.gen.ts`: one interface per element group and platform (`InputHostProps`, `IOSInputHostProps`, ...) that
-the element types of `types.ts` and the runtime's components extend. The payload's type decodes itself (`HostValue`;
+`elements.gen.d.ts`: one interface per element group and platform (`InputHostProps`, `IOSInputHostProps`, ...) that
+the element types of `types.d.ts` and the runtime's components extend. The payload's type decodes itself (`HostValue`;
 `#[derive(PropEnum)]` for string unions); `default`, `min` / `max`, `on` (the element groups), `ios` / `android`
 (names inside `ios={{…}}` / `android={{…}}`), `with` (a decoder of the whole variant, `js/host_values.rs`), `once`
-(not reset) and `internal` (set by the runtime, untyped) cover the rest. The event handlers stay in `types.ts`: the
+(not reset) and `internal` (set by the runtime, untyped) cover the rest. The event handlers stay in `types.d.ts`: the
 same event carries different payloads on different elements (`onLoad`).
 
 ## Primitives only
@@ -40,9 +40,11 @@ add platform-styled widgets (UISwitch / SeekBar wrappers and the like), and do n
 primitives to the runtime (section lists, touchables, drawers, ...): they belong to a UI set. React Native is a
 reference for which capabilities exist, not an API to be compatible with. Components that need core or native support
 are primitives of their own (`List`, `Canvas`, `WebView`, `Video`; in the mobile set `Stack`, `Modal`, `SafeAreaView`,
-`KeyboardAvoidingView`; `InputAccessoryView` in `nsh/ios`). Lowercase JSX names are host elements (`Tag::from_name`),
-capitalized ones are components: a component is imported (`import { Button } from "nsh/ui/mobile"`), never a host
-element of the same name.
+`KeyboardAvoidingView`; `InputAccessoryView` in `nsh/ios`). Lowercase JSX names are built-ins (host elements, `Tag::from_name`;
+`<list>`, `<if>`, `<each>`), capitalized ones are components: a component is imported (`import { Button } from
+"nsh/ui/mobile"`) and may be written in kebab case (`<button>`); an imported or local binding of a built-in's name
+replaces it (`Modal` from `nsh/ui/mobile` makes `<modal>` that component), except objects of functions of nsh's modules
+(`Image` from `nsh/image` leaves `<image>` the element; `native-pipeline.md`).
 
 ## The main thread never waits for JS
 
@@ -87,7 +89,8 @@ of that kind: with a listener the press is taken, and JS exits the app when no l
   `PanResponder.create` on top. A node with any of them listens to `onTouch` natively; one tracker per root view (surface,
   modals: `touch.rs`, `TouchTracker.java`) observes without recognizing and reports touches whose target or an ancestor
   listens, with the path of listening nodes (`EventPayload::Touch`, sent to the root; moves are merged per engine turn). The
-  negotiation runs in JS as in React Native. A grant returning true (PanResponder's default) sends `setJsResponder`: scroll
+  negotiation runs as in React Native, natively (`nsh-js` `touch.rs`), asking the app's handlers. A grant returning true
+  (PanResponder's default) sends `SetJsResponder`: scroll
   views around stop taking the touches (UIKit: their pan recognizer is disabled; Android: `ScrollBox.jsBlocked`); a native
   scroll view that starts dragging first cancels the JS touches.
 - **Accessibility**: `accessible`, `accessibilityLabel` / `Hint` / `Role` (`role`) / `State` / `Value` / `Actions` +

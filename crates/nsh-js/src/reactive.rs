@@ -24,7 +24,9 @@ use std::{
     rc::Rc,
 };
 
-use rquickjs::{Ctx, qjs};
+#[cfg(test)]
+use rquickjs::Ctx;
+use rquickjs::qjs;
 
 type JsValue = qjs::JSValue;
 type JsContext = qjs::JSContext;
@@ -922,6 +924,7 @@ pub(crate) type Native =
     unsafe extern "C" fn(*mut JsContext, JsValue, c_int, *mut JsValue) -> JsValue;
 
 /// `createSignal(value, options)`: `[read, write]`.
+#[cfg(test)]
 unsafe extern "C" fn create_signal(
     ctx: *mut JsContext,
     _this: JsValue,
@@ -995,6 +998,7 @@ fn create_effect(ctx: *mut JsContext, argc: c_int, argv: *mut JsValue, kind: Kin
 }
 
 /// `createRenderEffect(fn, value)`.
+#[cfg(test)]
 unsafe extern "C" fn create_render_effect(
     ctx: *mut JsContext,
     _this: JsValue,
@@ -1015,6 +1019,7 @@ unsafe extern "C" fn create_user_effect(
 }
 
 /// The owner a handle names (`getOwner()`'s value), `UNOWNED` for others.
+#[cfg(test)]
 fn owner_of(ctx: *mut JsContext, handle: JsValue) -> Option<u32> {
     // SAFETY: inline tag checks.
     unsafe {
@@ -1038,6 +1043,7 @@ fn owner_of(ctx: *mut JsContext, handle: JsValue) -> Option<u32> {
     }
 }
 
+#[cfg(test)]
 unsafe extern "C" fn dispose_root(
     ctx: *mut JsContext,
     _this: JsValue,
@@ -1059,6 +1065,7 @@ unsafe extern "C" fn dispose_root(
 
 /// `createRoot(fn, owner)`: `fn(dispose)` (a root without the parameter
 /// is never disposed and owns nothing).
+#[cfg(test)]
 unsafe extern "C" fn create_root(
     ctx: *mut JsContext,
     _this: JsValue,
@@ -1110,6 +1117,7 @@ unsafe extern "C" fn create_root(
 }
 
 /// An owner handle: a number packing the node and its generation.
+#[cfg(test)]
 fn handle_value(ctx: *mut JsContext, id: u32) -> JsValue {
     let generation = unsafe { graph(ctx) }.nodes[id as usize].generation;
     qjs::JS_NewFloat64((((generation as u64) << 32) | id as u64) as f64)
@@ -1159,6 +1167,7 @@ pub(crate) unsafe extern "C" fn on_cleanup(
 }
 
 /// `getOwner()`: a handle, or `undefined`.
+#[cfg(test)]
 unsafe extern "C" fn get_owner(
     ctx: *mut JsContext,
     _this: JsValue,
@@ -1174,6 +1183,7 @@ unsafe extern "C" fn get_owner(
 }
 
 /// `runWithOwner(owner, fn)`.
+#[cfg(test)]
 unsafe extern "C" fn run_with_owner(
     ctx: *mut JsContext,
     _this: JsValue,
@@ -1222,6 +1232,7 @@ unsafe extern "C" fn set_context(
 }
 
 /// `useContext(key)`: the nearest value set for `key`, or `undefined`.
+#[cfg(test)]
 unsafe extern "C" fn use_context(
     ctx: *mut JsContext,
     _this: JsValue,
@@ -1347,8 +1358,9 @@ pub(crate) fn new_function(ctx: *mut JsContext, name: &CStr, f: Native, length: 
     }
 }
 
-/// TRANSITIONAL (deleted with the JS runtime): Solid's API for
-/// `js/runtime/_reactive.js`, as the object `globalThis.__nsh_reactive`.
+/// The graph's primitives as `globalThis.__nsh_reactive`, for tests that
+/// drive owners and roots directly.
+#[cfg(test)]
 pub(crate) fn install_globals(ctx: &Ctx<'_>) {
     let raw = ctx.as_raw().as_ptr();
     // SAFETY: natives on the global object.
@@ -1380,6 +1392,7 @@ pub(crate) fn install_globals(ctx: &Ctx<'_>) {
 }
 
 /// `isAccessor(value)`: whether `value` is a signal or memo object.
+#[cfg(test)]
 unsafe extern "C" fn is_accessor(
     ctx: *mut JsContext,
     _this: JsValue,

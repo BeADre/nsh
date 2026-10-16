@@ -1,14 +1,12 @@
-//! `nsh/animated` for apps compiled by nsh: native values and the
-//! animation graph (`NativeNode`, `NativeValue`, `Animated`'s drivers and
-//! composites), `Easing` and `LayoutAnimation`. The port of
-//! `js/runtime/animated.ts`: everything runs on the UI thread, JS only
-//! describes it.
+//! `nsh/animated`: native values and the animation graph (`NativeNode`,
+//! `NativeValue`, `Animated`'s drivers and composites), `Easing` and
+//! `LayoutAnimation`. Everything runs on the UI thread, JS only describes
+//! it.
 //!
-//! Operations are encoded as the JS runtime encodes them and decoded by the
-//! same decoder (`protocol::decode`), so both runtimes send the same
-//! `AnimOp`s. Nodes and composites are released when JS lets go of them
-//! (their finalizers queue the release), as with the JS runtime; a promise
-//! of a started animation settles when the core reports its end
+//! Operations are encoded as a few values (`ANIM_*`) and decoded into
+//! `AnimOp`s (`protocol::decode_anim_op`). Nodes and composites are
+//! released when JS lets go of them (their finalizers queue the release); a
+//! promise of a started animation settles when the core reports its end
 //! (`Host::animations_finished`).
 
 use std::{
@@ -239,8 +237,8 @@ fn classes(ctx: *mut JsContext) -> Classes {
     }
 }
 
-/// Runs the JS runtime's encoding of animation operations through the
-/// shared decoder and queues the ops. Takes `values`.
+/// Decodes an encoded animation operation (`ANIM_*`, the node, its
+/// values) and queues it. Takes `values`.
 fn send(ctx: *mut JsContext, values: Vec<JsValue>) -> Result<(), JsValue> {
     let mut values = values;
     // SAFETY: an array taking the values, read by the decoder through a
@@ -251,18 +249,8 @@ fn send(ctx: *mut JsContext, values: Vec<JsValue>) -> Result<(), JsValue> {
     let Some(array) = value.as_array() else {
         return Ok(());
     };
-    let mut out = Vec::new();
-    let mut warnings = crate::protocol::Warnings::deferred();
-    let shared = dom::shared(ctx);
-    let decoded = crate::protocol::decode(&cx, array, &mut out, &mut warnings, &shared);
-    shared.warnings.borrow_mut().merge(warnings);
-    match decoded {
-        Ok(()) => {
-            for op in out {
-                dom::push_op(ctx, op)?;
-            }
-            Ok(())
-        }
+    match crate::protocol::decode_anim_op(&cx, array) {
+        Ok(op) => dom::push_op(ctx, nsh_core::Op::Anim(op)),
         Err(rquickjs::Error::Exception) => Err(qjs::JS_EXCEPTION),
         Err(e) => {
             let message = CString::new(format!("nsh/animated: {e}")).unwrap_or_default();
@@ -337,7 +325,7 @@ fn this_node(ctx: *mut JsContext, this: JsValue) -> Result<u32, JsValue> {
 /// A node reading `inputs` made by encoded operation `sub` with `args`.
 fn derived(ctx: *mut JsContext, inputs: Vec<JsValue>, sub: i32, args: Vec<JsValue>) -> JsValue {
     let (node, id) = new_node(ctx, false, inputs);
-    let mut values = vec![int(OP_ANIM), int(sub), int(id)];
+    let mut values = vec![int(sub), int(id)];
     values.extend(args);
     match send(ctx, values) {
         Ok(()) => node,
@@ -458,15 +446,7 @@ unsafe extern "C" fn native_value(
     // SAFETY: converting a live value.
     unsafe { qjs::JS_ToFloat64(ctx, &mut v, arg(argc, argv, 0)) };
     let (node, id) = new_node(ctx, true, Vec::new());
-    match send(
-        ctx,
-        vec![
-            int(OP_ANIM),
-            int(ANIM_VALUE),
-            int(id),
-            qjs::JS_NewFloat64(v),
-        ],
-    ) {
+    match send(ctx, vec![int(ANIM_VALUE), int(id), qjs::JS_NewFloat64(v)]) {
         Ok(()) => node,
         Err(e) => {
             free(ctx, node);
@@ -496,7 +476,7 @@ unsafe extern "C" fn value_set(
         Err(e) => return e,
     };
     let v = dup(ctx, arg(argc, argv, 0));
-    send(ctx, vec![int(OP_ANIM), int(ANIM_SET), int(id), v])
+    send(ctx, vec![int(ANIM_SET), int(id), v])
         .err()
         .unwrap_or(UNDEFINED)
 }
@@ -511,7 +491,7 @@ unsafe extern "C" fn value_stop(
         Ok(id) => id,
         Err(e) => return e,
     };
-    send(ctx, vec![int(OP_ANIM), int(ANIM_STOP), int(id)])
+    send(ctx, vec![int(ANIM_STOP), int(id)])
         .err()
         .unwrap_or(UNDEFINED)
 }
@@ -544,10 +524,7 @@ fn start(ctx: *mut JsContext, this: JsValue, config: JsValue) -> JsValue {
         }
     };
     let id = next_animation(ctx);
-    if let Err(e) = send(
-        ctx,
-        vec![int(OP_ANIM), int(ANIM_START), int(node), int(id), config],
-    ) {
+    if let Err(e) = send(ctx, vec![int(ANIM_START), int(node), int(id), config]) {
         return e;
     }
     let (p, resolve) = promise(ctx);
@@ -688,7 +665,7 @@ unsafe extern "C" fn composite_stop(
         return UNDEFINED;
     }
     let id = unsafe { (*p).running };
-    send(ctx, vec![int(OP_ANIM), int(ANIM_STOP_ANIMATION), int(id)])
+    send(ctx, vec![int(ANIM_STOP_ANIMATION), int(id)])
         .err()
         .unwrap_or(UNDEFINED)
 }
@@ -705,7 +682,7 @@ unsafe extern "C" fn composite_reset(
     }
     // SAFETY: live composite data.
     let key = unsafe { (*p).key };
-    send(ctx, vec![int(OP_ANIM), int(ANIM_RESET_COMPOSITE), int(key)])
+    send(ctx, vec![int(ANIM_RESET_COMPOSITE), int(key)])
         .err()
         .unwrap_or(UNDEFINED)
 }
@@ -736,13 +713,7 @@ unsafe extern "C" fn composite_start(
     };
     if let Err(e) = send(
         ctx,
-        vec![
-            int(OP_ANIM),
-            int(ANIM_START_COMPOSITE),
-            int(id),
-            int(key),
-            spec,
-        ],
+        vec![int(ANIM_START_COMPOSITE), int(id), int(key), spec],
     ) {
         return e;
     }

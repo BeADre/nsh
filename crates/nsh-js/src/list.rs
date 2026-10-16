@@ -1,6 +1,5 @@
-//! The virtualized, recycling list for apps compiled by nsh: `<list>` (the
-//! `list` of `nsh:rt`) and the rows of Rust components that lay out the
-//! app's items (`ListView`). The port of `js/runtime/list.ts`.
+//! The virtualized, recycling list: `<list>` (the `list` of `nsh:rt`) and
+//! the rows of Rust components that lay out the app's items (`ListView`).
 //!
 //! Only rows near the viewport exist: the core decides which and asks for
 //! cells (`Host::bind_list`, answered here without JS), and reuses them: a

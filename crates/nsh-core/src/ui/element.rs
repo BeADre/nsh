@@ -122,7 +122,7 @@ impl ErasedCx {
 }
 
 /// A render's context: the theme, the environment (reading it subscribes:
-/// the component renders again when what it read changes, as Solid's
+/// the component renders again when what it read changes, as TS
 /// accessors do), and listeners for the elements.
 pub struct RenderCx<'a, C> {
     scope: &'a RenderScope<'a>,
@@ -179,8 +179,8 @@ impl<'a, C: Component> RenderCx<'a, C> {
         self.scope.environment
     }
 
-    /// The surface's `G` (made with `Default` the first time; Solid: a
-    /// signal or store at module level). Reading subscribes: the component
+    /// The surface's `G` (made with `Default` the first time; TS: a
+    /// signal at module level). Reading subscribes: the component
     /// renders again when a listener, task or module changes `G` with
     /// `update_global`.
     pub fn global<G: Default + 'static>(&self) -> std::cell::Ref<'a, G> {
@@ -200,8 +200,8 @@ impl<'a, C: Component> RenderCx<'a, C> {
         })
     }
 
-    /// Provides `value` to the components rendered below this one (Solid:
-    /// a context provider): their [`Self::context`] finds it. A new value
+    /// Provides `value` to the components rendered below this one (TS:
+    /// `<Ctx.Provider value>`): their [`Self::context`] finds it. A new value
     /// renders the components that read it again.
     pub fn provide<T: PartialEq + 'static>(&self, value: T) {
         fn eq<T: PartialEq + 'static>(a: &dyn Any, b: &dyn Any) -> bool {
@@ -217,8 +217,8 @@ impl<'a, C: Component> RenderCx<'a, C> {
         reads.provided.push(provided);
     }
 
-    /// The `T` the nearest component above this one provides (Solid:
-    /// `useContext`), through the app's elements too; `None` without one.
+    /// The `T` the nearest component above this one provides (TS:
+    /// calling the context, `Ctx()`), through the app's elements too; `None` without one.
     /// Reading subscribes.
     pub fn context<T: 'static>(&self) -> Option<Rc<T>> {
         let id = TypeId::of::<T>();
@@ -236,12 +236,12 @@ impl<'a, C: Component> RenderCx<'a, C> {
         self.scope.theme
     }
 
-    /// The surface's size in points (Solid: `windowSize()`).
+    /// The surface's size in points (TS: `windowSize()`).
     pub fn window(&self) -> Size {
         self.read(env::WINDOW).window
     }
 
-    /// The edges system UI covers: notch, home indicator (Solid:
+    /// The edges system UI covers: notch, home indicator (TS:
     /// `safeArea()`).
     pub fn safe_area(&self) -> EdgeInsets {
         self.read(env::SAFE_AREA).safe_area
@@ -249,19 +249,19 @@ impl<'a, C: Component> RenderCx<'a, C> {
 
     /// The edges system UI or a header covers where the component renders:
     /// its screen's (below the header) or modal's, else the safe area
-    /// (Solid: `useSafeAreaInsets()`).
+    /// (TS: `useSafeAreaInsets()`).
     pub fn insets(&self) -> EdgeInsets {
         self.reads.borrow_mut().env |= env::INSETS;
         self.scope.insets
     }
 
     /// The software keyboard's height over the surface, 0 when hidden
-    /// (Solid: `keyboard().height`).
+    /// (TS: `keyboard().height`).
     pub fn keyboard_height(&self) -> f32 {
         self.read(env::KEYBOARD).keyboard_height
     }
 
-    /// Dark appearance (Solid: `colorScheme() === "dark"`). Theme colors
+    /// Dark appearance (TS: `colorScheme() === "dark"`). Theme colors
     /// follow it without this; read it for anything else.
     pub fn dark(&self) -> bool {
         self.read(env::APPEARANCE).dark
@@ -274,22 +274,22 @@ impl<'a, C: Component> RenderCx<'a, C> {
         if self.dark() { color.dark } else { color.light }
     }
 
-    /// The user's text size relative to the default (Solid: `fontScale()`).
+    /// The user's text size relative to the default (TS: `fontScale()`).
     pub fn font_scale(&self) -> f32 {
         self.read(env::FONT_SCALE).font_scale
     }
 
-    /// The user asked for less motion (Solid: `reduceMotion()`).
+    /// The user asked for less motion (TS: `reduceMotion()`).
     pub fn reduce_motion(&self) -> bool {
         self.read(env::MOTION).reduce_motion
     }
 
-    /// A screen reader runs (Solid: `screenReaderEnabled()`).
+    /// A screen reader runs (TS: `screenReaderEnabled()`).
     pub fn screen_reader(&self) -> bool {
         self.read(env::SCREEN_READER).screen_reader
     }
 
-    /// The layout runs right to left (Solid: `isRTL()`).
+    /// The layout runs right to left (TS: `I18nManager.isRTL`).
     pub fn rtl(&self) -> bool {
         self.read(env::RTL).rtl
     }
@@ -323,7 +323,7 @@ impl<'a, C: Component> Context<'a, C> {
         Self { inner, props }
     }
 
-    /// The component's props now (Solid: `props` in the component's body).
+    /// The component's props now (TS: `props` in the component's body).
     pub fn props(&self) -> &C::Props {
         self.props
     }
@@ -346,7 +346,7 @@ impl<'a, C: Component> Context<'a, C> {
     }
 
     /// Runs `f` on the surface's `G` (made with `Default` the first time):
-    /// state components share, like a Solid store at module level.
+    /// state components share, like a signal at module level.
     pub fn update_global<G: Default + 'static, R>(
         &mut self,
         f: impl FnOnce(&mut G, &mut Self) -> R,
@@ -406,14 +406,14 @@ impl<'a, C: Component> Context<'a, C> {
         ));
     }
 
-    /// A native animation value starting at `value` (Solid:
+    /// A native animation value starting at `value` (TS:
     /// `createNativeValue`): keep it in a field, bind it to styles, drags,
     /// scroll offsets or drawings, and animate it from listeners and tasks.
     pub fn native_value(&self, value: f32) -> super::NativeValue {
         super::NativeValue::new(&self.inner.executor, value)
     }
 
-    /// A handle for an element of the render (Solid: `ref`): keep it in a
+    /// A handle for an element of the render (TS: `ref`): keep it in a
     /// field, put it on the element with [`Element::element_ref`], call its
     /// commands from listeners and tasks.
     pub fn element_ref(&self) -> super::ElementRef {
@@ -438,7 +438,7 @@ impl<'a, C: Component> Context<'a, C> {
         task::spawn(&self.inner.executor, self.inner.host, f)
     }
 
-    /// Runs `f` once after `delay` (Solid: `setTimeout`; dropping the task
+    /// Runs `f` once after `delay` (TS: `setTimeout`; dropping the task
     /// is `clearTimeout`). A task: a timer, then an update.
     pub fn set_timeout(
         &mut self,
@@ -451,7 +451,7 @@ impl<'a, C: Component> Context<'a, C> {
         })
     }
 
-    /// Runs `f` every `period` (Solid: `setInterval`; dropping the task is
+    /// Runs `f` every `period` (TS: `setInterval`; dropping the task is
     /// `clearInterval`). Late wakes do not pile up runs.
     pub fn set_interval(
         &mut self,
@@ -613,7 +613,7 @@ impl Clone for ComponentEl {
 /// Places one piece of the app's content: a JSX child, or a list row.
 pub(crate) type PlaceFn = Rc<dyn Fn(Child, Position) -> AnyElement>;
 
-/// Where a JSX child or a list row is among its siblings (what a Solid row
+/// Where a JSX child or a list row is among its siblings (what a TS row
 /// knows from its index and the data's length).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {

@@ -7,11 +7,11 @@
 //! its event handlers, and the GC mark reports both, so the tree, the
 //! handlers and whatever they capture are one heap the QuickJS collector
 //! sees. The root view (id 1) is held by the renderer. A node nothing
-//! refers to any more is collected and its native view released, as with
-//! the JS runtime (a removed node may be inserted again while JS holds it).
+//! refers to any more is collected and its native view released (a removed
+//! node may be inserted again while JS holds it).
 //!
-//! Every change becomes an [`Op`] pushed straight into the host's op queue
-//! (no JS op buffer, no decoding of one). Dynamic children are kept by a
+//! Every change becomes an [`Op`] pushed straight into the host's op
+//! queue. Dynamic children are kept by a
 //! render effect whose value is the array of nodes it inserted, reconciled
 //! with Solid's `reconcileArrays` against the parent's children, which the
 //! renderer mirrors.
@@ -2492,7 +2492,25 @@ pub(crate) const RT_EXPORTS: &[(&str, Export)] = &[
     ("merge", Export::Function(merge, 2)),
     ("list", Export::Function(crate::list::list, 1)),
     ("setup", Export::Function(setup, 2)),
+    ("font", Export::Function(font, 2)),
 ];
+
+/// `font(uri, family)`: what `import Inter from "./Inter.ttf"` evaluates
+/// to (its family); the host registers the font before the first frame.
+unsafe extern "C" fn font(
+    ctx: *mut JsContext,
+    _this: JsValue,
+    argc: c_int,
+    argv: *mut JsValue,
+) -> JsValue {
+    let (uri, family) = (arg(argc, argv, 0), arg(argc, argv, 1));
+    let Some(uri) = string_arg(ctx, uri) else {
+        return qjs::JS_EXCEPTION;
+    };
+    dom(ctx).shared.fonts.borrow_mut().push(uri);
+    // SAFETY: a new reference for the caller.
+    unsafe { qjs::JS_DupValue(ctx, family) }
+}
 
 #[cfg(test)]
 mod tests {

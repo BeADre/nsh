@@ -1,11 +1,10 @@
-//! The canvas's operations (`CV_*`, after the drawing's `OP_DRAW`): how a
-//! recorded drawing is read ([`decode`], [`CanvasOp`]'s and [`PathOp`]'s
-//! `#[derive(JsOps)]` with the arguments' readers here) and the part of the
-//! 2D context that only records them, generated from the same variants: the
-//! methods that push their code and arguments, and the drawing-state
-//! properties that push their code and value. `canvas.ts` merges them into
-//! its classes and writes the rest (overloads, gradients, images, `save` /
-//! `restore`).
+//! The canvas's operations (`CV_*`): how a recorded drawing is read
+//! ([`decode`], [`CanvasOp`]'s and [`PathOp`]'s `#[derive(JsOps)]` with the
+//! arguments' readers here) and the part of the 2D context that only
+//! records them, generated from the same variants: the methods that push
+//! their code and arguments, and the drawing-state properties that push
+//! their code and value (`nsh-js` `canvas.rs` records natively from the
+//! same specs; [`typescript`] gives their declarations).
 
 codes! { CODES:
     CV_SAVE = 0,
@@ -304,10 +303,9 @@ pub(crate) fn line_dash<L: HostList<Item: HostInput>>(
     Ok(Some(CanvasOp::LineDash(dash.into())))
 }
 
-/// `canvas.gen.ts`: the methods' and properties' declarations, and their
-/// implementations as objects the classes of `canvas.ts` take into their
-/// prototypes. Codes are literals in the bodies: a call costs what the
-/// hand-written one did.
+/// `canvas.gen.ts`: the recording methods and properties, from which the
+/// bundler takes their declarations (`canvas.gen.d.ts`; `nsh-js` records
+/// natively from the same specs).
 pub fn typescript() -> String {
     use std::fmt::Write as _;
     let mut types = TsTypes::default();

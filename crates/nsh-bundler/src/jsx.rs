@@ -1,5 +1,5 @@
-//! nsh's JSX compiler (apps with `"compiler": "nsh"` in `nsh.json`): lowers
-//! JSX to calls of the native renderer (`nsh:rt`, `crates/nsh-js/src/dom.rs`).
+//! nsh's JSX compiler: lowers JSX to calls of the native renderer
+//! (`nsh:rt`, `crates/nsh-js/src/dom.rs`).
 //!
 //! **Tags.** A lowercase tag is a built-in: the host elements of
 //! [`ELEMENTS`] (`<view>`, `<text>`, …, `<web-view>`) and the control flow

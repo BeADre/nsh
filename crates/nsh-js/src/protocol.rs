@@ -1,19 +1,16 @@
-//! Decoder for the flat op buffer filled by `js/runtime/index.ts`.
-//!
-//! The buffer is a plain JS array of `[opcode, args...]` records. Keeping
-//! the JS side to `array.push` of raw values is deliberate: QuickJS is the
-//! slowest stage, so all parsing (tags, style objects, event names) happens
-//! here in Rust.
+//! Decoding of JS values into the core's types: props and styles
+//! ([`decode_prop`]), commands ([`decode_command`]), animation operations
+//! ([`decode_anim_op`], as `nsh/animated` encodes them) and JSON
+//! ([`to_json`]).
 
 use nsh_anim::{AnimOp, AnimProp, Driver, Easing, Extrapolate, MathOp, Operand, Output};
-// The op buffer's codes, shared with the generated `protocol.gen.ts`.
-use nsh_core::js::{
-    host::{HostCx, HostInput, HostList, HostProps, HostValue},
-    protocol::*,
-};
 use nsh_core::{
     Color, Command, EventKind, LayoutAnimation, NodeId, Op, Prop, Style, StyleDecl, StyleError,
-    StylePatch, StyleValue, Tag, TransformKind,
+    StylePatch, StyleValue, TransformKind,
+    js::{
+        host::{HostCx, HostInput, HostList, HostProps, HostValue},
+        protocol::*,
+    },
 };
 use rquickjs::{Array, Ctx, Exception, Object, Type, Value};
 use rustc_hash::FxHashSet;
@@ -72,12 +69,7 @@ impl<'js> Reader<'_, 'js> {
         let v = self.value()?;
         v.as_int()
             .or_else(|| v.as_float().map(|f| f as i32))
-            .ok_or_else(|| Exception::throw_type(self.ctx, "nsh op buffer: expected an integer"))
-    }
-
-    #[inline]
-    fn id(&mut self) -> rquickjs::Result<NodeId> {
-        Ok(self.int()? as NodeId)
+            .ok_or_else(|| Exception::throw_type(self.ctx, "nsh/animated: expected an integer"))
     }
 
     #[inline]
@@ -85,7 +77,7 @@ impl<'js> Reader<'_, 'js> {
         let v = self.value()?;
         v.as_number()
             .map(|n| n as f32)
-            .ok_or_else(|| Exception::throw_type(self.ctx, "nsh op buffer: expected a number"))
+            .ok_or_else(|| Exception::throw_type(self.ctx, "nsh/animated: expected a number"))
     }
 
     fn numbers(&mut self) -> rquickjs::Result<Vec<f32>> {
@@ -93,7 +85,7 @@ impl<'js> Reader<'_, 'js> {
         let Some(items) = v.as_array() else {
             return Err(Exception::throw_type(
                 self.ctx,
-                "nsh op buffer: expected an array",
+                "nsh/animated: expected an array",
             ));
         };
         items.iter::<f64>().map(|v| v.map(|v| v as f32)).collect()
@@ -107,7 +99,7 @@ impl<'js> Reader<'_, 'js> {
             (_, Some(node)) => Ok(Operand::Node(node)),
             _ => Err(Exception::throw_type(
                 self.ctx,
-                "nsh op buffer: expected a number or native value",
+                "nsh/animated: expected a number or native value",
             )),
         }
     }
@@ -119,112 +111,16 @@ impl<'js> Reader<'_, 'js> {
             Some(s) => s.to_string(),
             None => Err(Exception::throw_type(
                 self.ctx,
-                "nsh op buffer: expected a string",
+                "nsh/animated: expected a string",
             )),
         }
     }
 }
 
-/// Decodes the whole buffer into `out`.
-pub(crate) fn decode<'js>(
-    ctx: &Ctx<'js>,
-    buf: &Array<'js>,
-    out: &mut Vec<Op>,
-    warnings: &mut Warnings,
-    shared: &crate::host::Shared,
-) -> rquickjs::Result<()> {
-    let len = buf.len();
-    let mut r = Reader { ctx, buf, pos: 0 };
-    while r.pos < len {
-        let op = match r.int()? {
-            OP_CREATE => {
-                let id = r.id()?;
-                let name = r.string()?;
-                let tag = Tag::from_name(&name).unwrap_or_else(|| {
-                    warnings.warn(format!("unknown element <{name}>, rendering it as <view>"));
-                    Tag::View
-                });
-                Op::Create { id, tag }
-            }
-            OP_CREATE_TEXT => Op::CreateText {
-                id: r.id()?,
-                text: r.string()?,
-            },
-            OP_SET_TEXT => Op::SetText {
-                id: r.id()?,
-                text: r.string()?,
-            },
-            OP_SET_PROP => {
-                let id = r.id()?;
-                let name = r.string()?;
-                let value = r.value()?;
-                match decode_prop(id, &name, value, warnings)? {
-                    Some(op) => op,
-                    None => continue,
-                }
-            }
-            OP_INSERT => {
-                let parent = r.id()?;
-                let child = r.id()?;
-                let before = r.id()?;
-                Op::Insert {
-                    parent,
-                    child,
-                    before: (before != 0).then_some(before),
-                }
-            }
-            OP_REMOVE => Op::Remove {
-                parent: r.id()?,
-                child: r.id()?,
-            },
-            OP_RELEASE => Op::Release { id: r.id()? },
-            OP_ANIM => Op::Anim(decode_anim(&mut r)?),
-            OP_DRAW => {
-                let id = r.id()?;
-                let list = r.value()?;
-                let drawing = match list.as_array() {
-                    Some(list) if list.len() > shared.limits.max_canvas_ops => {
-                        let reason = format!(
-                            "a canvas drawing recorded {} values (limit {}) and the app was stopped",
-                            list.len(),
-                            shared.limits.max_canvas_ops
-                        );
-                        shared.stop(reason.clone());
-                        return Err(rquickjs::Exception::throw_range(ctx, &reason));
-                    }
-                    Some(list) => {
-                        nsh_core::js::canvas::decode(&JsList(list.clone()), 0, list.len())
-                            .map_err(|e| Exception::throw_type(ctx, &format!("nsh canvas: {e}")))?
-                    }
-                    None => Default::default(),
-                };
-                Op::Draw {
-                    id,
-                    drawing: Box::new(drawing),
-                }
-            }
-            OP_COMMAND => {
-                let id = r.id()?;
-                let name = r.string()?;
-                let arg = r.value()?;
-                match decode_command(&name, arg)? {
-                    Some(command) => Op::Command { id, command },
-                    None => {
-                        warnings.warn(format!("unknown command `{name}`"));
-                        continue;
-                    }
-                }
-            }
-            other => {
-                return Err(Exception::throw_type(
-                    ctx,
-                    &format!("nsh op buffer: unknown opcode {other}"),
-                ));
-            }
-        };
-        out.push(op);
-    }
-    Ok(())
+/// Decodes an animation operation, encoded as `nsh/animated` builds it
+/// (`ANIM_*`, the node, then the operation's values).
+pub(crate) fn decode_anim_op<'js>(ctx: &Ctx<'js>, buf: &Array<'js>) -> rquickjs::Result<AnimOp> {
+    decode_anim(&mut Reader { ctx, buf, pos: 0 })
 }
 
 /// The command `name` with argument `arg` sends to a node's view (`None`:
@@ -751,7 +647,7 @@ fn decode_anim(r: &mut Reader<'_, '_>) -> rquickjs::Result<AnimOp> {
         other => {
             return Err(Exception::throw_type(
                 r.ctx,
-                &format!("nsh op buffer: unknown anim op {other}"),
+                &format!("nsh/animated: unknown operation {other}"),
             ));
         }
     })

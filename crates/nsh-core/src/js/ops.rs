@@ -2,7 +2,8 @@
 //! its arguments. `#[derive(JsOps)]` on an enum of operations maps codes
 //! to variants and reads their fields in order ([`OpArg`]), and describes
 //! the methods and properties that record them as they are, which the
-//! runtime's recording classes are generated from (`canvas.gen.ts`). The
+//! native recorders (`nsh-js` `canvas.rs`) and their declarations
+//! (`canvas.gen.ts`) are made from. The
 //! lists are read through [`HostInput`], straight from QuickJS values.
 
 use std::{fmt, sync::Arc};

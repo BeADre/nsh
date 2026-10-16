@@ -116,7 +116,7 @@ fn variable_targets(index: usize, v: &VariableDeclaration<'_>, out: &mut Vec<Tar
                     span: decl.span,
                 });
             }
-            Expression::CallExpression(call) if matches!(&call.callee, Expression::Identifier(c) if c.name == "context" || c.name == "createContext") =>
+            Expression::CallExpression(call) if matches!(&call.callee, Expression::Identifier(c) if c.name == "context") =>
             {
                 out.push(Target::Context {
                     index,

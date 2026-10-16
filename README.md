@@ -1,8 +1,9 @@
 # native-shell (nsh)
 
-A React Native–like UI framework: apps are written in TSX with SolidJS, run in QuickJS, are laid out by Taffy and
-render with the system's native views (UIKit on iOS / Mac Catalyst, Android views). The toolchain is a single `nsh`
-binary written in Rust: no Node.js, and no Rust toolchain for app developers.
+A React Native–like UI framework: apps are written in TSX, run in QuickJS on a native runtime (signals, the renderer
+and every module apps import are Rust), are laid out by Taffy and render with the system's native views (UIKit on
+iOS / Mac Catalyst, Android views). The toolchain is a single `nsh` binary written in Rust: no Node.js, and no Rust
+toolchain for app developers.
 
 The components of the mobile UI set (`import { Button, Card } from "nsh/ui/mobile"`) are written in Rust and run in
 the core, laid out with the rest of the app: one implementation, the same look on iOS and Android, and JS only

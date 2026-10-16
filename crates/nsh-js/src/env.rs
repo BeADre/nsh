@@ -1,4 +1,4 @@
-//! The surface's environment for apps compiled by nsh: one signal per part
+//! The surface's environment: one signal per part
 //! (window, safe area, keyboard, color scheme, font scale, screen reader,
 //! reduced motion, layout direction) written when the platform reports a
 //! change, read through read-only accessors; `nsh/device` (`Platform`,

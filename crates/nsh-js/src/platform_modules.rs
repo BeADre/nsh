@@ -1,4 +1,4 @@
-//! The small runtime modules of apps compiled by nsh: `nsh/android`
+//! The small runtime modules: `nsh/android`
 //! (`isAvailable`, `BackHandler`'s listeners over the registry's module),
 //! `nsh/ios` (`isAvailable`, `InputAccessoryView`), `nsh/webview` and
 //! `nsh/video` (their host elements as components; also the built-ins

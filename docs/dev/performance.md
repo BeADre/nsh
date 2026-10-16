@@ -23,7 +23,7 @@ after `nsh trace` timings and item counts. Current baselines (Apple Silicon):
 
 - Rust components vs the same component in TSX (`component_bench`, `examples/bench`, release, minimum of the runs;
   `TsButton.tsx` is the TSX Button `nsh/ui/mobile` had before components moved into Rust, restyled to draw exactly
-  like the Rust one):
+  like the Rust one; measured on the former JS runtime):
 
   | | Rust Button: JS / core | TSX Button: JS / core |
   |---|---|---|
@@ -35,28 +35,30 @@ after `nsh trace` timings and item counts. Current baselines (Apple Silicon):
   not the component code (its renders and diffs are ~15% of a commit) but the allocator: Taffy's compute takes the
   same samples in both, while its per-layout vectors spend 2.5× longer in `malloc` / `free` / `madvise` after the
   render trees the components build and drop each update (libmalloc coalesces the freed blocks and returns pages).
-  Pooling the style buffers bought 3%; a different global allocator in the binaries is the lever left. The glue must
-  stay one effect per instance reading the props directly: the first version (`splitProps` / `mergeProps` /
-  `spread`) cost 4.0ms of JS for the same first frame, more than the TSX Button.
-- Canvas recording (release `nsh trace`, minimum of the runs): 2500 iterations of `beginPath`, `moveTo`, `lineTo`,
-  `lineWidth =`, `strokeStyle =`, `stroke`, `fillRect` (17 500 calls) record in ~1.4ms, the same with the generated
-  methods (`canvas.gen.ts`, taken into the prototypes) as with the hand-written class: an A/B of the two mechanisms in
-  one QuickJS run measures 4.16 vs 4.22ms (medians within 1%) for 80 000 calls.
+  Pooling the style buffers bought 3%; a different global allocator in the binaries is the lever left. The
+  components' JS face must stay one effect per instance reading the props directly: the first version (Solid's
+  `splitProps` / `mergeProps` / `spread` in the former JS runtime) cost 4.0ms of JS for the same first frame, more
+  than the TSX Button.
+- Canvas recording (release `nsh trace`, minimum of the runs): in the former JS runtime, 2500 iterations of
+  `beginPath`, `moveTo`, `lineTo`, `lineWidth =`, `strokeStyle =`, `stroke`, `fillRect` (17 500 calls) recorded into a
+  JS array in ~1.4ms, the same with methods generated from the specs as with a hand-written class (an A/B of the two
+  mechanisms in one QuickJS run: 4.16 vs 4.22ms, medians within 1%, for 80 000 calls).
   Decoding that drawing in the core (`nsh_core::js::canvas::decode`, from the QuickJS array) takes ~0.52–0.57ms
   (`cargo test --release -p nsh-js --lib bench_canvas_decode -- --ignored --nocapture`), as the hand-written decoder
   it replaced did (0.57ms).
-  Apps compiled by nsh record into a Rust list (`nsh-js` `canvas.rs`): the same 17 500 calls take ~1.0–1.1ms
-  (~1.7ms in the JS runtime), and 12 of them plus decoding one commit 21–22ms (61ms).
+  The native context records into a Rust list (`nsh-js` `canvas.rs`): the same 17 500 calls take ~1.0–1.1ms
+  (~1.7ms in the former JS runtime, measured A/B), and 12 of them plus decoding one commit 21–22ms (61ms).
 
-- Where JS time goes (release `nsh trace`, which logs `event js` per dispatched event; 2026-10-16, the baseline of the
-  native JS runtime): with Solid in JS, the empty app's eval was ~250µs (all of it the runtime and Solid starting),
-  counter's ~380µs (first frame ~500µs), and a counter tap spent a median 52µs in JS (handler, Solid's updates, the
-  microtask flush and the op decode) against 17µs of core commit (11 ops, 10 items). The native reactive graph
-  (`nsh-js` `reactive.rs`), measured A/B on the same loaded machine: empty eval ~210µs vs ~300µs, counter eval ~330µs
+- Where JS time went in the former JS runtime (release `nsh trace`, which logs `event js` per dispatched event;
+  2026-10-16, before the runtime went native): with Solid in JS, the empty app's eval was ~250µs (all of it the
+  runtime and Solid starting), counter's ~380µs (first frame ~500µs), and a counter tap spent a median 52µs in JS
+  (handler, Solid's updates, the microtask flush and the op decode) against 17µs of core commit (11 ops, 10 items).
+  The native reactive graph (`nsh-js` `reactive.rs`, still under the JS runtime), measured A/B on the same loaded
+  machine: empty eval ~210µs vs ~300µs, counter eval ~330µs
   vs ~460µs, counter tap median ~47µs vs ~69µs in JS, gallery list rebind (`list_bench`) JS ~4µs vs ~21µs per frame.
-- The native pipeline (`native-pipeline.md`), release, the same counter app (a counter, `<if>`, a 3-row `<each>`) on
-  both: bundle 886 B JS / 1.7 KB bytecode vs 14 KB / 19.6 KB, eval ~95µs vs ~390µs, tap median ~5µs vs ~14µs in JS,
-  commit ~15µs vs ~22µs. Scrolling a 1000-row `<list>` (avatar, two texts, a bound color) 6000 pt: ~77µs vs ~150µs
-  of JS per rebinding frame, commit ~205µs vs ~276µs.
+- The native runtime (`native-pipeline.md`) against the former JS runtime, release, the same counter app (a counter,
+  `<if>`, a 3-row `<each>`) on both: bundle 886 B JS / 1.7 KB bytecode vs 14 KB / 19.6 KB, eval ~95µs vs ~390µs, tap
+  median ~5µs vs ~14µs in JS, commit ~15µs vs ~22µs. Scrolling a 1000-row `<list>` (avatar, two texts, a bound color)
+  6000 pt: ~77µs vs ~150µs of JS per rebinding frame, commit ~205µs vs ~276µs.
 
 The dev profile builds `rquickjs-sys` and `taffy` with `opt-level = 3`, so debug timings are meaningful too; release uses fat LTO.

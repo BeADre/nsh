@@ -1,6 +1,5 @@
-//! The JS face of Rust components and modules for apps compiled by nsh,
-//! made from their specs (`nsh_core::ui`): what the generated glue and
-//! `_core.ts`'s `component()` / `module()` do for the JS runtime.
+//! The JS face of Rust components and modules, made from their specs
+//! (`nsh_core::ui`).
 //!
 //! A component is a host view naming it (`component`), its own props sent
 //! as `$name` when they change (one render effect reads them all), its

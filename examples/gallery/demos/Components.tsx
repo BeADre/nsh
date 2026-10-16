@@ -224,7 +224,7 @@ function PlatformInfo() {
   );
 }
 
-/** The components of nsh/ui/mobile (js/ui/mobile/components). */
+/** The components of nsh/ui/mobile (Rust, `nsh-ui-mobile`). */
 function MobileComponents() {
   const presses = signal(0);
   return (

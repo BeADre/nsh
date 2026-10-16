@@ -1,4 +1,4 @@
-//! The native ES modules apps compiled by nsh import: nsh's own (`nsh`,
+//! The native ES modules apps import: nsh's own (`nsh`,
 //! `nsh:rt`, `nsh/device`, `nsh/accessibility`; [`nsh_core::js::NATIVE_MODULES`])
 //! and those of registries (`Registry::specifier`): the UI sets a host
 //! serves (`nsh/ui/mobile`) and the runtime's (`nsh/android`, ...), whose

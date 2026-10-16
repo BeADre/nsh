@@ -1,4 +1,4 @@
-//! Native animation values for Rust components (Solid: `createNativeValue`,
+//! Native animation values for Rust components (TS: `createNativeValue`,
 //! `Animated.spring`, `interpolate`): nodes of the platform's animation
 //! graph that styles, drags, scroll offsets and drawings are bound to, so
 //! they move on the UI thread without a render per frame.

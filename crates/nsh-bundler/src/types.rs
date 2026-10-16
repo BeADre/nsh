@@ -1,6 +1,11 @@
 //! TypeScript declarations for editors: written to `.nsh/types` next to an
 //! app, and found through the app's `tsconfig.json` ([`TSCONFIG`]). Apps
 //! need no `node_modules` for them, like for the code.
+//!
+//! The declarations of nsh's native modules are written by hand
+//! (`types/nsh`); those of what Rust specs describe (styles, elements,
+//! animations, canvas methods, the UI sets' components and the runtime's
+//! modules) are generated from the specs.
 
 use oxc::{
     allocator::Allocator,
@@ -10,8 +15,8 @@ use oxc::{
     span::SourceType,
 };
 
-/// `tsconfig.json` of a new app (`nsh init`): resolves `nsh` and `solid-js`
-/// to `.nsh/types`, and JSX to nsh's elements.
+/// `tsconfig.json` of a new app (`nsh init`): resolves `nsh` to
+/// `.nsh/types`, and JSX to nsh's elements.
 pub const TSCONFIG: &str = r#"{
   "compilerOptions": {
     "target": "ES2023",
@@ -27,80 +32,44 @@ pub const TSCONFIG: &str = r#"{
     "types": [],
     "paths": {
       "nsh": ["./.nsh/types/nsh/index.d.ts"],
-      "nsh/*": ["./.nsh/types/nsh/*.d.ts"],
-      "solid-js": ["./.nsh/types/solid-js/types/index.d.ts"],
-      "solid-js/universal": ["./.nsh/types/solid-js/types/universal/index.d.ts"]
+      "nsh/*": ["./.nsh/types/nsh/*.d.ts"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", ".nsh/types/nsh/globals.d.ts"]
 }
 "#;
 
-const SOLID_TYPES: &[(&str, &str)] = &[
-    (
-        "solid-js/types/index.d.ts",
-        include_str!("../../../js/vendor/solid-js/types/index.d.ts"),
-    ),
-    (
-        "solid-js/types/reactive/signal.d.ts",
-        include_str!("../../../js/vendor/solid-js/types/reactive/signal.d.ts"),
-    ),
-    (
-        "solid-js/types/reactive/observable.d.ts",
-        include_str!("../../../js/vendor/solid-js/types/reactive/observable.d.ts"),
-    ),
-    (
-        "solid-js/types/reactive/scheduler.d.ts",
-        include_str!("../../../js/vendor/solid-js/types/reactive/scheduler.d.ts"),
-    ),
-    (
-        "solid-js/types/reactive/array.d.ts",
-        include_str!("../../../js/vendor/solid-js/types/reactive/array.d.ts"),
-    ),
-    (
-        "solid-js/types/render/index.d.ts",
-        include_str!("../../../js/vendor/solid-js/types/render/index.d.ts"),
-    ),
-    (
-        "solid-js/types/render/component.d.ts",
-        include_str!("../../../js/vendor/solid-js/types/render/component.d.ts"),
-    ),
-    (
-        "solid-js/types/render/flow.d.ts",
-        include_str!("../../../js/vendor/solid-js/types/render/flow.d.ts"),
-    ),
-    (
-        "solid-js/types/render/Suspense.d.ts",
-        include_str!("../../../js/vendor/solid-js/types/render/Suspense.d.ts"),
-    ),
-    (
-        "solid-js/types/render/hydration.d.ts",
-        include_str!("../../../js/vendor/solid-js/types/render/hydration.d.ts"),
-    ),
-    (
-        "solid-js/types/universal/index.d.ts",
-        include_str!("../../../js/vendor/solid-js/types/universal/index.d.ts"),
-    ),
-    (
-        "solid-js/types/universal/universal.d.ts",
-        include_str!("../../../js/vendor/solid-js/types/universal/universal.d.ts"),
-    ),
-    // Solid's own JSX namespace describes the DOM: nsh's replaces it.
-    (
-        "solid-js/types/jsx.d.ts",
-        "export type { JSX } from \"nsh\";\n",
-    ),
+macro_rules! declared {
+    ($($path:literal),* $(,)?) => {
+        &[$(($path, include_str!(concat!("../types/", $path)))),*]
+    };
+}
+
+/// The hand-written declarations, by path under `.nsh/types`.
+const DECLARED: &[(&str, &str)] = declared![
+    "nsh/index.d.ts",
+    "nsh/_core.d.ts",
+    "nsh/types.d.ts",
+    "nsh/globals.d.ts",
+    "nsh/accessibility.d.ts",
+    "nsh/android.d.ts",
+    "nsh/animated.d.ts",
+    "nsh/canvas.d.ts",
+    "nsh/device.d.ts",
+    "nsh/gesture.d.ts",
+    "nsh/ios.d.ts",
+    "nsh/list.d.ts",
+    "nsh/native.d.ts",
+    "nsh/video.d.ts",
+    "nsh/webview.d.ts",
+    "nsh/ui/mobile/navigation.d.ts",
 ];
 
-/// Declarations of a TypeScript module, from its source (it must have the
-/// explicit types `--isolatedDeclarations` asks for).
-fn declarations(source: &str, lang: crate::embedded::Lang) -> String {
+/// Declarations of generated TypeScript (it has the explicit types
+/// `--isolatedDeclarations` asks for).
+fn declarations(source: &str) -> String {
     let allocator = Allocator::default();
-    let source_type = match lang {
-        crate::embedded::Lang::Tsx => SourceType::tsx(),
-        _ => SourceType::ts(),
-    };
-    let parsed = Parser::new(&allocator, source, source_type).parse();
+    let parsed = Parser::new(&allocator, source, SourceType::ts()).parse();
     let ret = IsolatedDeclarations::new(
         &allocator,
         IsolatedDeclarationsOptions {
@@ -110,127 +79,61 @@ fn declarations(source: &str, lang: crate::embedded::Lang) -> String {
     .build(&parsed.program);
     debug_assert!(
         ret.diagnostics.is_empty(),
-        "the runtime needs explicit types: {:?}",
+        "generated TypeScript needs explicit types: {:?}",
         ret.diagnostics
     );
     Codegen::new().build(&ret.program).code
 }
 
-/// The files of `.nsh/types`, as (path relative to it, contents): one
-/// declaration file per embedded file, importing each other relatively as
-/// the sources do: `nsh/list.d.ts` for `nsh/list`; a UI set's files under
-/// its directory (`nsh/ui/mobile/navigation.d.ts`) and its module next to it
-/// (`nsh/ui/mobile.d.ts`, found through the `nsh/*` path of tsconfig).
-pub fn type_definitions() -> Vec<(String, String)> {
-    let mut files: Vec<(String, String)> = Vec::new();
-    for f in crate::embedded::files() {
-        let dir = match f.root {
-            "runtime" => "nsh".to_owned(),
-            root => format!("nsh/{root}"),
+/// The files of `.nsh/types`, as (path relative to it, contents), with a
+/// JSX namespace naming the app's kebab-case components (`elements`).
+pub fn type_definitions(elements: &[crate::AppElement]) -> Vec<(String, String)> {
+    let mut files: Vec<(String, String)> = DECLARED
+        .iter()
+        .map(|(path, text)| ((*path).to_owned(), (*text).to_owned()))
+        .collect();
+    let generated = [
+        ("nsh/style.gen.d.ts", nsh_core::js::style::typescript()),
+        ("nsh/elements.gen.d.ts", nsh_core::js::host::typescript()),
+        ("nsh/anim.gen.d.ts", nsh_core::js::anim::typescript()),
+        ("nsh/canvas.gen.d.ts", nsh_core::js::canvas::typescript()),
+        (
+            "nsh/ui/mobile/components.gen.d.ts",
+            nsh_core::ui::typescript(&nsh_ui_mobile::registry()),
+        ),
+    ];
+    for (path, source) in generated {
+        files.push((path.to_owned(), declarations(&source)));
+    }
+    // The runtime's modules: generated alone (`nsh/image`), or next to the
+    // hand-written part that re-exports them (`nsh/android.gen`).
+    for registry in nsh_core::runtime::registries() {
+        let specifier = registry.namespace().expect("runtime modules have one");
+        let written = format!("{specifier}.d.ts");
+        let path = match DECLARED.iter().any(|(p, _)| *p == written) {
+            true => format!("{specifier}.gen.d.ts"),
+            false => written,
         };
-        files.push((
-            format!("{dir}/{}.d.ts", f.file()),
-            declarations(f.module.source, f.module.lang),
-        ));
-        if f.root != "runtime"
-            && f.file() == "index"
-            && let Some((_, last)) = f.root.rsplit_once('/')
-        {
-            files.push((
-                format!("{dir}.d.ts"),
-                format!("export * from \"./{last}/index\";\n"),
-            ));
-        }
+        files.push((path, declarations(&nsh_core::ui::typescript(registry))));
     }
     files.extend(
         [
             (
-                "nsh/jsx-runtime.d.ts",
-                "export type { JSX } from \"./types\";\n".to_owned(),
+                "nsh/ui/mobile/index.d.ts",
+                "export * from \"./components.gen\";\nexport * from \"./navigation\";\n".to_owned(),
             ),
             (
-                "nsh/globals.d.ts",
-                include_str!("../../../js/runtime/globals.d.ts").to_owned(),
+                "nsh/ui/mobile.d.ts",
+                "export * from \"./mobile/index\";\n".to_owned(),
             ),
+            ("nsh/jsx-runtime.d.ts", native_jsx(elements)),
         ]
         .map(|(path, text)| (path.to_owned(), text)),
-    );
-    files.extend(
-        SOLID_TYPES
-            .iter()
-            .map(|(path, text)| ((*path).to_owned(), (*text).to_owned())),
     );
     files
 }
 
-/// `nsh` for apps compiled by nsh (`"compiler": "nsh"`): the native
-/// module's API (`nsh-js`'s `reactive.rs` and `dom.rs`).
-const NATIVE_NSH: &str = r#"import type { JSX } from "./jsx-runtime";
-export type { JSX };
-export type * from "./types";
-export type { YNode } from "./_core";
-
-/** A value that changes over time, read by calling it (tracked). */
-export interface Accessor<T> {
-  (): T;
-}
-
-/** A signal: `count()` reads it, `count.set(1)` and `count.update((n) => n + 1)` write it. */
-export interface Signal<T> extends Accessor<T> {
-  set(value: T): void;
-  update(fn: (value: T) => T): void;
-}
-
-export interface SignalOptions<T> {
-  /** When a new value counts as a change (default `===`); `false`: always. */
-  equals?: false | ((previous: T, next: T) => boolean);
-}
-
-/** A signal holding `value`. */
-export declare function signal<T>(value: T, options?: SignalOptions<T>): Signal<T>;
-export declare function signal<T = undefined>(): Signal<T | undefined>;
-
-/** A value derived from signals, computed again when they change (and read). */
-export declare function computed<T>(fn: (previous: T | undefined) => T, options?: SignalOptions<T>): Accessor<T>;
-
-/** Runs `fn` after rendering, and again when what it read changes. */
-export declare function effect(fn: () => void): void;
-
-/** Runs `fn`, applying its writes together at the end. */
-export declare function batch<T>(fn: () => T): T;
-
-/** Runs `fn` without tracking what it reads. */
-export declare function untracked<T>(fn: () => T): T;
-
-/** Runs `fn` before the current effect or component runs again or goes away. */
-export declare function cleanup(fn: () => void): void;
-
-/** A value components provide to what they render: `Theme()` reads the nearest one. */
-export interface Context<T> extends Accessor<T> {
-  Provider: (props: { value: T; children?: JSX.Element }) => JSX.Element;
-}
-
-/** A context with a default value. */
-export declare function context<T>(defaultValue: T): Context<T>;
-
-/**
- * `[picked, rest]`: the props named in `keys` and the others, both still
- * following what they read (a component passing the rest on: `<input {...rest} />`).
- */
-export declare function split<T extends object, K extends readonly (keyof T)[]>(
-  props: T,
-  keys: K,
-): [Pick<T, K[number]>, Omit<T, K[number]>];
-
-/** A component: a function of its props rendering elements. */
-export type Component<P = {}> = (props: P) => JSX.Element;
-
-/** Renders `app` into the surface; returns a function that removes it. */
-export declare function mount<P extends object>(app: Component<P>, props?: P): () => void;
-"#;
-
-/// The built-in elements of apps compiled by nsh and their props type
-/// (from the runtime's declarations until they are generated from Rust).
+/// The built-in elements and their props type.
 const NATIVE_ELEMENTS: &[(&str, &str)] = &[
     ("view", "ViewProps"),
     ("text", "TextProps"),
@@ -245,8 +148,8 @@ const NATIVE_ELEMENTS: &[(&str, &str)] = &[
     ("list", "ListProps<any>"),
 ];
 
-/// `nsh/jsx-runtime` for an app compiled by nsh: the built-in elements and
-/// the app's components named in kebab case (whose names win, as in the
+/// `nsh/jsx-runtime`: the built-in elements and the app's components named
+/// in kebab case (whose names win, as in the
 /// compiler).
 fn native_jsx(elements: &[crate::AppElement]) -> String {
     let mut out = String::from(
@@ -299,28 +202,6 @@ fn native_jsx(elements: &[crate::AppElement]) -> String {
     out
 }
 
-/// The files of `.nsh/types` for the app in `dir`: with nsh's compiler,
-/// the native `nsh` and a JSX namespace with the app's `elements`;
-/// otherwise [`type_definitions`].
-pub fn type_definitions_for(
-    dir: &std::path::Path,
-    elements: &[crate::AppElement],
-) -> Result<Vec<(String, String)>, crate::BundleError> {
-    let mut files = type_definitions();
-    if crate::compiler(dir)? == crate::Compiler::Nsh {
-        for (path, contents) in [
-            ("nsh/index.d.ts", NATIVE_NSH.to_owned()),
-            ("nsh/jsx-runtime.d.ts", native_jsx(elements)),
-        ] {
-            match files.iter_mut().find(|(p, _)| p == path) {
-                Some(file) => file.1 = contents,
-                None => files.push((path.to_owned(), contents)),
-            }
-        }
-    }
-    Ok(files)
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -345,39 +226,29 @@ mod tests {
     }
 
     #[test]
-    fn runtime_declarations_need_no_inference() {
-        for f in crate::embedded::files() {
-            let allocator = super::Allocator::default();
-            let source_type = match f.module.lang {
-                crate::embedded::Lang::Tsx => super::SourceType::tsx(),
-                _ => super::SourceType::ts(),
+    fn declarations_cover_every_module() {
+        let files = super::type_definitions(&[]);
+        let has = |path: &str, text: &str| files.iter().any(|(p, t)| p == path && t.contains(text));
+        assert!(has("nsh/index.d.ts", "export declare function signal"));
+        assert!(has("nsh/list.d.ts", "export declare function List"));
+        assert!(has("nsh/ui/mobile.d.ts", "./mobile/index"));
+        assert!(has(
+            "nsh/ui/mobile/navigation.d.ts",
+            "export declare function Stack"
+        ));
+        assert!(has("nsh/ui/mobile/components.gen.d.ts", "Button"));
+        assert!(has("nsh/style.gen.d.ts", "ViewStyle"));
+        assert!(has("nsh/android.gen.d.ts", "Toast"));
+        assert!(has("nsh/image.d.ts", "Image"));
+        // Every module nsh serves has declarations.
+        for spec in nsh_core::js::NATIVE_MODULES {
+            let Some(name) = spec.strip_prefix("nsh/") else {
+                continue;
             };
-            let parsed = super::Parser::new(&allocator, f.module.source, source_type).parse();
-            let ret = super::IsolatedDeclarations::new(
-                &allocator,
-                super::IsolatedDeclarationsOptions {
-                    strip_internal: true,
-                },
-            )
-            .build(&parsed.program);
-            assert!(ret.diagnostics.is_empty(), "{:?}", ret.diagnostics);
+            let path = format!("nsh/{name}.d.ts");
+            assert!(files.iter().any(|(p, _)| *p == path), "{path}");
         }
-        let files = super::type_definitions();
-        assert!(
-            files
-                .iter()
-                .any(|(p, t)| p == "nsh/list.d.ts" && t.contains("export declare function List"))
-        );
-        assert!(
-            files
-                .iter()
-                .any(|(p, t)| p == "nsh/ui/mobile.d.ts" && t.contains("./mobile/index"))
-        );
-        assert!(
-            files
-                .iter()
-                .any(|(p, t)| p == "nsh/ui/mobile/navigation.d.ts"
-                    && t.contains("export declare function Stack"))
-        );
+        // Nothing is left of Solid.
+        assert!(!files.iter().any(|(_, t)| t.contains("solid-js")));
     }
 }

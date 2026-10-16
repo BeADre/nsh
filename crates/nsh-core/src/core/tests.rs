@@ -799,7 +799,7 @@ fn scroll_reports_content_size() {
     )));
 }
 
-/// Plays the JS runtime: creates a cell per new slot, renders a fixed-height
+/// Plays JS: creates a cell per new slot, renders a fixed-height
 /// row for each bind and confirms the index.
 fn render_binds(
     c: &mut Core<FakeEngine>,
@@ -3163,7 +3163,7 @@ mod components {
                     child: 6,
                     before: None,
                 },
-                // Children go before the slot's node (Solid's anchor).
+                // Children go before the slot's node (the anchor).
                 Op::Create {
                     id: 8,
                     tag: Tag::View,

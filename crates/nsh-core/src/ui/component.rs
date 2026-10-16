@@ -48,19 +48,19 @@ pub trait Component: Default + 'static {
     const METHODS: &'static [Method<Self>] = &[];
 
     /// Runs once, before the first render, with the first props: what the
-    /// body of a Solid component does (state from props, timers).
+    /// body of a TS component does (state from props, timers).
     fn setup(&mut self, props: &Self::Props, cx: &mut Context<'_, Self>) {
         let _ = (props, cx);
     }
 
-    /// The props changed since the last render (Solid: an effect `on` a
-    /// prop): adjust the state before the next render.
+    /// The props changed since the last render (TS: an `effect`
+    /// reading a prop): adjust the state before the next render.
     fn props_changed(&mut self, old: &Self::Props, new: &Self::Props, cx: &mut Context<'_, Self>) {
         let _ = (old, new, cx);
     }
 
-    /// What the last render read of the environment changed (Solid: an
-    /// effect on an accessor): side effects of the change, before the
+    /// What the last render read of the environment changed (TS: an
+    /// `effect` reading an accessor): side effects of the change, before the
     /// render it causes (animating with the keyboard, say).
     fn environment_changed(
         &mut self,
@@ -72,7 +72,7 @@ pub trait Component: Default + 'static {
         let _ = (props, old, new, cx);
     }
 
-    /// Runs once when the component goes away (Solid: `onCleanup`), with a
+    /// Runs once when the component goes away (TS: `cleanup`), with a
     /// context to undo what it did outside itself. Its tasks end after it;
     /// its own resources are freed by `Drop`.
     fn cleanup(&mut self, props: &Self::Props, cx: &mut Context<'_, Self>) {
@@ -85,8 +85,8 @@ pub trait Component: Default + 'static {
     fn render(&self, props: &Self::Props, cx: &mut RenderCx<'_, Self>) -> impl IntoElement;
 
     /// A component below this one failed (its code panicked: a render, a
-    /// listener, a task): return true to handle it (Solid:
-    /// `<ErrorBoundary fallback>`), typically keeping the error, rendering
+    /// listener, a task): return true to handle it (an error
+    /// boundary), typically keeping the error, rendering
     /// a fallback instead of the content and clearing it to try again. The
     /// nearest component that handles it does; the failed one renders
     /// nothing until it renders again.
@@ -599,8 +599,8 @@ pub struct Registry {
     modules: Arc<FxHashMap<&'static str, ModuleType>>,
     /// Values and types of `nsh/_core` exported as they are.
     reexports: Arc<(Vec<&'static str>, Vec<&'static str>)>,
-    /// Values only the native runtime provides (apps compiled by nsh); the
-    /// JS runtime's are in the set's own JS until it goes.
+    /// Values `nsh-js` makes for the set (declared by hand, not generated
+    /// from a spec).
     native_values: Arc<Vec<&'static str>>,
     /// The runtime module the functions belong to (`nsh/android`): JS
     /// calls them as `nsh/android:Toast.show`, apart from any UI set's.
@@ -676,8 +676,8 @@ impl Registry {
         (&self.reexports.0, &self.reexports.1)
     }
 
-    /// Exports `values` of the native runtime (apps compiled by nsh): what
-    /// the set's own JS provides to the JS runtime (`Stack`, `Screen`).
+    /// Exports `values` `nsh-js` makes for the set (`Stack`, `Screen`),
+    /// declared by hand rather than generated from a spec.
     pub fn native_values(&mut self, values: &[&'static str]) -> &mut Self {
         Arc::make_mut(&mut self.native_values).extend_from_slice(values);
         self
@@ -737,11 +737,11 @@ impl Registry {
     }
 }
 
-/// The JS glue and TypeScript declarations of what `registry` exports: one
-/// component per spec (exported by its [`ComponentSpec::export`] name,
-/// built on `nsh/_core`'s `component` helper), one object per module
-/// (`module`; merged into a component of the same name), and the runtime's
-/// re-exports.
+/// TypeScript of what `registry` exports, from which the bundler takes the
+/// declarations (`components.gen.d.ts`; the values themselves are made by
+/// `nsh-js`): one component per spec (by its [`ComponentSpec::export`]
+/// name), one object per module (merged into a component of the same
+/// name), and the runtime's re-exports.
 pub fn typescript(registry: &Registry) -> String {
     let specs = registry.specs();
     let modules = registry.module_specs();

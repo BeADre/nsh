@@ -1,4 +1,4 @@
-//! Apps compiled by nsh's JSX compiler end to end:
+//! Apps end to end:
 //! one TSX file importing only `nsh`, bundled as an ES module, run on the
 //! native modules through bytecode, tapped after the idle GC.
 

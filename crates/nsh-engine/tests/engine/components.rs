@@ -376,7 +376,7 @@ fn a_sibling_coming_back_does_not_move_a_rust_input_on(
     );
 }
 
-// --- The same through apps compiled by nsh (native modules) -------------------
+// --- Through the native modules ------------------------------------------------
 
 const CARD: &str = r#"import { signal, mount } from "nsh";
 import { Button, Card } from "nsh/ui/mobile";

@@ -1,4 +1,4 @@
-//! `style.gen.ts`: the style interfaces (`LayoutStyle`, `ViewStyle`,
+//! `style.gen.ts` (declarations): the style interfaces (`LayoutStyle`, `ViewStyle`,
 //! `TextStyle`, `ImageStyle`) from the core's table of style properties,
 //! each with the TypeScript type of what its parser takes.
 

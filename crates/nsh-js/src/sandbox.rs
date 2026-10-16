@@ -10,9 +10,9 @@
 //! toward a limit; only a single call that does not return in time is cut
 //! off.
 //!
-//! The JS runtime (solid-js, `js/runtime`) is compiled into every bundle, so
-//! it is exactly as trusted as the app's own code: limits and checks are
-//! enforced here, in Rust, never in JS.
+//! A bundle holds only the app's code (nsh's runtime is native), so
+//! nothing in JS is trusted: limits and checks are enforced here, in Rust,
+//! never in JS.
 
 use std::{cell::Cell, rc::Rc, time::Instant};
 
