@@ -105,6 +105,7 @@ impl Host {
             ..Shared::default()
         });
         ctx.with(|ctx| {
+            crate::reactive::install(&ctx);
             install(&ctx, &shared)?;
             if options.harden {
                 sandbox::harden(&ctx)?;
@@ -473,6 +474,7 @@ impl Drop for Host {
         // Persistent JS values must be freed before the runtime.
         self.shared.timers.borrow_mut().clear();
         self.shared.frames.borrow_mut().clear();
+        self.ctx.with(|ctx| crate::reactive::uninstall(&ctx));
     }
 }
 

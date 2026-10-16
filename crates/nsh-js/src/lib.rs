@@ -15,6 +15,7 @@ mod error;
 mod host;
 mod net;
 mod protocol;
+mod reactive;
 mod sandbox;
 mod timers;
 mod web;
