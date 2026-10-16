@@ -2,7 +2,7 @@
 //!
 //! [`Host`] owns one QuickJS runtime and context, installs the host APIs the
 //! runtime needs (`console`, timers, the op bridge, web APIs such as
-//! `fetch`), decodes the op buffer
+//! `fetch`, the native reactive graph), decodes the op buffer
 //! produced by `js/runtime/index.ts` into [`nsh_core::Op`]s and dispatches
 //! native events back into JS.
 //!

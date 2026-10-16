@@ -963,12 +963,9 @@ unsafe extern "C" fn create_memo(
     g.nodes[id as usize].equals = equals;
     g.nodes[id as usize].handle = true;
     let obj = object(ctx, g.classes.memo, id);
-    let g = unsafe { graph(ctx) };
-    if g.updates.is_some() {
-        g.queue_update(id);
-    } else {
-        update_computation(ctx, id);
-    }
+    // At once, inside a round too: what is made while rendering reads it
+    // right away (as in Solid without transitions).
+    update_computation(ctx, id);
     finish(ctx, obj)
 }
 
@@ -988,9 +985,9 @@ fn create_effect(ctx: *mut JsContext, argc: c_int, argv: *mut JsValue, kind: Kin
         } else {
             update_computation(ctx, id);
         }
-    } else if g.updates.is_some() {
-        g.queue_update(id);
     } else {
+        // A render effect runs at once, inside a round too: a provider
+        // returns what its effect rendered.
         update_computation(ctx, id);
     }
     finish(ctx, UNDEFINED)
@@ -1565,6 +1562,51 @@ mod tests {
                 return log;
             "#),
             "[0,1]"
+        );
+    }
+
+    #[test]
+    fn a_memo_bumped_in_a_batch_updates_its_readers() {
+        // Hot reload's component proxies: a memo of a version signal.
+        assert_eq!(
+            run(r#"
+                const [v, setV] = R.createSignal(0);
+                let fn = () => "a";
+                const log = [];
+                R.createRoot((dispose) => {
+                    const m = R.createMemo(() => { v(); return R.untrack(() => fn()); });
+                    R.createRenderEffect(() => log.push(m()));
+                });
+                fn = () => "b";
+                R.batch(() => setV((x) => x + 1));
+                return log;
+            "#),
+            r#"["a","b"]"#
+        );
+    }
+
+    #[test]
+    fn computations_made_during_an_update_run_at_once() {
+        // A provider made while a list renders a new item returns what its
+        // render effect produced, so the effect must not wait in the queue.
+        assert_eq!(
+            run(r#"
+                const [items, setItems] = R.createSignal([0]);
+                const log = [];
+                R.createRoot(() => {
+                    R.createRenderEffect(() => {
+                        for (const i of items()) {
+                            let made;
+                            R.createRenderEffect(() => { made = i; });
+                            const m = R.createMemo(() => i * 10);
+                            log.push([made, m()]);
+                        }
+                    });
+                });
+                setItems([0, 1]);
+                return log;
+            "#),
+            r#"[[0,0],[0,0],[1,10]]"#
         );
     }
 

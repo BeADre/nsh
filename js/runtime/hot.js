@@ -31,7 +31,6 @@ globalThis.__nsh_hot = (() => {
   /** module id -> render disposers */
   const renders = new Map();
   const proxies = new WeakSet();
-  let solidId = null;
   let entry = null;
   /** The module running now. */
   let current = null;
@@ -40,7 +39,8 @@ globalThis.__nsh_hot = (() => {
   /** Components to render again once the update ran. */
   let stale = [];
 
-  const solid = () => load(solidId);
+  /** The native reactive graph (`nsh-js` `reactive.rs`). */
+  const reactive = globalThis.__nsh_reactive;
 
   function resolve(from, spec) {
     if (!spec.startsWith(".")) return spec;
@@ -111,9 +111,8 @@ globalThis.__nsh_hot = (() => {
       if (isFixed) fixed.add(id);
     },
 
-    /** Starts the app: `solid` is the id of solid-js, `main` the entry. */
-    start(solidModule, main) {
-      solidId = solidModule;
+    /** Starts the app: `main` is the id of the entry. */
+    start(main) {
       entry = main;
       load(main);
     },
@@ -154,7 +153,7 @@ globalThis.__nsh_hot = (() => {
         order.push(id);
       };
       for (const id of rerun) visit(id);
-      const { batch } = solid();
+      const { batch } = reactive;
       try {
         for (const id of order) {
           forced = !(id in defs);
@@ -185,7 +184,7 @@ globalThis.__nsh_hot = (() => {
         c.sig = sig;
         return c.proxy;
       }
-      const { createSignal, createMemo, untrack } = solid();
+      const { createSignal, createMemo, untrack } = reactive;
       const [version, setVersion] = createSignal(0);
       c = { fn, sig, setVersion };
       c.proxy = (props) =>

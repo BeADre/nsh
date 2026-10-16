@@ -31,12 +31,11 @@ const fn lang_of(path: &str) -> Lang {
     }
 }
 
-/// Virtual id of solid-js.
-pub(crate) const SOLID_ID: &str = "\0nsh:solid-js";
-
 const SOLID: Embedded = Embedded {
-    id: SOLID_ID,
-    source: include_str!("../../../js/vendor/solid-js/solid.js"),
+    id: "\0nsh:solid-js",
+    // Transitional: Solid's API on the native reactive graph (`nsh-js`
+    // `reactive.rs`).
+    source: include_str!("../../../js/runtime/_reactive.js"),
     lang: Lang::Js,
 };
 

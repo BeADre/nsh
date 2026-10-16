@@ -3,7 +3,7 @@
 ## Data flow and threads
 
 ```
-JS (engine thread, QuickJS)  Solid components -> js/runtime pushes changes into one flat array -> __nsh_commit(ops) in a microtask
+JS (engine thread, QuickJS)  components on the native reactive graph -> js/runtime pushes changes into one flat array -> __nsh_commit(ops) in a microtask
 nsh-js                        decodes the op buffer in Rust (tags, style objects and event names are parsed here) -> Vec<Op>
 nsh-core (engine thread)      apply(Op) maintains the shadow tree -> commit(): render components, rebuild text, Taffy layout, diff frames -> MountBatch
 Platform (main thread)       one main-queue hop per commit, applying MountItems to native views in order
@@ -11,6 +11,9 @@ Input                        native gestures -> EngineControl::dispatch_event ->
 ```
 
 - The platform main thread never waits for JS.
+- **Reactivity is native**: signals, memos, effects, owners and context are a graph in Rust (`crates/nsh-js/src/reactive.rs`,
+  Solid 1.9's algorithm) whose nodes are QuickJS objects of native classes, so the QuickJS GC sees the cycles through them.
+  JS reaches it through `globalThis.__nsh_reactive`; `js/runtime/_reactive.js` (transitional) puts Solid's API on top of it.
 - **Text is laid out once**: `TextEngine` (defined in core) runs `prepare` on the engine thread (Apple: CTFramesetter) → `measure` at various widths →
   `layout` at the final size after layout (Apple: CTFrame). `MountItem::Text` hands the immutable result to the main thread, which only draws it
   (`CTFrameDraw` in `TextView`'s `drawRect`); the main thread never lays out text. Android's counterpart is `StaticLayout` (like RN's PreparedLayout).

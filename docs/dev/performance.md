@@ -10,8 +10,8 @@ after `nsh trace` timings and item counts. Current baselines (Apple Silicon):
 - gallery Photos list (`examples/gallery/Bench.tsx`, debug, headless): first frame 653 ops / 224 nodes, ~2.7ms (list bind
   rounds included).
 - Photos scrolling (release): a frame that rebinds one row is 4 ops / 4 mount items; frames that reveal no new row call no JS and produce
-  no batch. `list_bench` runs at ~20–30µs per frame back to back (JS ~20µs) and ~40µs with caches flushed between frames, but ~150µs after the
-  thread sleeps 10ms. The difference is the CPU clocking down while the thread sleeps (Apple CLPC), not the code path; neither QoS (the engine
+  no batch. `list_bench` runs at ~9µs per frame back to back (JS ~4µs; ~30µs / JS ~20µs before reactivity went native) and
+  ~50µs with caches flushed between frames, but ~60–150µs after the thread sleeps 10ms. The difference is the CPU clocking down while the thread sleeps (Apple CLPC), not the code path; neither QoS (the engine
   thread is USER_INTERACTIVE) nor the Mach time-constraint policy changes it. Judge optimizations by the back-to-back and flushed-cache numbers:
   single-frame `nsh trace` timings are dominated by the clock state.
 - On Catalyst (release), rebinding one row while scrolling slowly takes ~0.4ms (clocked down) and rebinding a whole screen of ~32 rows on a
@@ -47,8 +47,10 @@ after `nsh trace` timings and item counts. Current baselines (Apple Silicon):
   it replaced did (0.57ms).
 
 - Where JS time goes (release `nsh trace`, which logs `event js` per dispatched event; 2026-10-16, the baseline of the
-  native JS runtime): the empty app's eval is ~250µs (all of it the runtime and Solid starting), counter's ~380µs
-  (first frame ~500µs); a counter tap spends a median 52µs in JS (handler, Solid's updates, the microtask flush and
-  the op decode) against 17µs of core commit (11 ops, 10 items); a gallery list rebind frame is 24µs, 16µs of it JS.
+  native JS runtime): with Solid in JS, the empty app's eval was ~250µs (all of it the runtime and Solid starting),
+  counter's ~380µs (first frame ~500µs), and a counter tap spent a median 52µs in JS (handler, Solid's updates, the
+  microtask flush and the op decode) against 17µs of core commit (11 ops, 10 items). The native reactive graph
+  (`nsh-js` `reactive.rs`), measured A/B on the same loaded machine: empty eval ~210µs vs ~300µs, counter eval ~330µs
+  vs ~460µs, counter tap median ~47µs vs ~69µs in JS, gallery list rebind (`list_bench`) JS ~4µs vs ~21µs per frame.
 
 The dev profile builds `rquickjs-sys` and `taffy` with `opt-level = 3`, so debug timings are meaningful too; release uses fat LTO.

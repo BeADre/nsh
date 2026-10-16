@@ -24,7 +24,8 @@
 - Build failures, bundle evaluation failures and uncaught exceptions show a red overlay on the host (tap to dismiss); it disappears on the next
   successful reload.
 - **Hot module replacement** (`nsh dev` / `nsh run` without `--release`): development bundles keep one CommonJS chunk per module
-  (rolldown `preserveModules`, tree shaking off so solid-js and the runtime export everything), each registered with the hot
+  (rolldown `preserveModules`, tree shaking off; rolldown still leaves out the exports of embedded modules that no module
+  imports, so an edit that starts using one changes that embedded module and reloads), each registered with the hot
   runtime (`js/runtime/hot.js`). After a rebuild the CLI compares the chunks with the last good build and publishes a patch
   (`ServerMessage::Patch`, protocol v2) before the full bundle; hosts running the patch's base apply it in place
   (`EngineControl::hot_update`, ~0.2–0.5ms) and otherwise load the bundle. The runtime runs the changed modules again, plus the

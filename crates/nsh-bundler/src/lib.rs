@@ -255,8 +255,6 @@ pub struct HotBundle {
     modules: Vec<HotModule>,
     /// Module id of the entry.
     entry: String,
-    /// Module id of solid-js (used by the hot runtime).
-    solid: String,
     /// Asset files the app imports (as in [`Bundle::assets`]).
     pub assets: Vec<PathBuf>,
     /// As in [`Bundle::capabilities`].
@@ -307,14 +305,14 @@ impl HotBundle {
             let close = if m.embedded { "}, true);" } else { "});" };
             append_module(&mut joiner, m, &open, close);
         }
-        joiner.append_source(format!("{HOT}.start({:?}, {:?});", self.solid, self.entry));
+        joiner.append_source(format!("{HOT}.start({:?});", self.entry));
         let (code, map) = joiner.join();
         (code, map.map(|m| m.to_json_string()))
     }
 
     /// The update from `previous` (what hosts run) to this bundle.
     pub fn patch(&self, previous: &HotBundle) -> HotPatch {
-        if self.entry != previous.entry || self.solid != previous.solid {
+        if self.entry != previous.entry {
             return HotPatch::Reload;
         }
         let old: std::collections::HashMap<&str, &HotModule> = previous
@@ -411,9 +409,9 @@ pub async fn bundle_hot_async(entry: &std::path::Path) -> Result<HotBundle, Bund
             // again in place is seen by its importers.
             format: Some(OutputFormat::Cjs),
             preserve_modules: Some(true),
-            // Every export stays: an edit may start using one of solid-js
-            // or the runtime that the app did not use before, and those
-            // modules are never replaced.
+            // Every statement stays. Rolldown still leaves out the exports
+            // no module imports: an edit that starts using one changes that
+            // embedded module, and `patch` reloads.
             treeshake: rolldown_common::TreeshakeOptions::Boolean(false),
             platform: Some(Platform::Browser),
             sourcemap: Some(SourceMapType::Hidden),
@@ -435,7 +433,7 @@ pub async fn bundle_hot_async(entry: &std::path::Path) -> Result<HotBundle, Bund
         }
     })?;
     let mut modules = Vec::new();
-    let (mut entry_id, mut solid) = (None, None);
+    let mut entry_id = None;
     for asset in output.assets {
         let Output::Chunk(chunk) = asset else {
             continue;
@@ -445,13 +443,6 @@ pub async fn bundle_hot_async(entry: &std::path::Path) -> Result<HotBundle, Bund
             .module_ids
             .iter()
             .any(|m| m.as_str().starts_with('\0'));
-        if chunk
-            .module_ids
-            .iter()
-            .any(|m| m.as_str() == embedded::SOLID_ID)
-        {
-            solid = Some(id.clone());
-        }
         if chunk.is_entry {
             entry_id = Some(id.clone());
         }
@@ -471,7 +462,6 @@ pub async fn bundle_hot_async(entry: &std::path::Path) -> Result<HotBundle, Bund
     Ok(HotBundle {
         modules,
         entry: entry_id.ok_or_else(|| BundleError::other("bundle produced no entry chunk"))?,
-        solid: solid.ok_or_else(|| BundleError::other("the bundle does not include solid-js"))?,
         assets,
         capabilities,
         elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
