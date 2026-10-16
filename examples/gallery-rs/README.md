@@ -6,7 +6,7 @@ gallery (`examples/gallery`).
 
 ```sh
 cargo build -p nsh-cli
-./target/debug/nsh run examples/gallery-rs/App.tsx --target ios   # or android, catalyst
+./target/debug/nsh run examples/gallery-rs --target ios   # or android, catalyst
 ```
 
 `nsh` builds the app its own command line and hosts with the crate linked in (`docs/dev/tooling.md`, "Apps with Rust
