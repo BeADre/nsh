@@ -27,15 +27,15 @@
 //! expressions are moved into the holes: they keep their spans (the source
 //! map points at them), generated nodes take their JSX element's.
 
-use std::cell::Cell;
+use std::{cell::Cell, collections::HashMap};
 
 use oxc::{
     allocator::{Allocator, TakeIn},
     ast::{
         ast::{
-            Expression, JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild,
-            JSXElement, JSXElementName, JSXExpression, JSXFragment, JSXMemberExpression,
-            JSXMemberExpressionObject, Program,
+            Expression, ImportDeclarationSpecifier, JSXAttributeItem, JSXAttributeName,
+            JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression, JSXFragment,
+            JSXMemberExpression, JSXMemberExpressionObject, ModuleExportName, Program, Statement,
         },
         builder::AstBuilder,
     },
@@ -80,9 +80,101 @@ const HELPERS: &[&str] = &[
 /// Prefix of generated names; apps do not use it.
 const HOLE: &str = "__nsh_h";
 
+/// Where a module's top-level bindings come from, for the types of the
+/// components it names in kebab case.
+#[derive(Default)]
+struct Origins {
+    /// Local name -> (import source, imported name).
+    imports: HashMap<String, (String, String)>,
+    /// Local names the module exports -> their export names.
+    exports: HashMap<String, String>,
+}
+
+fn export_name(n: &ModuleExportName<'_>) -> String {
+    match n {
+        ModuleExportName::IdentifierName(n) => n.name.to_string(),
+        ModuleExportName::IdentifierReference(n) => n.name.to_string(),
+        ModuleExportName::StringLiteral(n) => n.value.to_string(),
+    }
+}
+
+impl Origins {
+    fn of(program: &Program<'_>) -> Origins {
+        use oxc::ast::ast::{BindingPattern, Declaration, ExportDefaultDeclarationKind as K};
+        let mut o = Origins::default();
+        for statement in &program.body {
+            match statement {
+                Statement::ImportDeclaration(i) => {
+                    for spec in i.specifiers.iter().flatten() {
+                        let (local, imported) = match spec {
+                            ImportDeclarationSpecifier::ImportSpecifier(s) => {
+                                (s.local.name.to_string(), export_name(&s.imported))
+                            }
+                            ImportDeclarationSpecifier::ImportDefaultSpecifier(s) => {
+                                (s.local.name.to_string(), "default".to_owned())
+                            }
+                            ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => continue,
+                        };
+                        o.imports
+                            .insert(local, (i.source.value.to_string(), imported));
+                    }
+                }
+                Statement::ExportDeclaration(e) => match &e.declaration {
+                    Declaration::FunctionDeclaration(f) => {
+                        if let Some(id) = &f.id {
+                            o.exports.insert(id.name.to_string(), id.name.to_string());
+                        }
+                    }
+                    Declaration::ClassDeclaration(c) => {
+                        if let Some(id) = &c.id {
+                            o.exports.insert(id.name.to_string(), id.name.to_string());
+                        }
+                    }
+                    Declaration::VariableDeclaration(v) => {
+                        for d in &v.declarations {
+                            if let BindingPattern::BindingIdentifier(id) = &d.id {
+                                o.exports.insert(id.name.to_string(), id.name.to_string());
+                            }
+                        }
+                    }
+                    _ => {}
+                },
+                Statement::ExportNamedDeclaration(e) => {
+                    for spec in &e.specifiers {
+                        o.exports
+                            .insert(export_name(&spec.local), export_name(&spec.exported));
+                    }
+                }
+                Statement::ExportDefaultDeclaration(e) => {
+                    let id = match &e.declaration {
+                        K::FunctionDeclaration(f) => f.id.as_ref(),
+                        K::ClassDeclaration(c) => c.id.as_ref(),
+                        _ => None,
+                    };
+                    if let Some(id) = id {
+                        o.exports.insert(id.name.to_string(), "default".to_owned());
+                    }
+                }
+                _ => {}
+            }
+        }
+        o
+    }
+}
+
+/// A component a module names in kebab case, for the editor's JSX types.
+pub(crate) struct KebabUse {
+    pub(crate) tag: String,
+    /// Where its type can be imported from: (an import's specifier, or
+    /// `None` for this module; the export); `None` when it is neither
+    /// imported nor exported.
+    pub(crate) source: Option<(Option<String>, String)>,
+}
+
 /// Compiles the JSX of `program` (TypeScript already removed; `scoping`
-/// its scopes). `prologue` is JS run first (the entry's setup). Errors come
-/// back rendered with a code frame of `source`.
+/// its scopes). `prologue` is JS run first (the entry's setup). Returns the
+/// components named in kebab case. Errors come back rendered with a code
+/// frame of `source`.
 pub(crate) fn transform<'a>(
     allocator: &'a Allocator,
     program: &mut Program<'a>,
@@ -90,7 +182,8 @@ pub(crate) fn transform<'a>(
     source: &str,
     prologue: Option<&str>,
     components: &[&str],
-) -> Result<(), String> {
+) -> Result<Vec<KebabUse>, String> {
+    let origins = Origins::of(program);
     let mut compiler = Compiler {
         allocator,
         scoping,
@@ -99,10 +192,28 @@ pub(crate) fn transform<'a>(
         used: [false; HELPERS.len()],
         vars: Cell::new(0),
         components,
+        kebab: Vec::new(),
     };
     compiler.visit_program(program);
     if let Some(err) = compiler.errors.into_iter().next() {
         return Err(err.render_with_source_code(source.to_owned()));
+    }
+    let mut uses: Vec<KebabUse> = Vec::new();
+    for (tag, binding, top_level) in std::mem::take(&mut compiler.kebab) {
+        if uses.iter().any(|u| u.tag == tag) {
+            continue;
+        }
+        let source = if !top_level {
+            None
+        } else if let Some((module, imported)) = origins.imports.get(&binding) {
+            Some((Some(module.clone()), imported.clone()))
+        } else {
+            origins
+                .exports
+                .get(&binding)
+                .map(|exported| (None, exported.clone()))
+        };
+        uses.push(KebabUse { tag, source });
     }
     let mut head = String::new();
     if let Some(prologue) = prologue {
@@ -116,7 +227,7 @@ pub(crate) fn transform<'a>(
         .map(|(name, _)| format!("{name} as _${name}"))
         .collect();
     if imports.is_empty() {
-        return Ok(());
+        return Ok(uses);
     }
     let text = format!(
         "import {{ {} }} from \"nsh:rt\";\n{head}",
@@ -138,7 +249,7 @@ pub(crate) fn transform<'a>(
     let rest = program.body.take_in(&AstBuilder::new(allocator));
     body.extend(rest);
     program.body = body;
-    Ok(())
+    Ok(uses)
 }
 
 fn helper(name: &str) -> usize {
@@ -354,6 +465,8 @@ struct Compiler<'a, 's> {
     vars: Cell<usize>,
     /// Components of the UI sets apps import (`Button`), for hints.
     components: &'s [&'s str],
+    /// Kebab tags that named bindings: (tag, binding, in the module scope).
+    kebab: Vec<(String, String, bool)>,
 }
 
 impl<'a> VisitMut<'a> for Compiler<'a, '_> {
@@ -402,14 +515,16 @@ impl<'a> Compiler<'a, '_> {
         format!("{HOLE}v{n}")
     }
 
-    /// The capitalized binding in scope whose kebab-case name is `tag`.
-    fn kebab_binding(&self, tag: &str) -> Option<String> {
+    /// The capitalized binding in scope whose kebab-case name is `tag`, and
+    /// whether it is the module's.
+    fn kebab_binding(&self, tag: &str) -> Option<(String, bool)> {
         let mut scope = self.scopes.last().copied();
         while let Some(id) = scope {
             for name in self.scoping.get_bindings(id).keys() {
                 let name = name.as_str();
                 if name.starts_with(|c: char| c.is_ascii_uppercase()) && kebab(name) == tag {
-                    return Some(name.to_owned());
+                    let top = id == self.scoping.root_scope_id();
+                    return Some((name.to_owned(), top));
                 }
             }
             scope = self.scoping.scope_parent_id(id);
@@ -421,7 +536,8 @@ impl<'a> Compiler<'a, '_> {
         match name {
             JSXElementName::Identifier(id) => {
                 let tag = id.name.as_str();
-                if let Some(binding) = self.kebab_binding(tag) {
+                if let Some((binding, top)) = self.kebab_binding(tag) {
+                    self.kebab.push((tag.to_owned(), binding.clone(), top));
                     return Some(Tag::Component(binding));
                 }
                 match tag {
@@ -1008,7 +1124,7 @@ mod tests {
             source,
             None,
         )
-        .map(|(code, _)| code)
+        .map(|(code, ..)| code)
     }
 
     /// The code with whitespace collapsed, for comparisons.

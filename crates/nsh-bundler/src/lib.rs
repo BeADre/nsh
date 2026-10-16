@@ -29,7 +29,19 @@ use rolldown::{
     plugin::Pluginable,
 };
 use rolldown_common::Output;
-pub use types::{TSCONFIG, type_definitions};
+pub use types::{TSCONFIG, type_definitions, type_definitions_for};
+
+/// A component an app compiled by nsh names in kebab case
+/// (`<weather-panel>`), for the editor's JSX types.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppElement {
+    /// The tag.
+    pub tag: String,
+    /// Where its type is imported from: a module (`./App`, relative to the
+    /// app directory, or a package) and its export; `None` when the
+    /// component is not exported (its props are not checked).
+    pub source: Option<(String, String)>,
+}
 
 /// The JSX compiler and runtime an app uses (`nsh.json` `"compiler"`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,8 +53,8 @@ pub(crate) enum Compiler {
     Nsh,
 }
 
-/// The `"compiler"` of the `nsh.json` next to the entry.
-fn compiler(dir: &std::path::Path) -> Result<Compiler, BundleError> {
+/// The `"compiler"` of the `nsh.json` in `dir`.
+pub(crate) fn compiler(dir: &std::path::Path) -> Result<Compiler, BundleError> {
     let Ok(text) = std::fs::read_to_string(dir.join("nsh.json")) else {
         return Ok(Compiler::Solid);
     };
@@ -140,6 +152,8 @@ pub struct Bundle {
     /// What the app declares it may reach (`nsh.json` `capabilities`);
     /// `None` without a declaration.
     pub capabilities: Option<nsh_core::access::Capabilities>,
+    /// With nsh's compiler: the components the app names in kebab case.
+    pub elements: Vec<AppElement>,
     /// Wall time spent bundling, in milliseconds.
     pub elapsed_ms: f64,
 }
@@ -217,6 +231,7 @@ pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError
     let compiler = compiler(&cwd)?;
     let plugin_error = Arc::new(Mutex::new(None));
     let assets = Arc::new(Mutex::new(Vec::new()));
+    let elements = Arc::new(Mutex::new(Vec::new()));
     let mut bundler = Bundler::with_plugins(
         BundlerOptions {
             input: Some(vec![InputItem {
@@ -248,6 +263,7 @@ pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError
             tailwind,
             compiler,
             entry: entry.clone(),
+            elements: elements.clone(),
         })],
     )
     .map_err(|e| BundleError::new(e.into_vec()))?;
@@ -276,11 +292,14 @@ pub async fn bundle_async(options: &BundleOptions) -> Result<Bundle, BundleError
         .collect();
     assets.sort();
     assets.dedup();
+    let mut elements = std::mem::take(&mut *elements.lock().expect("elements lock"));
+    elements.sort_by(|a, b| a.tag.cmp(&b.tag));
     Ok(Bundle {
         code,
         source_map,
         assets,
         capabilities,
+        elements,
         elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
     })
 }
@@ -298,6 +317,8 @@ pub struct HotBundle {
     /// With nsh's compiler: the whole bundle (an ES module) and its source
     /// map; any change reloads it.
     whole: Option<(String, Option<String>)>,
+    /// As in [`Bundle::elements`].
+    pub elements: Vec<AppElement>,
     /// Asset files the app imports (as in [`Bundle::assets`]).
     pub assets: Vec<PathBuf>,
     /// As in [`Bundle::capabilities`].
@@ -456,6 +477,7 @@ pub async fn bundle_hot_async(entry: &std::path::Path) -> Result<HotBundle, Bund
             modules: Vec::new(),
             entry: String::new(),
             whole: Some((bundle.code, bundle.source_map)),
+            elements: bundle.elements,
             assets: bundle.assets,
             capabilities: bundle.capabilities,
             elapsed_ms: bundle.elapsed_ms,
@@ -494,6 +516,7 @@ pub async fn bundle_hot_async(entry: &std::path::Path) -> Result<HotBundle, Bund
             tailwind,
             compiler: Compiler::Solid,
             entry: entry.clone(),
+            elements: Arc::default(),
         })],
     )
     .map_err(|e| BundleError::new(e.into_vec()))?;
@@ -533,6 +556,7 @@ pub async fn bundle_hot_async(entry: &std::path::Path) -> Result<HotBundle, Bund
     Ok(HotBundle {
         modules,
         whole: None,
+        elements: Vec::new(),
         entry: entry_id.ok_or_else(|| BundleError::other("bundle produced no entry chunk"))?,
         assets,
         capabilities,

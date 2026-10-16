@@ -22,10 +22,12 @@ crates/
   nsh-ui-mobile/       The components and modules of `nsh/ui/mobile` (Button, SafeAreaView, StatusBar, Alert, ...), written in Rust; their JS glue is generated
   nsh-anim/            Native animation graph (pure Rust): value / interpolate / math nodes, timing / spring / decay drivers
   nsh-js/              QuickJS host: console / timers / op bridge, op buffer decoding, bytecode compilation and loading;
-                       the native reactive graph (`reactive.rs`: signals, memos, effects, owners, context)
+                       the native reactive graph (`reactive.rs`: signals, memos, effects, owners, context), the native
+                       modules `nsh` / `nsh:rt` (`modules.rs`) and the renderer of compiled JSX (`dom.rs`)
   nsh-engine/          Engine thread: drives nsh-js + nsh-core and hands one MountBatch per frame to the platform
   nsh-package/         Signed packages (`.nshpkg`): Ed25519 keys, release-key certificates, revocation lists, the trust store
   nsh-bundler/         Bundler: rolldown + Oxc (TS stripping) + Solid universal JSX compiler + embedded JS packages + source maps;
+                       nsh's own JSX compiler (`jsx.rs`, apps with `"compiler": "nsh"`: docs/dev/native-pipeline.md);
                        the `nsh:tailwind-theme` module (nsh.json `tailwind`) and the unknown-class check (`classes.rs`);
                        development bundles with hot module replacement (`hot.rs`); the TypeScript declarations of `.nsh/types` (`types.rs`)
   nsh-dev/             Dev tooling: dev server protocol, server (CLI, feature `server`), client (host, feature `client`)
@@ -65,6 +67,7 @@ on any platform or JS crate.
 | Changing | Read |
 |---|---|
 | threads, the JS → native data flow, text pipeline | `docs/dev/architecture.md` |
+| nsh's JSX compiler, the native modules and renderer | `docs/dev/native-pipeline.md` |
 | JS modules, where a new API goes, platform props | `docs/dev/js-modules.md` |
 | elements, touch, accessibility, the environment | `docs/dev/elements.md`, `text.md` |
 | styles, Tailwind, effects | `docs/dev/styles.md` |

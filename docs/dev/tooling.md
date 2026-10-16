@@ -23,6 +23,9 @@
   to stderr when disconnected.
 - Build failures, bundle evaluation failures and uncaught exceptions show a red overlay on the host (tap to dismiss); it disappears on the next
   successful reload.
+- **Apps compiled by nsh** (`"compiler": "nsh"`): `.nsh/types` holds the native `nsh` and a JSX namespace with the
+  app's kebab-case components, rewritten after every build; development builds reload the whole bundle (no hot module
+  replacement yet). See `native-pipeline.md`.
 - **Hot module replacement** (`nsh dev` / `nsh run` without `--release`): development bundles keep one CommonJS chunk per module
   (rolldown `preserveModules`, tree shaking off; rolldown still leaves out the exports of embedded modules that no module
   imports, so an edit that starts using one changes that embedded module and reloads), each registered with the hot

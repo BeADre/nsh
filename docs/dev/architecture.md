@@ -14,6 +14,8 @@ Input                        native gestures -> EngineControl::dispatch_event ->
 - **Reactivity is native**: signals, memos, effects, owners and context are a graph in Rust (`crates/nsh-js/src/reactive.rs`,
   Solid 1.9's algorithm) whose nodes are QuickJS objects of native classes, so the QuickJS GC sees the cycles through them.
   JS reaches it through `globalThis.__nsh_reactive`; `js/runtime/_reactive.js` (transitional) puts Solid's API on top of it.
+- **Apps compiled by nsh** (`"compiler": "nsh"`, `native-pipeline.md`) import the native modules `nsh` and `nsh:rt`
+  instead: the renderer pushes ops straight into the host's queue, with no JS runtime in the bundle.
 - **Text is laid out once**: `TextEngine` (defined in core) runs `prepare` on the engine thread (Apple: CTFramesetter) → `measure` at various widths →
   `layout` at the final size after layout (Apple: CTFrame). `MountItem::Text` hands the immutable result to the main thread, which only draws it
   (`CTFrameDraw` in `TextView`'s `drawRect`); the main thread never lays out text. Android's counterpart is `StaticLayout` (like RN's PreparedLayout).

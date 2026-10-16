@@ -52,5 +52,8 @@ after `nsh trace` timings and item counts. Current baselines (Apple Silicon):
   microtask flush and the op decode) against 17µs of core commit (11 ops, 10 items). The native reactive graph
   (`nsh-js` `reactive.rs`), measured A/B on the same loaded machine: empty eval ~210µs vs ~300µs, counter eval ~330µs
   vs ~460µs, counter tap median ~47µs vs ~69µs in JS, gallery list rebind (`list_bench`) JS ~4µs vs ~21µs per frame.
+- The native pipeline (`native-pipeline.md`), release, the same counter app (a counter, `<if>`, a 3-row `<each>`) on
+  both: bundle 886 B JS / 1.7 KB bytecode vs 14 KB / 19.6 KB, eval ~95µs vs ~390µs, tap median ~5µs vs ~14µs in JS,
+  commit ~15µs vs ~22µs.
 
 The dev profile builds `rquickjs-sys` and `taffy` with `opt-level = 3`, so debug timings are meaningful too; release uses fat LTO.

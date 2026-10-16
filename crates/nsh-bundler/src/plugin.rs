@@ -50,6 +50,8 @@ pub(crate) struct NshPlugin {
     pub(crate) compiler: Compiler,
     /// The entry module (with nsh's compiler, it sets up the themes).
     pub(crate) entry: PathBuf,
+    /// With nsh's compiler: the components the app names in kebab case.
+    pub(crate) elements: Arc<Mutex<Vec<crate::AppElement>>>,
 }
 
 /// The `"tailwind"` and `"theme"` of the app's `nsh.json`.
@@ -319,8 +321,24 @@ impl Plugin for NshPlugin {
                 }
             }
             let prologue = if entry { self.prologue() } else { None };
-            let (code, map) = compile_native(path, source_type, args.code, prologue.as_deref())
-                .map_err(|detail| self.fail(path, &detail))?;
+            let (code, map, uses) =
+                compile_native(path, source_type, args.code, prologue.as_deref())
+                    .map_err(|detail| self.fail(path, &detail))?;
+            let module = path
+                .strip_prefix(&self.root)
+                .unwrap_or(path)
+                .with_extension("");
+            let mut elements = self.elements.lock().expect("elements lock");
+            for u in uses {
+                elements.retain(|e| e.tag != u.tag);
+                elements.push(crate::AppElement {
+                    tag: u.tag,
+                    source: u.source.map(|(specifier, export)| {
+                        (type_module(&module, specifier.as_deref()), export)
+                    }),
+                });
+            }
+            drop(elements);
             return Ok(Some(HookTransformOutput {
                 code: Some(code),
                 map: map.into(),
@@ -393,15 +411,48 @@ impl Plugin for NshPlugin {
     }
 }
 
+/// The module a component's type is imported from, as the app's types
+/// name it: `./`-relative to the app directory, or a package. `module` is
+/// the importing module (relative to the app, without extension);
+/// `specifier` what it imported (`None`: the module itself).
+fn type_module(module: &Path, specifier: Option<&str>) -> String {
+    let rel = |p: &Path| {
+        let mut parts: Vec<String> = Vec::new();
+        for c in p.components() {
+            match c {
+                std::path::Component::ParentDir => {
+                    parts.pop();
+                }
+                std::path::Component::Normal(n) => parts.push(n.to_string_lossy().into_owned()),
+                _ => {}
+            }
+        }
+        format!("./{}", parts.join("/"))
+    };
+    match specifier {
+        None => rel(module),
+        Some(spec) if spec.starts_with('.') => {
+            let dir = module.parent().unwrap_or(Path::new(""));
+            let target = dir.join(spec);
+            let target = match target.extension().and_then(|e| e.to_str()) {
+                Some("ts" | "tsx" | "js" | "jsx") => target.with_extension(""),
+                _ => target,
+            };
+            rel(&target)
+        }
+        Some(spec) => spec.to_owned(),
+    }
+}
+
 /// TSX -> JS with nsh's JSX compiler ([`crate::jsx`]), TypeScript removed
-/// in the same pass; `prologue` runs first. Errors are rendered with a
-/// code frame.
+/// in the same pass; `prologue` runs first. Returns the components named in
+/// kebab case too. Errors are rendered with a code frame.
 pub(crate) fn compile_native(
     path: &Path,
     source_type: SourceType,
     source: &str,
     prologue: Option<&str>,
-) -> Result<(String, SourceMap<'static>), String> {
+) -> Result<(String, SourceMap<'static>, Vec<crate::jsx::KebabUse>), String> {
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, source, source_type).parse();
     if let Some(err) = parsed.diagnostics.into_iter().next() {
@@ -422,7 +473,7 @@ pub(crate) fn compile_native(
         return Err(err.render_with_source_code(source.to_owned()));
     }
     let components: Vec<&str> = ui_components().iter().map(String::as_str).collect();
-    crate::jsx::transform(
+    let uses = crate::jsx::transform(
         &allocator,
         &mut program,
         &ret.scoping,
@@ -439,6 +490,7 @@ pub(crate) fn compile_native(
     Ok((
         out.code,
         out.map.expect("source map requested").into_owned(),
+        uses,
     ))
 }
 

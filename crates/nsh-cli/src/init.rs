@@ -83,8 +83,20 @@ pub(crate) fn init(dir: &Path, name: Option<String>) -> anyhow::Result<()> {
 /// not change are left alone, so editors do not reload them). Files nsh no
 /// longer generates (a module that moved) are removed.
 pub(crate) fn write_types(dir: &Path) {
+    write_types_with(dir, &[]);
+}
+
+/// [`write_types`] with the components the app names in kebab case (known
+/// after a build).
+pub(crate) fn write_types_with(dir: &Path, elements: &[nsh_bundler::AppElement]) {
     let types = dir.join(".nsh/types");
-    let definitions = nsh_bundler::type_definitions();
+    let definitions = match nsh_bundler::type_definitions_for(dir, elements) {
+        Ok(definitions) => definitions,
+        Err(err) => {
+            log::warn!("cannot write {}: {err}", types.display());
+            return;
+        }
+    };
     remove_stale(&types, &types, &definitions);
     for (path, contents) in definitions {
         let path = types.join(path);
