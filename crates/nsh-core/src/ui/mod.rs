@@ -15,8 +15,8 @@
 //! subscribes to what it reads of the environment ([`RenderCx::window`]).
 //!
 //! Props are a struct (`#[derive(Props)]`), events an enum
-//! (`#[derive(Event)]`); the JS glue and its TypeScript declarations are
-//! generated from them ([`typescript`]). In JS a component is one host node:
+//! (`#[derive(Event)]`); their JS face (`nsh-js`) and TypeScript
+//! declarations ([`declarations`]) are made from them. In JS a component is one host node:
 //! the root of its expansion. The app's `class` is appended to the root's
 //! styles and its `style` stays the root's inline style. Colors come from
 //! the [`Theme`] (gpui-kit's fields), with a light and a dark value each.
@@ -47,7 +47,7 @@ pub use self::{
     animated::{AnimOperand, Animated, AnimationEnd, NativeNode, NativeValue, Spring},
     component::{
         Component, ComponentError, ComponentSpec, Event, EventSpec, Method, MethodSpec, NoEvent,
-        Param, PropKind, PropSpec, Props, Registry, Root, typescript,
+        Param, PropKind, PropSpec, Props, Registry, Root, declarations,
     },
     element::{
         Accessible, AnyElement, Attrs, Child, Children, ComponentElement, Context, ElNode, Element,

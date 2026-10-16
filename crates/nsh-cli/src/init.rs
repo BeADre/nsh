@@ -89,7 +89,8 @@ pub(crate) fn write_types(dir: &Path) {
 /// after a build).
 pub(crate) fn write_types_with(dir: &Path, elements: &[nsh_bundler::AppElement]) {
     let types = dir.join(".nsh/types");
-    let definitions = nsh_bundler::type_definitions(elements);
+    let mut definitions = nsh_js::type_definitions(&[nsh_ui_mobile::registry()]);
+    definitions.extend(nsh_bundler::type_definitions(elements));
     remove_stale(&types, &types, &definitions);
     for (path, contents) in definitions {
         let path = types.join(path);

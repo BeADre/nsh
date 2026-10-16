@@ -12,7 +12,7 @@ back. One implementation draws the same on iOS and Android, is laid out in the s
 | `crates/nsh-core/src/core/components.rs` | The core side: instances, expansion, diffing, children and slots, events |
 | `crates/nsh-ui-mobile` | The mobile set's components, one file each (`README.md`: how to write one) |
 | `crates/nsh-js/src/components.rs` | The JS face of components and modules, made from their specs when a bundle imports the set |
-| `crates/nsh-bundler/src/types.rs` | `ui/mobile/components.gen.d.ts`, the declarations generated from `nsh_ui_mobile::registry()`, re-exported by `nsh/ui/mobile` |
+| `crates/nsh-js/src/declarations.rs` | `nsh/ui/mobile.d.ts`: the declarations generated from `nsh_ui_mobile::registry()` (`nsh_core::ui::declarations`) with the re-exports and the navigation |
 | `nsh_engine::EngineConfig::components` | The registry a surface renders from (the platforms and `nsh trace` pass `nsh_ui_mobile::registry()`) |
 
 A desktop set will be a crate of its own (`nsh-ui-desktop`, on GPUI), not an abstraction over both.
@@ -269,11 +269,12 @@ never sees the expanded nodes; their events are the component's (below).
 ## The JS face and the declarations
 
 `nsh-js` `components.rs` makes each component's and module's JS from its spec (`ComponentSpec`, `ModuleSpec`) when a
-bundle first imports the set. `nsh_core::ui::typescript(registry)` writes their declarations (`components.gen.d.ts`,
-through Oxc isolated declarations): the named types the props, events, methods and functions use (`export type
+bundle first imports the set. `nsh_core::ui::declarations(registry, omit)` writes their declarations (into the set's
+module file, `nsh/ui/mobile.d.ts`; `nsh-js` `declarations.rs` adds the re-exports and native values it makes): the
+named types the props, events, methods and functions use (`export type
 BarStyle = ...` for a `PropEnum`, `export interface AlertButton` for a `JsObject`, each once, with its doc comment;
-`JsValue::ts_type(&mut TsTypes)` declares them), the props interfaces, the components, the module objects and the
-re-exports. The JS face runs for every instance, so it is kept minimal: **one render effect reading every prop
+`JsValue::ts_type(&mut TsTypes)` declares them), the props interfaces, the components and the module objects (each
+of type `<Name>Module`). The JS face runs for every instance, so it is kept minimal: **one render effect reading every prop
 directly** and sending the ones that changed, no `split` / `merge` / `spread` (their proxies made the first version, in
 the former JS runtime, cost more JS than the TSX component it replaced), no node for an absent slot, no event listener
 when no handler is passed. Benchmarks against the same Button in TSX: `docs/dev/performance.md` (`examples/bench`,

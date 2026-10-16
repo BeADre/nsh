@@ -34,7 +34,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     host::Shared,
-    modules::Export,
+    modules::{Export, Ts},
     reactive::{self, arg},
 };
 
@@ -191,7 +191,7 @@ impl Dom {
             qjs::JS_SetClassProto(raw, classes.context, qjs::JS_GetFunctionProto(raw));
             // A node's methods send commands to its view.
             let proto = qjs::JS_NewObject(raw);
-            for (name, length) in NODE_METHODS {
+            for (name, length, ..) in NODE_METHODS {
                 let mut data = [qjs::JS_NewStringLen(
                     raw,
                     name.as_ptr().cast(),
@@ -293,24 +293,90 @@ impl Dom {
 }
 
 /// The methods of nodes (`ref` objects): each sends a command to the
-/// node's view, in order with the ops before it.
-const NODE_METHODS: &[(&str, c_int)] = &[
-    ("focus", 0),
-    ("blur", 0),
-    ("setSelection", 2),
-    ("command", 2),
-    ("scrollTo", 1),
-    ("zoomTo", 1),
-    ("scrollToOffset", 1),
-    ("scrollToIndex", 1),
-    ("scrollToEnd", 1),
-    ("reload", 0),
-    ("goBack", 0),
-    ("goForward", 0),
-    ("stopLoading", 0),
-    ("injectJavaScript", 1),
-    ("postMessage", 1),
-    ("seek", 1),
+/// node's view, in order with the ops before it. Name, `length`, signature
+/// and documentation (the declaration of `YNode`).
+pub(crate) const NODE_METHODS: &[(&str, c_int, &str, &str)] = &[
+    (
+        "focus",
+        0,
+        "(): void",
+        "Focuses an `<input>` (shows the keyboard).",
+    ),
+    ("blur", 0, "(): void", "Unfocuses an `<input>`."),
+    (
+        "setSelection",
+        2,
+        "(start: number, end?: number): void",
+        "Inputs: selects `start..end` (UTF-16 units; a caret without `end`).",
+    ),
+    (
+        "command",
+        2,
+        "(name: string, args?: unknown): void",
+        "Calls command `name` of a registered native component (`nsh/native`) with `args` (any JSON value).",
+    ),
+    (
+        "scrollTo",
+        1,
+        "(options: { x?: number; y?: number; animated?: boolean }): void",
+        "Scrolls a `<scroll>` or `List` to an offset.",
+    ),
+    (
+        "zoomTo",
+        1,
+        "(options: { scale: number; x?: number; y?: number; animated?: boolean }): void",
+        "A zoomable `<scroll>` (`maximumZoomScale` above `minimumZoomScale`): zooms to `scale` (clamped to the limits), with the content point (`x`, `y`) (unzoomed points) in the middle of the viewport, or around the middle. E.g. double tap to zoom in on the tapped point.",
+    ),
+    (
+        "scrollToOffset",
+        1,
+        "(options: { offset: number; animated?: boolean }): void",
+        "`List`: scrolls to a content offset along the list's axis.",
+    ),
+    (
+        "scrollToIndex",
+        1,
+        "(options: { index: number; animated?: boolean; viewPosition?: number; viewOffset?: number }): void",
+        "`List`: scrolls item `index` into view. `viewPosition` places it: 0 at the start of the viewport (default), 0.5 in the middle, 1 at the end; `viewOffset` shifts it further. Resolved natively with the current (measured or estimated) item sizes.",
+    ),
+    (
+        "scrollToEnd",
+        1,
+        "(options?: { animated?: boolean }): void",
+        "`List`: scrolls to the end of the content (the start of an inverted list).",
+    ),
+    ("reload", 0, "(): void", "`WebView`: reloads the page."),
+    (
+        "goBack",
+        0,
+        "(): void",
+        "`WebView`: goes back in its history.",
+    ),
+    (
+        "goForward",
+        0,
+        "(): void",
+        "`WebView`: goes forward in its history.",
+    ),
+    ("stopLoading", 0, "(): void", "`WebView`: stops loading."),
+    (
+        "injectJavaScript",
+        1,
+        "(script: string): void",
+        "`WebView`: runs JavaScript in the page.",
+    ),
+    (
+        "postMessage",
+        1,
+        "(data: string): void",
+        "`WebView`: sends `data` to the page (a `message` event on `window`).",
+    ),
+    (
+        "seek",
+        1,
+        "(seconds: number): void",
+        "`Video`: jumps to `seconds`.",
+    ),
 ];
 
 /// A node method: `this` is the node, data the method's name.
@@ -383,8 +449,8 @@ unsafe extern "C" fn node_method(
             other => (
                 NODE_METHODS
                     .iter()
-                    .find(|(n, _)| *n == other)
-                    .map_or("", |(n, _)| *n),
+                    .find(|(n, ..)| *n == other)
+                    .map_or("", |(n, ..)| *n),
                 qjs::JS_DupValue(ctx, a0),
             ),
         }
@@ -2478,21 +2544,21 @@ pub(crate) fn handler(ctx: *mut JsContext, id: NodeId, event: EventKind) -> Opti
 }
 
 /// The exports of `nsh:rt`.
-pub(crate) const RT_EXPORTS: &[(&str, Export)] = &[
-    ("element", Export::Function(element, 1)),
-    ("text", Export::Function(text, 1)),
-    ("append", Export::Function(append, 2)),
-    ("insert", Export::Function(insert, 3)),
-    ("prop", Export::Function(prop, 3)),
-    ("bindProp", Export::Function(bind_prop, 3)),
-    ("spread", Export::Function(spread, 2)),
-    ("component", Export::Function(component, 2)),
-    ("cond", Export::Function(cond, 3)),
-    ("each", Export::Function(each, 3)),
-    ("merge", Export::Function(merge, 2)),
-    ("list", Export::Function(crate::list::list, 1)),
-    ("setup", Export::Function(setup, 2)),
-    ("font", Export::Function(font, 2)),
+pub(crate) const RT_EXPORTS: &[crate::modules::Item] = &[
+    ("element", Export::Function(element, 1), Ts::Internal),
+    ("text", Export::Function(text, 1), Ts::Internal),
+    ("append", Export::Function(append, 2), Ts::Internal),
+    ("insert", Export::Function(insert, 3), Ts::Internal),
+    ("prop", Export::Function(prop, 3), Ts::Internal),
+    ("bindProp", Export::Function(bind_prop, 3), Ts::Internal),
+    ("spread", Export::Function(spread, 2), Ts::Internal),
+    ("component", Export::Function(component, 2), Ts::Internal),
+    ("cond", Export::Function(cond, 3), Ts::Internal),
+    ("each", Export::Function(each, 3), Ts::Internal),
+    ("merge", Export::Function(merge, 2), Ts::Internal),
+    ("list", Export::Function(crate::list::list, 1), Ts::Internal),
+    ("setup", Export::Function(setup, 2), Ts::Internal),
+    ("font", Export::Function(font, 2), Ts::Internal),
 ];
 
 /// `font(uri, family)`: what `import Inter from "./Inter.ttf"` evaluates

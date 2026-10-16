@@ -973,10 +973,9 @@ mod tests {
                 delay_ms: 0.0,
             })
         );
-        // The generated presets decode to the core's.
-        let presets = nsh_core::js::anim::typescript();
-        let spring = &presets[presets.find("  spring: {\n").unwrap() + 10..];
-        let spring = &spring[..spring.find("\n  },").unwrap() + 4];
-        assert_eq!(layout(spring), LayoutAnimation::SPRING);
+        // The presets `nsh/animated` serves decode to the core's.
+        let tables = nsh_core::js::anim::tables();
+        let spring = tables["presets"]["spring"].to_string();
+        assert_eq!(layout(&spring), LayoutAnimation::SPRING);
     }
 }

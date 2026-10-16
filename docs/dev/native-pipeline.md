@@ -130,11 +130,12 @@ natively removes its route; screens and modals provide the insets they report to
   and properties are made from the core's specs (`CanvasOp::methods` / `properties`), so a new operation needs no
   change here. Paths and gradients are taken as they are when the drawing uses them.
 
-## Types (`crates/nsh-bundler/src/types.rs`)
+## Types
 
-`.nsh/types` holds the hand-written declarations of the native modules (`crates/nsh-bundler/types/nsh`), the ones
-generated from Rust specs, and a JSX namespace with the built-ins and the app's kebab-case components
-(`nsh/jsx-runtime.d.ts`, rewritten after every build; `tooling.md`): an exported or imported component's props come from
+`.nsh/types` holds the declarations of everything nsh serves, made from its Rust sources (`nsh-js`
+`declarations.rs`, `tooling.md`), and the app's part (`crates/nsh-bundler/src/types.rs`): a JSX namespace with the
+built-ins and the app's kebab-case components (`nsh/jsx-runtime.d.ts`, rewritten after every build) and the asset
+imports (`nsh/assets.d.ts`): an exported or imported component's props come from
 its own type; one that is neither is not checked (TypeScript's intrinsic elements are global, so the compiler stays the
 reference for which tag names what). `<each>` items are not typed (intrinsic elements cannot be generic).
 

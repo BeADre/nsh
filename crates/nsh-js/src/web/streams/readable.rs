@@ -3381,6 +3381,22 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[(c"from", stream_from, 1)],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "<R = any>",
+            members: r#"constructor(underlyingSource: UnderlyingByteSource, strategy?: { highWaterMark?: number });
+constructor(underlyingSource?: UnderlyingDefaultSource<R>, strategy?: QueuingStrategy<R>);
+static from<R>(iterable: Iterable<R | PromiseLike<R>> | AsyncIterable<R>): ReadableStream<R>;
+readonly locked: boolean;
+cancel(reason?: any): Promise<void>;
+getReader(options: { mode: "byob" }): ReadableStreamBYOBReader;
+getReader(): ReadableStreamDefaultReader<R>;
+pipeThrough<T>(transform: { writable: WritableStream<R>; readable: ReadableStream<T> }, options?: StreamPipeOptions): ReadableStream<T>;
+pipeTo(destination: WritableStream<R>, options?: StreamPipeOptions): Promise<void>;
+tee(): [ReadableStream<R>, ReadableStream<R>];
+values(options?: { preventCancel?: boolean }): AsyncIterableIterator<R>;
+[Symbol.asyncIterator](options?: { preventCancel?: boolean }): AsyncIterableIterator<R>;"#,
+        },
     },
     Spec {
         class: Class::ReadableStreamDefaultReader,
@@ -3396,6 +3412,15 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "<R = any>",
+            members: r#"constructor(stream: ReadableStream<R>);
+readonly closed: Promise<void>;
+read(): Promise<ReadableStreamReadResult<R>>;
+releaseLock(): void;
+cancel(reason?: any): Promise<void>;"#,
+        },
     },
     Spec {
         class: Class::ReadableStreamBYOBReader,
@@ -3411,6 +3436,15 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "",
+            members: r#"constructor(stream: ReadableStream<Uint8Array>);
+readonly closed: Promise<void>;
+read<T extends ArrayBufferView>(view: T, options?: { min?: number }): Promise<ReadableStreamReadResult<T>>;
+releaseLock(): void;
+cancel(reason?: any): Promise<void>;"#,
+        },
     },
     Spec {
         class: Class::ReadableStreamDefaultController,
@@ -3426,6 +3460,14 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "<R = any>",
+            members: r#"readonly desiredSize: number | null;
+close(): void;
+enqueue(chunk?: R): void;
+error(e?: any): void;"#,
+        },
     },
     Spec {
         class: Class::ReadableByteStreamController,
@@ -3444,6 +3486,15 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "",
+            members: r#"readonly byobRequest: ReadableStreamBYOBRequest | null;
+readonly desiredSize: number | null;
+close(): void;
+enqueue(chunk: ArrayBufferView): void;
+error(e?: any): void;"#,
+        },
     },
     Spec {
         class: Class::ReadableStreamBYOBRequest,
@@ -3462,6 +3513,13 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "",
+            members: r#"readonly view: ArrayBufferView | null;
+respond(bytesWritten: number): void;
+respondWithNewView(view: ArrayBufferView): void;"#,
+        },
     },
     Spec {
         class: Class::ReadableStreamAsyncIterator,
@@ -3477,6 +3535,7 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: false,
+        ts: crate::web::ClassTs::NONE,
     },
     Spec {
         class: Class::Internal,
@@ -3488,5 +3547,32 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: false,
+        ts: crate::web::ClassTs::NONE,
     },
 ];
+
+/// The TypeScript types of this file's classes (`globals.d.ts`).
+pub(crate) const TYPES: &str = r#"interface UnderlyingDefaultSource<R = any> {
+  start?(controller: ReadableStreamDefaultController<R>): any;
+  pull?(controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
+  cancel?(reason?: any): void | PromiseLike<void>;
+  type?: undefined;
+}
+
+interface UnderlyingByteSource {
+  type: "bytes";
+  autoAllocateChunkSize?: number;
+  start?(controller: ReadableByteStreamController): any;
+  pull?(controller: ReadableByteStreamController): void | PromiseLike<void>;
+  cancel?(reason?: any): void | PromiseLike<void>;
+}
+
+type ReadableStreamReadResult<T> = { done: false; value: T } | { done: true; value?: T };
+
+interface StreamPipeOptions {
+  preventAbort?: boolean;
+  preventCancel?: boolean;
+  preventClose?: boolean;
+  signal?: AbortSignal;
+}
+"#;

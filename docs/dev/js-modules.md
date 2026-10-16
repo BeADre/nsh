@@ -12,15 +12,13 @@ imports of them as imports (`plugin.rs`; how apps are compiled: `native-pipeline
 hand-written exports of `nsh/android` and `nsh/accessibility` are joined by their registry's. There is no JS file of
 nsh's and no internal module apps could reach.
 
-Declarations: the native modules' are hand-written in `crates/nsh-bundler/types/nsh/` (`index.d.ts` is `nsh`,
-`list.d.ts` is `nsh/list`, ...; `_core.d.ts` is what they share and no module: `YNode`, `ComponentHostProps`,
-`Insets`, `OS`, the environment accessors, `useSafeAreaInsets`; `types.d.ts` the element and JSX types; `globals.d.ts`
-the JS globals and asset imports; `ui/mobile/navigation.d.ts` the mobile UI's navigation). What Rust specs describe is
-generated per process with Oxc isolated declarations: `style.gen.d.ts`, `elements.gen.d.ts`, `anim.gen.d.ts` and
-`canvas.gen.d.ts` from `nsh_core::js::{style, host, anim, canvas}::typescript()`, `ui/mobile/components.gen.d.ts` from
-the Rust components (`nsh_core::ui::typescript`, `docs/dev/components.md`), and the runtime's Rust modules:
-`<module>.gen.d.ts` next to the hand-written module that re-exports it (`nsh/android.gen.d.ts`), or the whole module
-when nothing of it is hand-written (`nsh/image.d.ts`). The CLI writes them all into `.nsh/types` (`tooling.md`).
+Declarations: each export of a module of nsh's own carries its TypeScript declaration in its table (`modules::Item`:
+`signal`'s signatures next to `reactive::signal`), each module its own interfaces (`types`); a registry's components
+and modules are declared from their specs (`nsh_core::ui::declarations`, `docs/dev/components.md`), the styles, the
+host elements' props and events, the easings and the canvas methods from the core's tables. `nsh-js`'s
+`declarations.rs` assembles one file per module (`nsh/list.d.ts`, `nsh/ui/mobile.d.ts`), `nsh/types.d.ts` (the
+element and JSX types `nsh` exports) and `nsh/globals.d.ts`, and tests check every module's exports against its
+declarations; the CLI writes them into `.nsh/types` (`tooling.md`).
 `nsh` itself only has the reactive API, `mount` and the types; there is no catch-all module, and moved APIs get no
 compatibility re-exports.
 
@@ -47,7 +45,7 @@ compatibility re-exports.
   nothing and their components render nothing. `isAvailable` tells which.
 - **Platform-only props** are grouped: `ios={{…}}` / `android={{…}}` / `desktop={{…}}` (macOS, Windows, Linux) on
   elements and components (`IOSProps` / `AndroidProps` / `DesktopProps` in `types.d.ts`, extended per element; the host
-  props in them are the generated `IOS…HostProps` / `Android…HostProps` of `elements.gen.d.ts`). The renderer
+  props in them are the generated `IOS…HostProps` / `Android…HostProps`). The renderer
   (`platform_props` in `dom.rs`) sends only the current platform's object, each key as a prop of its own (keys removed
   from the object are cleared); the core knows them by those names. Android: `ripple`, `elevation`,
   `accessibilityLiveRegion`, Modal `statusBarTranslucent`, StatusBar `backgroundColor` (a Rust component's `android`
@@ -60,8 +58,8 @@ compatibility re-exports.
 ## Where new things go
 
 - A primitive or environment both UI sets need: a module of nsh's own (`nsh/<module>`), natives in `crates/nsh-js`
-  listed in `modules.rs` and `nsh_core::js::NATIVE_MODULES`, declared in `crates/nsh-bundler/types/nsh/<module>.d.ts`
-  (and in `types.rs`'s `DECLARED`). Functions that only ask the platform (a command, a request answered by an event)
+  listed in `modules.rs` and `nsh_core::js::NATIVE_MODULES`, each export with its declaration (`Ts`) and the
+  module's interfaces in its `types`. Functions that only ask the platform (a command, a request answered by an event)
   are a Rust `#[module]` in `crates/nsh-core/src/runtime/`, registered in `runtime::registries()` under the module's
   specifier: their JS face and declarations come from the spec, with nothing written per function.
 - Mobile UI or interaction: `nsh/ui/mobile`; its components are Rust, in `crates/nsh-ui-mobile` (see its README).

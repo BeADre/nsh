@@ -1,6 +1,6 @@
 //! Components: the [`Component`] trait, its [`Props`] and [`Event`]s
 //! (derived), the [`Registry`] a surface renders from, and the JS glue and
-//! TypeScript declarations generated from them ([`typescript`]).
+//! TypeScript declarations generated from them ([`declarations`]).
 
 use std::{any::Any, fmt, sync::Arc};
 
@@ -279,7 +279,7 @@ impl Event for NoEvent {
 }
 
 /// What a component is to JS: its glue and declarations are generated
-/// from it ([`typescript`]).
+/// from it ([`declarations`]).
 #[derive(Debug, Clone)]
 pub struct ComponentSpec {
     /// Its registered name (`nsh.button`).
@@ -737,34 +737,22 @@ impl Registry {
     }
 }
 
-/// TypeScript of what `registry` exports, from which the bundler takes the
-/// declarations (`components.gen.d.ts`; the values themselves are made by
-/// `nsh-js`): one component per spec (by its [`ComponentSpec::export`]
-/// name), one object per module (merged into a component of the same
-/// name), and the runtime's re-exports.
-pub fn typescript(registry: &Registry) -> String {
+/// The declarations of what `registry`'s specs export: one component per
+/// spec (by its [`ComponentSpec::export`] name), one object per module
+/// (its type `<Name>Module`; merged into a component of the same name; a
+/// flat module's functions one by one), and the named types they use.
+/// Exports named in `omit` are left out (their types stay): `nsh-js`
+/// declares them, building on the module (`BackHandlerModule & ...`), as
+/// it declares the re-exports and native values it makes.
+pub fn declarations(registry: &Registry, omit: &[&str]) -> String {
     let specs = registry.specs();
     let modules = registry.module_specs();
     use std::fmt::Write as _;
-    let mut out = String::from(
-        "// Generated from the Rust components (nsh_core::ui::typescript).\n\n\
-         import type { JSX, StyleProp, ViewStyle, YNode } from \"nsh\";\n\
-         import { component, module, type ComponentHostProps } from \"nsh/_core\";\n",
-    );
-    if specs.iter().any(|s| s.items().is_some()) {
-        out.push_str("import { List, type ListItemsProps } from \"nsh/list\";\n");
-    }
+    let mut out = String::new();
     let doc = |out: &mut String, indent: &str, doc: &str| {
         if !doc.is_empty() {
             let _ = writeln!(out, "{indent}/** {doc} */");
         }
-    };
-    let list = |names: Vec<&str>| {
-        names
-            .iter()
-            .map(|n| format!("{n:?}"))
-            .collect::<Vec<_>>()
-            .join(", ")
     };
     // The named types, once each.
     let mut types = TsTypes::default();
@@ -775,21 +763,9 @@ pub fn typescript(registry: &Registry) -> String {
         types.merge(&m.types);
     }
     for declaration in types.declarations() {
-        let _ = write!(out, "\n{declaration}\n");
+        let _ = write!(out, "{declaration}\n\n");
     }
     let module_of = |name: &str| modules.iter().find(|m| m.name == name);
-    // What JS calls a module by: its name, in the runtime's namespace.
-    let call_name = |m: &ModuleSpec| match registry.namespace {
-        Some(namespace) => format!("{namespace}:{}", m.name),
-        None => m.name.to_owned(),
-    };
-    let module_functions = |m: &ModuleSpec| {
-        m.functions
-            .iter()
-            .map(|f| format!("[{:?}, {}]", f.name, f.returns.is_some()))
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
     let signature = |f: &FunctionSpec| {
         let params = f
             .params
@@ -803,8 +779,8 @@ pub fn typescript(registry: &Registry) -> String {
         };
         (params, returns)
     };
-    // A module's object: its declaration and the glue call.
-    let module_object = |out: &mut String, m: &ModuleSpec| -> String {
+    // A module's object type.
+    let module_object = |out: &mut String, m: &ModuleSpec| {
         out.push_str("{\n");
         for f in &m.functions {
             doc(out, "  ", f.doc);
@@ -812,7 +788,6 @@ pub fn typescript(registry: &Registry) -> String {
             let _ = writeln!(out, "  {}({params}): {returns};", f.name);
         }
         out.push('}');
-        format!("module({:?}, [{}])", call_name(m), module_functions(m))
     };
     for spec in &specs {
         // A component with rows is generic over their type, like `List`.
@@ -826,7 +801,7 @@ pub fn typescript(registry: &Registry) -> String {
         } else {
             let _ = write!(
                 out,
-                "\n/** The ref of `{0}`: its methods. */\nexport interface {0}Ref {{\n  /** The component's host node. */\n  readonly node: YNode;\n",
+                "/** The ref of `{0}`: its methods. */\nexport interface {0}Ref {{\n  /** The component's host node. */\n  readonly node: YNode;\n",
                 spec.export
             );
             for m in &spec.methods {
@@ -843,12 +818,12 @@ pub fn typescript(registry: &Registry) -> String {
                 };
                 let _ = writeln!(out, "  {}({params}): {returns};", m.name);
             }
-            out.push_str("}\n");
+            out.push_str("}\n\n");
             "Omit<ComponentHostProps, \"ref\">"
         };
-        let _ = write!(
+        let _ = writeln!(
             out,
-            "\nexport interface {}Props{generic} extends {host}{extends} {{\n",
+            "export interface {}Props{generic} extends {host}{extends} {{",
             spec.export
         );
         if !spec.methods.is_empty() {
@@ -874,95 +849,46 @@ pub fn typescript(registry: &Registry) -> String {
             let _ = writeln!(out, "  {handler}?: ({arg}) => void;");
         }
         out.push_str("}\n\n");
+        if omit.contains(&spec.export.as_str()) {
+            continue;
+        }
         doc(&mut out, "", spec.doc);
-        let methods = spec
-            .methods
-            .iter()
-            .map(|m| format!("[{:?}, {}]", m.name, m.returns.is_some()))
-            .collect::<Vec<_>>();
-        let items = match (spec.items(), methods.is_empty()) {
-            (Some(name), true) => format!(", {name:?}, List"),
-            (Some(name), false) => format!(", {name:?}, List, [{}]", methods.join(", ")),
-            (None, true) => String::new(),
-            (None, false) => format!(", undefined, undefined, [{}]", methods.join(", ")),
-        };
         // A module of the same name: its functions on the component.
-        let (with, glue_end) = match module_of(&spec.export) {
-            Some(m) => {
-                let mut ty = String::from(" & ");
-                let call = module_object(&mut ty, m);
-                (ty, format!(", {call})"))
-            }
-            None => (String::new(), String::new()),
-        };
-        let _ = writeln!(
+        let mut with = String::new();
+        if let Some(m) = module_of(&spec.export) {
+            with.push_str(" & ");
+            module_object(&mut with, m);
+        }
+        let _ = write!(
             out,
-            "export const {}: ({generic}(props: {}Props{generic}) => JSX.Element){with} = {}\
-             component({:?}, [{}], [{}], {}, [{}]{items}){glue_end};",
-            spec.export,
-            spec.export,
-            if glue_end.is_empty() {
-                ""
-            } else {
-                "Object.assign("
-            },
-            spec.name,
-            list(
-                spec.props
-                    .iter()
-                    .filter(|p| p.kind == PropKind::Value)
-                    .map(|p| p.name)
-                    .collect()
-            ),
-            list(spec.events.iter().map(|e| e.name).collect()),
-            spec.takes_children(),
-            list(spec.slots().collect()),
+            "export declare const {}: ({generic}(props: {}Props{generic}) => JSX.Element){with};\n\n",
+            spec.export, spec.export,
         );
     }
     for m in &modules {
         if specs.iter().any(|s| s.export == m.name) {
             continue;
         }
-        out.push('\n');
-        // Functions of their own: one object, exported function by function.
         if m.flat {
-            let _ = writeln!(
-                out,
-                "const {}$: any = module({:?}, [{}]);",
-                m.name,
-                call_name(m),
-                module_functions(m)
-            );
-            for f in &m.functions {
+            for f in m.functions.iter().filter(|f| !omit.contains(&f.name)) {
                 doc(&mut out, "", f.doc);
                 let (params, returns) = signature(f);
-                let _ = writeln!(
+                let _ = write!(
                     out,
-                    "export const {0}: ({params}) => {returns} = {1}$.{0};",
-                    f.name, m.name
+                    "export declare function {}({params}): {returns};\n\n",
+                    f.name
                 );
             }
             continue;
         }
         doc(&mut out, "", m.doc);
-        let _ = write!(out, "export const {}: ", m.name);
-        let call = module_object(&mut out, m);
-        let _ = writeln!(out, " = {call};");
-    }
-    let (values, types) = &*registry.reexports;
-    if !values.is_empty() {
-        let _ = writeln!(
-            out,
-            "\nexport {{ {} }} from \"nsh/_core\";",
-            values.join(", ")
-        );
-    }
-    if !types.is_empty() {
-        let _ = writeln!(
-            out,
-            "export type {{ {} }} from \"nsh/_core\";",
-            types.join(", ")
-        );
+        let _ = write!(out, "export interface {}Module ", m.name);
+        module_object(&mut out, m);
+        out.push_str("\n\n");
+        if !omit.contains(&m.name) {
+            doc(&mut out, "", m.doc);
+            let _ = write!(out, "export declare const {0}: {0}Module;\n\n", m.name);
+        }
     }
     out
 }
@@ -1038,10 +964,10 @@ mod tests {
     }
 
     #[test]
-    fn the_glue_and_declarations_come_from_the_types() {
+    fn the_declarations_come_from_the_types() {
         let mut registry = Registry::new();
         registry.register::<Stepper>();
-        let ts = typescript(&registry);
+        let ts = declarations(&registry, &[]);
         for line in [
             "  /** The value. */\n  value: number;",
             "export type StepperSize = \"regular\" | \"extraLarge\";",
@@ -1057,10 +983,7 @@ mod tests {
             "  /** Jumps to `value`. */\n  jumpTo(value: number): void;",
             "  value(): Promise<number>;",
             "export interface NumberStepperProps extends Omit<ComponentHostProps, \"ref\"> {\n  ref?: NumberStepperRef | ((ref: NumberStepperRef) => void);",
-            "export const NumberStepper: ((props: NumberStepperProps) => JSX.Element) = \
-             component(\"test.number_stepper\", [\"value\", \"size\", \"maxValue\"], \
-             [\"change\", \"limit\", \"reset\"], true, [\"label\"], undefined, undefined, \
-             [[\"jumpTo\", false], [\"value\", true]]);",
+            "export declare const NumberStepper: ((props: NumberStepperProps) => JSX.Element);",
         ] {
             assert!(ts.contains(line), "missing {line:?} in\n{ts}");
         }

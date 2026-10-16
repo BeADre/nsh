@@ -230,42 +230,17 @@ const PRESETS: &[(&str, LayoutAnimation)] = &[
     ("spring", LayoutAnimation::SPRING),
 ];
 
-/// `transition` as a JS object literal.
-fn transition_js(t: &LayoutTransition) -> String {
-    let (kind, damping) = match t.curve {
-        LayoutCurve::Linear => ("linear", None),
-        LayoutCurve::EaseIn => ("easeIn", None),
-        LayoutCurve::EaseOut => ("easeOut", None),
-        LayoutCurve::EaseInEaseOut => ("easeInEaseOut", None),
-        LayoutCurve::Spring { damping } => ("spring", Some(damping)),
-    };
-    let property = match t.property {
-        LayoutProperty::Opacity => "opacity",
-        LayoutProperty::Scale => "scaleXY",
-    };
-    let mut out = format!(
-        "{{ type: \"{kind}\", property: \"{property}\", duration: {}, delay: {}",
-        t.duration_ms, t.delay_ms
-    );
-    if let Some(d) = damping {
-        let _ = write!(out, ", springDamping: {d}");
-    }
-    out.push_str(" }");
-    out
-}
-
-/// `anim.gen.ts`: the easing and layout animation types, `Easing`'s curves
-/// and the layout animation presets, from which the bundler takes the
-/// declarations (`anim.gen.d.ts`).
-pub fn typescript() -> String {
+/// The declarations of the easing and layout animation types (`nsh/animated`
+/// declares the values: `Easing`, `LayoutAnimation`).
+pub fn declarations() -> String {
     let mut types = TsTypes::default();
     let layout = <LayoutAnimation as HostValue>::ts_type(&mut types);
-    let mut out = super::banner("the easings and layout animations of nsh_core::js::anim");
     let names = |list: &mut dyn Iterator<Item = &str>| {
         list.map(|n| format!("{n:?}"))
             .collect::<Vec<_>>()
             .join(" | ")
     };
+    let mut out = String::new();
     let _ = write!(
         out,
         "/** The curves of `Easing` (their \"in\" form; `Easing.out` / `inOut` turn them around). */\n\
@@ -293,74 +268,30 @@ pub fn typescript() -> String {
             }
         }
     }
-    out.push_str("}\n\n/** `Easing`'s curves, in their \"in\" form. */\nexport const easingCurves: EasingCurves = {\n");
-    for c in CURVES {
-        match c.param {
-            Some((p, default)) => {
-                let _ = writeln!(
-                    out,
-                    "  {0}: ({p}: number = {default}): EasingCurve => ({{ curve: \"{0}\", param: {p}, mode: \"in\" }}),",
-                    c.name
-                );
-            }
-            None => {
-                let _ = writeln!(out, "  {0}: {{ curve: \"{0}\", mode: \"in\" }},", c.name);
-            }
-        }
-    }
-    out.push_str("};\n");
+    out.push_str("}\n");
     for declaration in types.declarations() {
         let _ = write!(out, "\n{declaration}\n");
     }
     let _ = write!(
         out,
-        "\n/** Ready-made layout animations. */\nexport interface LayoutAnimationPresets {{\n{}}}\n\n\
-         export const layoutAnimationPresets: LayoutAnimationPresets = {{\n",
+        "\n/** Ready-made layout animations. */\nexport interface LayoutAnimationPresets {{\n{}}}\n",
         PRESETS
             .iter()
             .map(|(name, _)| format!("  {name}: {layout};\n"))
             .collect::<String>()
     );
-    for (name, preset) in PRESETS {
-        let duration = [preset.create, preset.update, preset.delete]
-            .iter()
-            .flatten()
-            .map(|t| t.duration_ms + t.delay_ms)
-            .fold(0.0, f32::max);
-        let _ = writeln!(out, "  {name}: {{\n    duration: {duration},");
-        for (key, phase) in [
-            ("create", &preset.create),
-            ("update", &preset.update),
-            ("delete", &preset.delete),
-        ] {
-            if let Some(t) = phase {
-                let _ = writeln!(out, "    {key}: {},", transition_js(t));
-            }
-        }
-        out.push_str("  },\n");
-    }
-    out.push_str("};\n");
     // `LayoutAnimation.Types` / `Properties`: each name as itself.
-    let object = |iface: &str, value: &str, doc: &str, names: &mut dyn Iterator<Item = &str>| {
-        let names: Vec<&str> = names.collect();
-        let fields: String = names
-            .iter()
-            .map(|n| format!("  readonly {n}: {n:?};\n"))
-            .collect();
-        let values: String = names.iter().map(|n| format!("  {n}: {n:?},\n")).collect();
-        format!(
-            "\n/** {doc} */\nexport interface {iface} {{\n{fields}}}\n\nexport const {value}: {iface} = {{\n{values}}};\n"
-        )
+    let object = |iface: &str, doc: &str, names: &mut dyn Iterator<Item = &str>| {
+        let fields: String = names.map(|n| format!("  readonly {n}: {n:?};\n")).collect();
+        format!("\n/** {doc} */\nexport interface {iface} {{\n{fields}}}\n")
     };
     out.push_str(&object(
         "LayoutAnimationTypes",
-        "layoutAnimationTypes",
         "The curves, by name.",
         &mut LAYOUT_TYPES.iter().map(|t| t.0),
     ));
     out.push_str(&object(
         "LayoutAnimationProperties",
-        "layoutAnimationProperties",
         "The properties, by name.",
         &mut LAYOUT_PROPERTIES.iter().filter(|p| p.2).map(|p| p.0),
     ));
@@ -370,7 +301,7 @@ pub fn typescript() -> String {
 /// The easing and layout animation tables as data for `nsh/animated`
 /// (`nsh-js` `animated.rs`): `curves` (`[name, parameter,
 /// default]`, the parameter `null` for curves without one), `presets`
-/// (name -> config, as `layoutAnimationPresets`), `types` and
+/// (name -> config, as `LayoutAnimation.Presets`), `types` and
 /// `properties` (the names of `LayoutAnimation.Types` / `Properties`).
 pub fn tables() -> crate::JsonValue {
     use serde_json::{Map, Value, json};

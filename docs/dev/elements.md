@@ -19,18 +19,21 @@
 On Android the same elements map to `Box` (ViewGroup), `TextBox`, `ImageBox`, `ScrollBox` (ScrollView), `InputBox` (EditText),
 `StackBox` (screens with a Toolbar, predictive back), `ModalHost` (a Dialog), `WebBox` (android.webkit.WebView) and `VideoBox`
 (MediaPlayer on a TextureView, MediaController); both are `WidgetBox`es. Every host element and runtime component is typed in
-`crates/nsh-bundler/types/nsh/types.d.ts` and the declarations of the runtime's modules.
+`.nsh/types/nsh/types.d.ts` and the declarations of the runtime's modules (made from the Rust tables: `tooling.md`).
 
 **Host props are one definition.** A host prop is a variant of `nsh_core::Prop` (or of the enum it nests: `ScrollProp`,
 `NativeProp`, `AccessibilityProp`, ...) with `#[prop(js = "name", ...)]`: `#[derive(HostProps)]` (`nsh_core::js::host`)
 derives from it how `nsh-js` decodes the JS value (straight from QuickJS values, no JSON), the default clearing the
-prop sets (`HostProps::reset`, also used when a Rust component's render stops setting it) and the TypeScript of
-`elements.gen.d.ts`: one interface per element group and platform (`InputHostProps`, `IOSInputHostProps`, ...) that
-the element types of `types.d.ts` and the runtime's components extend. The payload's type decodes itself (`HostValue`;
+prop sets (`HostProps::reset`, also used when a Rust component's render stops setting it) and its declaration: one
+interface per element group and platform (`InputHostProps`, `IOSInputHostProps`, ...) that the element types of
+`types.d.ts` and the runtime's components extend. The payload's type decodes itself (`HostValue`;
 `#[derive(PropEnum)]` for string unions); `default`, `min` / `max`, `on` (the element groups), `ios` / `android`
 (names inside `ios={{…}}` / `android={{…}}`), `with` (a decoder of the whole variant, `js/host_values.rs`), `once`
-(not reset) and `internal` (set by the runtime, untyped) cover the rest. The event handlers stay in `types.d.ts`: the
-same event carries different payloads on different elements (`onLoad`).
+(not reset) and `internal` (set by the runtime, untyped) cover the rest. **Events** are a table next to it
+(`host::EVENTS`): the event, the element groups whose props declare it and its handler's type, one row per payload
+(`onLoad` gives an image its size and a video its duration); the handlers join the same interfaces. An event no
+element declares (the root's, the runtime's own) is listed in `INTERNAL_EVENTS`; a test checks every `EventKind` is
+in one of them.
 
 ## Primitives only
 

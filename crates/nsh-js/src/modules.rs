@@ -36,77 +36,210 @@ pub(crate) enum Export {
     Value(fn(*mut JsContext) -> JsValue),
 }
 
+/// The TypeScript declaration of an export (`.nsh/types`, assembled by
+/// `declarations.rs`): documentation as plain text, the rest as it follows
+/// the export's name.
+#[derive(Clone, Copy)]
+pub(crate) enum Ts {
+    /// A function and its signatures (overloads): `<T>(value: T): Signal<T>`.
+    Function(&'static str, &'static [&'static str]),
+    /// A value and its type.
+    Const(&'static str, &'static str),
+    /// A class: ` extends Base { ... }` or ` { ... }`.
+    Class(&'static str, &'static str),
+    /// Not declared: what only compiled code or development bundles import.
+    Internal,
+}
+
+/// An export: its name, how it is made and its declaration.
+pub(crate) type Item = (&'static str, Export, Ts);
+
 /// One of nsh's own modules.
-struct NativeModule {
-    name: &'static str,
-    exports: &'static [(&'static str, Export)],
+pub(crate) struct NativeModule {
+    pub(crate) name: &'static str,
+    pub(crate) exports: &'static [Item],
+    /// The module's own TypeScript types (interfaces, type aliases), next to
+    /// the declarations of its exports.
+    pub(crate) types: &'static str,
 }
 
 /// `nsh`: the API apps write against.
-const NSH: &[(&str, Export)] = &[
-    ("signal", Export::Function(reactive::signal, 2)),
-    ("computed", Export::Function(reactive::computed, 2)),
-    ("effect", Export::Function(reactive::effect, 1)),
-    ("batch", Export::Function(reactive::batch, 1)),
-    ("untracked", Export::Function(reactive::untrack, 1)),
-    ("cleanup", Export::Function(reactive::on_cleanup, 1)),
-    ("context", Export::Function(dom::context, 1)),
-    ("mount", Export::Function(dom::mount, 2)),
-    ("split", Export::Function(dom::split, 2)),
+const NSH: &[Item] = &[
+    (
+        "signal",
+        Export::Function(reactive::signal, 2),
+        Ts::Function(
+            "A signal holding `value`.",
+            &[
+                "<T>(value: T, options?: SignalOptions<T>): Signal<T>",
+                "<T = undefined>(): Signal<T | undefined>",
+            ],
+        ),
+    ),
+    (
+        "computed",
+        Export::Function(reactive::computed, 2),
+        Ts::Function(
+            "A value derived from signals, computed again when they change (and read).",
+            &["<T>(fn: (previous: T | undefined) => T, options?: SignalOptions<T>): Accessor<T>"],
+        ),
+    ),
+    (
+        "effect",
+        Export::Function(reactive::effect, 1),
+        Ts::Function(
+            "Runs `fn` after rendering, and again when what it read changes.",
+            &["(fn: () => void): void"],
+        ),
+    ),
+    (
+        "batch",
+        Export::Function(reactive::batch, 1),
+        Ts::Function(
+            "Runs `fn`, applying its writes together at the end.",
+            &["<T>(fn: () => T): T"],
+        ),
+    ),
+    (
+        "untracked",
+        Export::Function(reactive::untrack, 1),
+        Ts::Function(
+            "Runs `fn` without tracking what it reads.",
+            &["<T>(fn: () => T): T"],
+        ),
+    ),
+    (
+        "cleanup",
+        Export::Function(reactive::on_cleanup, 1),
+        Ts::Function(
+            "Runs `fn` before the current effect or component runs again or goes away.",
+            &["(fn: () => void): void"],
+        ),
+    ),
+    (
+        "context",
+        Export::Function(dom::context, 1),
+        Ts::Function(
+            "A context with a default value.",
+            &["<T>(defaultValue: T): Context<T>"],
+        ),
+    ),
+    (
+        "mount",
+        Export::Function(dom::mount, 2),
+        Ts::Function(
+            "Renders `app` into the surface; returns a function that removes it.",
+            &["<P extends object>(app: Component<P>, props?: P): () => void"],
+        ),
+    ),
+    (
+        "split",
+        Export::Function(dom::split, 2),
+        Ts::Function(
+            "`[picked, rest]`: the props named in `keys` and the others, both still\nfollowing what they read (a component passing the rest on: `<input {...rest} />`).",
+            &[
+                "<T extends object, K extends readonly (keyof T)[]>(props: T, keys: K): [Pick<T, K[number]>, Omit<T, K[number]>]",
+            ],
+        ),
+    ),
 ];
 
-const MODULES: &[NativeModule] = &[
+/// `nsh`'s types; its element and style types are `types.d.ts`'s, and `JSX`
+/// the app's (`jsx-runtime.d.ts`, with its kebab-case components).
+const NSH_TYPES: &str = r#"import type { JSX } from "./jsx-runtime";
+export type { JSX };
+export type * from "./types";
+
+/** A value that changes over time, read by calling it (tracked). */
+export interface Accessor<T> {
+  (): T;
+}
+
+/** A signal: `count()` reads it, `count.set(1)` and `count.update((n) => n + 1)` write it. */
+export interface Signal<T> extends Accessor<T> {
+  set(value: T): void;
+  update(fn: (value: T) => T): void;
+}
+
+export interface SignalOptions<T> {
+  /** When a new value counts as a change (default `===`); `false`: always. */
+  equals?: false | ((previous: T, next: T) => boolean);
+}
+
+/** A value components provide to what they render: `Theme()` reads the nearest one. */
+export interface Context<T> extends Accessor<T> {
+  Provider: (props: { value: T; children?: JSX.Element }) => JSX.Element;
+}
+
+/** A component: a function of its props rendering elements. */
+export type Component<P = {}> = (props: P) => JSX.Element;
+"#;
+
+pub(crate) const MODULES: &[NativeModule] = &[
     NativeModule {
         name: "nsh",
         exports: NSH,
+        types: NSH_TYPES,
     },
     NativeModule {
         name: "nsh:rt",
         exports: dom::RT_EXPORTS,
+        types: "",
     },
     NativeModule {
         name: "nsh/device",
         exports: env::DEVICE_EXPORTS,
+        types: env::DEVICE_TYPES,
     },
     NativeModule {
         name: "nsh/accessibility",
         exports: env::ACCESSIBILITY_EXPORTS,
+        types: env::ACCESSIBILITY_TYPES,
     },
     NativeModule {
         name: "nsh/android",
         exports: platform_modules::ANDROID_EXPORTS,
+        types: platform_modules::ANDROID_TYPES,
     },
     NativeModule {
         name: "nsh/ios",
         exports: platform_modules::IOS_EXPORTS,
+        types: platform_modules::IOS_TYPES,
     },
     NativeModule {
         name: "nsh/webview",
         exports: platform_modules::WEBVIEW_EXPORTS,
+        types: platform_modules::WEBVIEW_TYPES,
     },
     NativeModule {
         name: "nsh/video",
         exports: platform_modules::VIDEO_EXPORTS,
+        types: platform_modules::VIDEO_TYPES,
     },
     NativeModule {
         name: "nsh/native",
         exports: platform_modules::NATIVE_EXPORTS,
+        types: platform_modules::NATIVE_TYPES,
     },
     NativeModule {
         name: "nsh/gesture",
         exports: touch::GESTURE_EXPORTS,
+        types: touch::GESTURE_TYPES,
     },
     NativeModule {
         name: "nsh/animated",
         exports: animated::EXPORTS,
+        types: animated::TYPES,
     },
     NativeModule {
         name: "nsh/canvas",
         exports: canvas::EXPORTS,
+        types: canvas::TYPES,
     },
     NativeModule {
         name: "nsh/list",
         exports: list::EXPORTS,
+        types: list::TYPES,
     },
 ];
 
@@ -146,11 +279,15 @@ impl ModuleTable {
         let mut found = false;
         if name == crate::hot::SPECIFIER {
             let own = crate::hot::EXPORTS.iter();
-            return Some(own.map(|&(n, e)| (n.to_owned(), Made::Own(e))).collect());
+            return Some(own.map(|&(n, e, _)| (n.to_owned(), Made::Own(e))).collect());
         }
         if let Some(m) = MODULES.iter().find(|m| m.name == name) {
             found = true;
-            out.extend(m.exports.iter().map(|&(n, e)| (n.to_owned(), Made::Own(e))));
+            out.extend(
+                m.exports
+                    .iter()
+                    .map(|&(n, e, _)| (n.to_owned(), Made::Own(e))),
+            );
         }
         for registry in self
             .registries

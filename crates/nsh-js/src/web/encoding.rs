@@ -333,6 +333,13 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "",
+            members: r#"readonly encoding: "utf-8";
+encode(input?: string): Uint8Array;
+encodeInto(source: string, destination: Uint8Array): { read: number; written: number };"#,
+        },
     },
     Spec {
         class: Class::TextDecoder,
@@ -348,8 +355,21 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "UTF-8, UTF-16LE / BE and windows-1252 (with the labels of latin1 and ASCII).",
+            head: "",
+            members: r#"constructor(label?: string, options?: { fatal?: boolean; ignoreBOM?: boolean });
+readonly encoding: string;
+readonly fatal: boolean;
+readonly ignoreBOM: boolean;
+decode(input?: BufferSource, options?: { stream?: boolean }): string;"#,
+        },
     },
 ];
+
+/// The TypeScript types of this file's classes (`globals.d.ts`).
+pub(crate) const TYPES: &str = r#"type BufferSource = ArrayBuffer | ArrayBufferView;
+"#;
 
 #[cfg(test)]
 mod tests {

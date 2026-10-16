@@ -1864,6 +1864,22 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "",
+            members: r#"constructor(init?: HeadersInit);
+append(name: string, value: string): void;
+delete(name: string): void;
+get(name: string): string | null;
+getSetCookie(): string[];
+has(name: string): boolean;
+set(name: string, value: string): void;
+forEach(callback: (value: string, key: string, parent: Headers) => void, thisArg?: unknown): void;
+entries(): IterableIterator<[string, string]>;
+keys(): IterableIterator<string>;
+values(): IterableIterator<string>;
+[Symbol.iterator](): IterableIterator<[string, string]>;"#,
+        },
     },
     Spec {
         class: Class::Request,
@@ -1902,6 +1918,36 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: " implements Body",
+            members: r#"constructor(input: string | URL | Request, init?: RequestInit);
+readonly method: string;
+readonly url: string;
+readonly headers: Headers;
+readonly destination: string;
+readonly referrer: string;
+readonly referrerPolicy: string;
+readonly mode: string;
+readonly credentials: string;
+readonly cache: string;
+readonly redirect: "follow" | "manual" | "error";
+readonly integrity: string;
+readonly keepalive: boolean;
+readonly isReloadNavigation: boolean;
+readonly isHistoryNavigation: boolean;
+readonly signal: AbortSignal;
+readonly duplex: "half";
+readonly body: ReadableStream<Uint8Array> | null;
+readonly bodyUsed: boolean;
+arrayBuffer(): Promise<ArrayBuffer>;
+blob(): Promise<Blob>;
+bytes(): Promise<Uint8Array>;
+formData(): Promise<FormData>;
+json(): Promise<any>;
+text(): Promise<string>;
+clone(): Request;"#,
+        },
     },
     Spec {
         class: Class::Response,
@@ -1935,12 +1981,84 @@ pub(crate) const SPECS: &[Spec] = &[
         ],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: " implements Body",
+            members: r#"constructor(body?: BodyInit | null, init?: ResponseInit);
+static json(data: unknown, init?: ResponseInit): Response;
+static error(): Response;
+static redirect(url: string | URL, status?: number): Response;
+readonly type: "basic" | "default" | "error";
+readonly url: string;
+readonly redirected: boolean;
+readonly status: number;
+readonly ok: boolean;
+readonly statusText: string;
+readonly headers: Headers;
+readonly body: ReadableStream<Uint8Array> | null;
+readonly bodyUsed: boolean;
+arrayBuffer(): Promise<ArrayBuffer>;
+blob(): Promise<Blob>;
+bytes(): Promise<Uint8Array>;
+formData(): Promise<FormData>;
+json(): Promise<any>;
+text(): Promise<string>;
+clone(): Response;"#,
+        },
     },
 ];
 
 /// The global `fetch`.
-pub(crate) const FUNCTIONS: &[(&std::ffi::CStr, js::Native, std::ffi::c_int)] =
-    &[(c"fetch", fetch, 1)];
+pub(crate) const FUNCTIONS: &[super::Function] = &[super::Function {
+    name: c"fetch",
+    native: fetch,
+    length: 1,
+    doc: "HTTP through the platform's network stack (NSURLSession,\nHttpURLConnection), streaming both ways; `data:` and `blob:` URLs are\nanswered locally.",
+    signature: "(input: string | URL | Request, init?: RequestInit): Promise<Response>",
+}];
+
+/// The TypeScript types of this file's classes (`globals.d.ts`).
+pub(crate) const TYPES: &str = r#"type HeadersInit = Headers | Record<string, string> | Iterable<[string, string]>;
+
+type BodyInit = ReadableStream<Uint8Array> | Blob | BufferSource | FormData | URLSearchParams | string;
+
+interface Body {
+  /** The body as it arrives (a byte stream), or null. */
+  readonly body: ReadableStream<Uint8Array> | null;
+  readonly bodyUsed: boolean;
+  arrayBuffer(): Promise<ArrayBuffer>;
+  blob(): Promise<Blob>;
+  bytes(): Promise<Uint8Array>;
+  formData(): Promise<FormData>;
+  json(): Promise<any>;
+  text(): Promise<string>;
+}
+
+interface RequestInit {
+  method?: string;
+  headers?: HeadersInit;
+  /** A ReadableStream is sent as it is read (chunked), with `duplex: "half"`. */
+  body?: BodyInit | null;
+  duplex?: "half";
+  signal?: AbortSignal | null;
+  /** "manual" gives the 3xx response itself. */
+  redirect?: "follow" | "manual" | "error";
+  credentials?: "omit" | "same-origin" | "include";
+  cache?: "default" | "no-store" | "reload" | "no-cache" | "force-cache" | "only-if-cached";
+  mode?: "same-origin" | "no-cors" | "cors";
+  referrer?: string;
+  referrerPolicy?: string;
+  integrity?: string;
+  keepalive?: boolean;
+  priority?: "high" | "low" | "auto";
+}
+
+interface ResponseInit {
+  status?: number;
+  statusText?: string;
+  headers?: HeadersInit;
+}
+"#;
 
 #[cfg(test)]
 mod tests {

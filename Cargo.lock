@@ -1817,6 +1817,7 @@ dependencies = [
  "log",
  "nsh-anim",
  "nsh-core",
+ "nsh-ui-mobile",
  "percent-encoding",
  "rquickjs",
  "rustc-hash",

@@ -1019,5 +1019,64 @@ fn report(ctx: *mut JsContext, id: NodeId) -> JsValue {
 
 /// `nsh/list`: `List`, the component `<list>` is (for apps that import it
 /// by name).
-pub(crate) const EXPORTS: &[(&str, crate::modules::Export)] =
-    &[("List", crate::modules::Export::Function(list, 1))];
+pub(crate) const EXPORTS: &[crate::modules::Item] = &[(
+    "List",
+    crate::modules::Export::Function(list, 1),
+    crate::modules::Ts::Function(
+        "A virtualized, recycling list on a native scroll view. Only rows near the\n\
+         viewport exist; the native side decides which, and cells are reused.\n\
+         Positions, columns, sticky headers and viewability are computed natively.\n\n\
+         Rows are recycled: keep per-item state in your data (keyed by id), not in\n\
+         signals created inside the row.",
+        &["<T>(props: ListProps<T>): YNode"],
+    ),
+)];
+
+/// `nsh/list`'s types.
+pub(crate) const TYPES: &str = r#"/** A component (`Header`) or an element (`<Header />`). */
+export type ListSlot = (() => JSX.Element) | JSX.Element;
+
+/** An item that became viewable or stopped being viewable. */
+export interface ViewToken<T> {
+  item: T;
+  key: string;
+  index: number;
+  isViewable: boolean;
+}
+
+export interface ViewabilityConfig {
+  /** Percent of the viewport an item must cover to count as viewable. */
+  viewAreaCoveragePercentThreshold?: number;
+  /** Percent of an item that must be visible. Without either threshold, any visible pixel counts. */
+  itemVisiblePercentThreshold?: number;
+  /** Milliseconds items must stay viewable before they are reported. */
+  minimumViewTime?: number;
+}
+
+export interface ListProps<T> extends ScrollingHostProps, ListHostProps {
+  each: readonly T[];
+  ListHeaderComponent?: ListSlot;
+  ListFooterComponent?: ListSlot;
+  /** Shown instead of the items while `each` is empty. */
+  ListEmptyComponent?: ListSlot;
+  /** Rendered between items (one column). */
+  ItemSeparatorComponent?: ListSlot;
+  /** Scrolls to this item before the first frame. */
+  initialScrollIndex?: number;
+  /** Key of an item in `onViewableItemsChanged` tokens (default: `item.key`, `item.id`, or the index). */
+  keyExtractor?: (item: T, index: number) => string;
+  onViewableItemsChanged?: (info: { viewableItems: ViewToken<T>[]; changed: ViewToken<T>[] }) => void;
+  style?: StyleProp<ViewStyle>;
+  /** How close to the end (in viewports) `onEndReached` fires; default 1. */
+  onEndReachedThreshold?: number;
+  ref?: YNode | ((node: YNode) => void);
+  /** Renders one row. Called once per recycled cell; `item` and `index`
+   * change when the cell is reused for another item. */
+  children: (item: () => T, index: () => number) => JSX.Element;
+}
+
+/** What an app passes to a Rust component that lays out a list of rows
+ * (an `Items` prop): the data and the rows; the component decides the
+ * layout. */
+export type ListItemsProps<T> = Pick<ListProps<T>, "each" | "children" | "keyExtractor" | "stickyHeaderIndices" | "initialScrollIndex" | "onViewableItemsChanged" | "viewabilityConfig" | "refreshing" | "onRefresh" | "onEndReached" | "onEndReachedThreshold" | "ListHeaderComponent" | "ListFooterComponent" | "ListEmptyComponent">;
+"#;

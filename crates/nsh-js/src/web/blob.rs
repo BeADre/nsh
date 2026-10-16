@@ -762,6 +762,18 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "",
+            members: r#"constructor(blobParts?: Iterable<BlobPart>, options?: BlobPropertyBag);
+readonly size: number;
+readonly type: string;
+slice(start?: number, end?: number, contentType?: string): Blob;
+arrayBuffer(): Promise<ArrayBuffer>;
+bytes(): Promise<Uint8Array>;
+text(): Promise<string>;
+stream(): ReadableStream<Uint8Array>;"#,
+        },
     },
     Spec {
         class: Class::File,
@@ -777,6 +789,14 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: " extends Blob",
+            members: r#"constructor(fileBits: Iterable<BlobPart>, fileName: string, options?: BlobPropertyBag & { lastModified?: number });
+readonly name: string;
+readonly lastModified: number;
+readonly webkitRelativePath: string;"#,
+        },
     },
     Spec {
         class: Class::FormData,
@@ -800,5 +820,32 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "",
+            members: r#"constructor();
+append(name: string, value: string | Blob, fileName?: string): void;
+delete(name: string): void;
+get(name: string): FormDataEntryValue | null;
+getAll(name: string): FormDataEntryValue[];
+has(name: string): boolean;
+set(name: string, value: string | Blob, fileName?: string): void;
+forEach(callback: (value: FormDataEntryValue, key: string, parent: FormData) => void, thisArg?: unknown): void;
+entries(): IterableIterator<[string, FormDataEntryValue]>;
+keys(): IterableIterator<string>;
+values(): IterableIterator<FormDataEntryValue>;
+[Symbol.iterator](): IterableIterator<[string, FormDataEntryValue]>;"#,
+        },
     },
 ];
+
+/// The TypeScript types of this file's classes (`globals.d.ts`).
+pub(crate) const TYPES: &str = r#"type BlobPart = BufferSource | Blob | string;
+
+interface BlobPropertyBag {
+  type?: string;
+  endings?: "transparent" | "native";
+}
+
+type FormDataEntryValue = File | string;
+"#;

@@ -66,7 +66,7 @@ rquickjs = { version = "=0.14.0", default-features = false, features = ["std", "
 
 rolldown = "=1.2.13"
 rolldown_common = "=1.2.13"
-oxc = { version = "=0.153.0", features = ["transformer", "codegen", "semantic", "isolated_declarations"] }
+oxc = { version = "=0.153.0", features = ["transformer", "codegen", "semantic"] }
 
 # Apple bindings: default features off. The defaults pull in every header
 # and link frameworks we never use (CloudKit, CoreData, Metal, ...), which

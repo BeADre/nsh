@@ -14,6 +14,7 @@ mod bytecode;
 mod canvas;
 mod components;
 mod console;
+mod declarations;
 mod dom;
 mod env;
 mod error;
@@ -39,6 +40,7 @@ pub use nsh_core::{
 
 pub use crate::{
     bytecode::{BUNDLE_NAME, BYTECODE_VERSION, compile_bytecode, compile_bytecode_with},
+    declarations::type_definitions,
     error::JsError,
     host::{ErrorHandler, Host, HostOptions, TextMeasurer},
     net::{FetchEvent, FetchOp, HttpBody, HttpHead, HttpRequest, NetworkQueue, RequestId},

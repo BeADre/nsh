@@ -30,16 +30,16 @@ crates/
                        lists, canvas, animation (`navigation.rs`, `list.rs`, `canvas.rs`, `animated.rs`), touches and the
                        responder system (`touch.rs`), the environment (`env.rs`), hot module replacement (`hot.rs`);
                        decoding JS values into core types (`protocol.rs`); the web APIs of TS apps (`web/`: fetch, streams,
-                       Blob / FormData, URL, encoding, events), native classes
+                       Blob / FormData, URL, encoding, events), native classes; the TypeScript declarations of all of it
+                       (`declarations.rs`, from the declaration next to each export and spec)
   nsh-engine/          Engine thread: drives nsh-js + nsh-core and hands one MountBatch per frame to the platform
   nsh-package/         Signed packages (`.nshpkg`): Ed25519 keys, release-key certificates, revocation lists, the trust store
   nsh-bundler/         Bundler: rolldown + Oxc (TS stripping) + nsh's JSX compiler (`jsx.rs`, docs/dev/native-pipeline.md) + source maps;
                        imports of the native modules stay imports (`plugin.rs`), so a bundle holds only the app's code;
                        the app's themes (nsh.json `tailwind` / `theme`, checked, handed to the renderer by the entry) and the
                        unknown-class check (`classes.rs`);
-                       development bundles with hot module replacement (`hot.rs`); the TypeScript declarations of `.nsh/types` (`types.rs`)
-  nsh-bundler/types/   The hand-written declarations of the native modules (`nsh/index.d.ts` is `nsh`, `nsh/list.d.ts` `nsh/list`,
-                       ...; `_core.d.ts` shared internals, `types.d.ts` element and JSX types, `globals.d.ts` the JS globals)
+                       development bundles with hot module replacement (`hot.rs`); the app's part of `.nsh/types` (`types.rs`:
+                       its kebab-case components' JSX types, asset imports)
   nsh-dev/             Dev tooling: dev server protocol, server (CLI, feature `server`), client (host, feature `client`)
   nsh-platform-ios/    UIKit backend (iOS / simulator / Mac Catalyst): native view mounting, CoreText text engine, input, AppView, standalone app;
                        feature `dev`: dev server client, log forwarding, error overlay; feature `embed`: the C ABI (`embed.rs`,
@@ -132,7 +132,7 @@ host it is an empty crate, so always run clippy on platform code with the Cataly
 - **Components are Rust.** A UI set's components live in its crate (`crates/nsh-ui-mobile`), run in the core and
   render primitives with typed styles (GPUI-style `Styled` methods, never class strings) and theme colors (gpui-kit's
   fields); props and events are derived types, their JS face is made from the specs (`nsh-js` `components.rs`) and
-  their TypeScript generated (`components.gen.d.ts`), never hand-written per component. JS allocates even node ids,
+  their TypeScript declarations generated from them (`nsh_core::ui::declarations`), never hand-written per component. JS allocates even node ids,
   the core odd ones for what components expand (`docs/dev/components.md`).
 - **The main thread never waits for JS.** Callbacks the system wants answered on the spot (may this text change, may
   the back button pop, may the sheet close, ...) are answered natively from props mounted beforehand; events tell JS
@@ -143,13 +143,14 @@ host it is an empty crate, so always run clippy on platform code with the Cataly
   resources, the dev server and verified packages (`docs/dev/signed-packages.md`).
 - **Generated, never hand-copied**: the codes of encoded operations (`ANIM_*`, `CV_*`), the canvas's recording
   methods and properties (made natively from `CanvasOp`'s `#[derive(JsOps)]` specs, which also decode them), the style
-  types, the host elements' props and the easings / layout animation presets come from `crates/nsh-core/src/js/`, and
-  their declarations are generated from it (`style.gen.d.ts`, `elements.gen.d.ts`, `anim.gen.d.ts`, `canvas.gen.d.ts`),
-  as are those of the UI sets' components and the runtime's Rust modules; only the declarations of the native modules
-  themselves are hand-written (`crates/nsh-bundler/types`). A new style property is one line of `style_keys!`
-  (`style.rs`) with its TS type, a new host prop one variant of `Prop` with `#[prop(js = …)]` (`docs/dev/elements.md`).
-- **Keep in sync**: the native modules ↔ their declarations in `crates/nsh-bundler/types/nsh`; the event handlers in
-  `types.d.ts` ↔ the payloads of `nsh-js`'s `dispatch_event`; the order of `EventKind` ↔ `Native.java`; `encode.rs`
+  types, the host elements' props and events and the easings / layout animation presets come from
+  `crates/nsh-core/src/js/`, and so do their declarations, as do those of the UI sets' components and the runtime's
+  Rust modules. No `.d.ts` is checked in: a native module's export carries its declaration (`modules::Ts`), a web
+  class's spec its members' (`web::ClassTs`), and tests load every module and global and check that what exists is
+  what is declared (`nsh-js` `declarations.rs`). A new style property is one line of `style_keys!` (`style.rs`) with
+  its TS type, a new host prop one variant of `Prop` with `#[prop(js = …)]`, a new event a row of `host::EVENTS` (or
+  `INTERNAL_EVENTS`) (`docs/dev/elements.md`).
+- **Keep in sync**: the handler types of `host::EVENTS` ↔ the payloads of `nsh-js`'s `dispatch_event`; the order of `EventKind` ↔ `Native.java`; `encode.rs`
   opcodes ↔ `Mounter.java`; new event payload keys ↔ the JNI event map's key list; `BUNDLE_NAME` /
   `BYTECODE_VERSION` ↔ the linked QuickJS.
 

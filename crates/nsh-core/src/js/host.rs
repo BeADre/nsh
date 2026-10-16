@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 pub use nsh_macros::HostProps;
 
-use crate::{EdgeInsets, style::Color, ui::TsTypes};
+use crate::{EdgeInsets, EventKind, style::Color, ui::TsTypes};
 
 /// A JS value as host props read it.
 pub trait HostInput: Sized {
@@ -309,7 +309,290 @@ pub fn field<T: HostValue, I: HostInput>(input: &I, key: &str, cx: &mut HostCx) 
     input.field(key).and_then(|v| T::decode(&v, cx))
 }
 
-/// The interfaces of `elements.gen.ts`, by the elements their props apply
+/// The payloads of the host elements' events.
+const EVENT_TYPES: &str = r#"/** A frame relative to the parent: the payload of `onLayout`. */
+export interface LayoutEvent {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** A drag: translation since the start and velocity (points / second). */
+export interface PanEvent {
+  translationX: number;
+  translationY: number;
+  velocityX: number;
+  velocityY: number;
+  /** The `pan.x` value now (with one). */
+  valueX?: number;
+  /** The `pan.y` value now (with one). */
+  valueY?: number;
+}
+
+/** Where a scroll view is: the payload of `onScroll`. */
+export interface ScrollEvent {
+  x: number;
+  y: number;
+  /** The content's size (zoomed). */
+  contentWidth: number;
+  contentHeight: number;
+  width: number;
+  height: number;
+  /** The zoom scale (1 unless the scroll view zooms). */
+  zoomScale: number;
+}
+
+/** A line of a laid-out text (in the text's content box). */
+export interface TextLayoutLine {
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  ascender: number;
+  descender: number;
+  capHeight: number;
+  xHeight: number;
+}
+
+/** Where a web view is: the payload of its navigation events. */
+export interface WebViewNavigation {
+  url: string;
+  title: string;
+  loading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+}
+"#;
+
+/// The events of the host elements, as their handler props: the event, the
+/// elements whose props declare it ([`on`] bits), the handler's type and
+/// its documentation. An event whose payload differs between elements has
+/// a row per payload.
+pub const EVENTS: &[(EventKind, u32, &str, &str)] = &[
+    (EventKind::Press, on::ALL, "() => void", ""),
+    (EventKind::LongPress, on::ALL, "() => void", ""),
+    (EventKind::PressIn, on::ALL, "() => void", ""),
+    (EventKind::PressOut, on::ALL, "() => void", ""),
+    (EventKind::Layout, on::ALL, "(e: LayoutEvent) => void", ""),
+    (EventKind::PanStart, on::ALL, "(e: PanEvent) => void", ""),
+    (
+        EventKind::PanEnd,
+        on::ALL,
+        "(e: PanEvent) => void",
+        "With the release velocity, e.g. to start a `decay`.",
+    ),
+    (
+        EventKind::PinchStart,
+        on::ALL,
+        "(e: { scale: number; velocity: number }) => void",
+        "",
+    ),
+    (
+        EventKind::PinchEnd,
+        on::ALL,
+        "(e: { scale: number; velocity: number }) => void",
+        "",
+    ),
+    (
+        EventKind::RotationStart,
+        on::ALL,
+        "(e: { rotation: number; velocity: number }) => void",
+        "",
+    ),
+    (
+        EventKind::RotationEnd,
+        on::ALL,
+        "(e: { rotation: number; velocity: number }) => void",
+        "",
+    ),
+    (
+        EventKind::AccessibilityAction,
+        on::ALL,
+        "(e: { actionName: string }) => void",
+        "",
+    ),
+    (
+        EventKind::TextLayout,
+        on::TEXT,
+        "(e: { lines: TextLayoutLine[] }) => void",
+        "The laid-out lines (in the text's content box), after each layout.",
+    ),
+    (
+        EventKind::LoadStart,
+        on::IMAGE | on::VIDEO,
+        "() => void",
+        "",
+    ),
+    (
+        EventKind::LoadStart,
+        on::WEBVIEW,
+        "(e: WebViewNavigation) => void",
+        "",
+    ),
+    (
+        EventKind::Progress,
+        on::IMAGE,
+        "(e: { loaded: number; total: number }) => void",
+        "Download progress in bytes (`total` 0 when unknown); at most every 100 ms.",
+    ),
+    (
+        EventKind::Progress,
+        on::VIDEO,
+        "(e: { currentTime: number; duration: number }) => void",
+        "",
+    ),
+    (
+        EventKind::Load,
+        on::IMAGE,
+        "(e: { width: number; height: number }) => void",
+        "The source image's size in pixels (not the decoded, downsampled one).",
+    ),
+    (
+        EventKind::Load,
+        on::WEBVIEW,
+        "(e: WebViewNavigation) => void",
+        "",
+    ),
+    (
+        EventKind::Load,
+        on::VIDEO,
+        "(e: { duration: number; width: number; height: number }) => void",
+        "",
+    ),
+    (
+        EventKind::Error,
+        on::IMAGE | on::WEBVIEW | on::VIDEO,
+        "(e: { message: string }) => void",
+        "",
+    ),
+    (
+        EventKind::LoadEnd,
+        on::IMAGE,
+        "() => void",
+        "After `onLoad` or `onError`.",
+    ),
+    (
+        EventKind::Scroll,
+        on::SCROLLING,
+        "(e: ScrollEvent) => void",
+        "",
+    ),
+    (
+        EventKind::ScrollBeginDrag,
+        on::SCROLLING,
+        "(e: { x: number; y: number }) => void",
+        "",
+    ),
+    (
+        EventKind::ScrollEndDrag,
+        on::SCROLLING,
+        "(e: { x: number; y: number }) => void",
+        "",
+    ),
+    (
+        EventKind::MomentumScrollBegin,
+        on::SCROLLING,
+        "(e: { x: number; y: number }) => void",
+        "",
+    ),
+    (
+        EventKind::MomentumScrollEnd,
+        on::SCROLLING,
+        "(e: { x: number; y: number }) => void",
+        "",
+    ),
+    (
+        EventKind::ScrollEnd,
+        on::SCROLL | on::LIST,
+        "(e: { x: number; y: number }) => void",
+        "",
+    ),
+    (EventKind::Refresh, on::SCROLL | on::LIST, "() => void", ""),
+    (EventKind::EndReached, on::LIST, "() => void", ""),
+    (
+        EventKind::ChangeText,
+        on::INPUT,
+        "(text: string) => void",
+        "",
+    ),
+    (
+        EventKind::SubmitEditing,
+        on::INPUT,
+        "(e: { text: string }) => void",
+        "",
+    ),
+    (EventKind::Focus, on::INPUT, "() => void", ""),
+    (EventKind::Blur, on::INPUT, "() => void", ""),
+    (
+        EventKind::SelectionChange,
+        on::INPUT,
+        "(e: { start: number; end: number }) => void",
+        "",
+    ),
+    (
+        EventKind::KeyPress,
+        on::INPUT,
+        "(e: { key: string }) => void",
+        "Before the text changes: `key` is the typed text, `Backspace` or `Enter`.",
+    ),
+    (
+        EventKind::ContentSizeChange,
+        on::INPUT,
+        "(e: { width: number; height: number }) => void",
+        "The size of the text (at the input's width when multiline): grow a multiline input with it.",
+    ),
+    (
+        EventKind::Message,
+        on::WEBVIEW,
+        "(e: { data: string }) => void",
+        "The page called `window.ReactNativeWebView.postMessage(data)`.",
+    ),
+    (
+        EventKind::NavigationStateChange,
+        on::WEBVIEW,
+        "(e: WebViewNavigation) => void",
+        "",
+    ),
+    (EventKind::End, on::VIDEO, "() => void", ""),
+    (
+        EventKind::Buffer,
+        on::VIDEO,
+        "(e: { isBuffering: boolean }) => void",
+        "",
+    ),
+    (
+        EventKind::BackRequest,
+        on::SCREEN,
+        "() => void",
+        "The user tried to leave a screen with `preventBack`.",
+    ),
+    (EventKind::Dismiss, on::SCREEN | on::MODAL, "() => void", ""),
+    (
+        EventKind::RequestClose,
+        on::MODAL,
+        "() => void",
+        "The user asked to close (Android back button, iOS sheet swipe): set `visible` to false to close it.",
+    ),
+    (EventKind::Show, on::MODAL, "() => void", ""),
+];
+
+/// The events no element's props declare: the root's (`BackHandler`,
+/// dialogs, `Image.getSize`), the runtime's own (touches, insets, native
+/// components' events) and those whose payload a module makes
+/// (`List`'s viewable items, with the app's items).
+pub const INTERNAL_EVENTS: &[EventKind] = &[
+    EventKind::Touch,
+    EventKind::Insets,
+    EventKind::NativeEvent,
+    EventKind::Dialog,
+    EventKind::BackPress,
+    EventKind::ImageInfo,
+    EventKind::ViewableItemsChanged,
+];
+
+/// The interfaces of the host props, by the elements their props apply
 /// to: `HostProps` for every element, `TextHostProps` for `<text>`, ...
 const GROUPS: &[(u32, &str, &str)] = &[
     (on::ALL, "", "every element"),
@@ -330,22 +613,16 @@ const GROUPS: &[(u32, &str, &str)] = &[
     (on::INPUT_ACCESSORY, "InputAccessory", "input accessories"),
 ];
 
-/// The TypeScript of the host elements' props (`elements.gen.ts`): the
-/// named types they use and one interface per element group and platform
-/// (`InputHostProps`, `IOSInputHostProps`, ...), which the element types of
-/// `types.ts` and the runtime's components extend.
-pub fn typescript() -> String {
+/// The declarations of the host elements' props: the named types they use
+/// and one interface per element group and platform (`InputHostProps`,
+/// `IOSInputHostProps`, ...), which the element types and the components
+/// of `nsh/webview`, `nsh/video`, ... extend.
+pub fn declarations() -> String {
     use std::fmt::Write as _;
     let mut types = TsTypes::default();
     let mut specs = Vec::new();
     <crate::Prop as HostProps>::specs(&mut types, &mut specs);
-    let mut out = super::banner("the host props of nsh_core (nsh_core::js::host)");
-    out.push_str(
-        "import type { NativeValue } from \"./animated\";\n\
-         import type { ViewabilityConfig } from \"./list\";\n\
-         import type { ColorValue } from \"./style.gen\";\n\
-         import type { ImageAsset } from \"./types\";\n",
-    );
+    let mut out = String::from(EVENT_TYPES);
     for declaration in types.declarations() {
         let _ = write!(out, "\n{declaration}\n");
     }
@@ -359,7 +636,12 @@ pub fn typescript() -> String {
                 .iter()
                 .filter(|s| s.on & bit != 0 && s.platform == platform)
                 .collect();
-            if props.is_empty() {
+            // Events are for every platform.
+            let events: Vec<_> = EVENTS
+                .iter()
+                .filter(|e| e.1 & bit != 0 && platform == Platform::All)
+                .collect();
+            if props.is_empty() && events.is_empty() {
                 continue;
             }
             let _ = write!(
@@ -371,6 +653,12 @@ pub fn typescript() -> String {
                     let _ = writeln!(out, "  /** {} */", p.doc);
                 }
                 let _ = writeln!(out, "  {}?: {};", p.name, p.ts);
+            }
+            for (kind, _, handler, doc) in events {
+                if !doc.is_empty() {
+                    let _ = writeln!(out, "  /** {doc} */");
+                }
+                let _ = writeln!(out, "  {}?: {handler};", kind.prop_name());
             }
             out.push_str("}\n");
         }

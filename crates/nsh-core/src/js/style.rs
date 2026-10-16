@@ -1,13 +1,11 @@
-//! `style.gen.ts` (declarations): the style interfaces (`LayoutStyle`, `ViewStyle`,
+//! The declarations of the style interfaces (`LayoutStyle`, `ViewStyle`,
 //! `TextStyle`, `ImageStyle`) from the core's table of style properties,
 //! each with the TypeScript type of what its parser takes.
 
 use crate::style::{OBJECT_STYLE_TYPES, STYLE_TYPES, StyleGroup};
 
 /// The value types the properties' types are written in.
-const PRELUDE: &str = r#"import type { NativeNode } from "./animated";
-
-/** A CSS-like color: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb()`,
+const PRELUDE: &str = r#"/** A CSS-like color: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb()`,
  * `rgba()` or a named color (`black`, `white`, `transparent`, …). */
 export type ColorValue = string;
 
@@ -62,11 +60,10 @@ const INTERFACES: &[(StyleGroup, &str, &str)] = &[
     ),
 ];
 
-/// The generated module.
-pub fn typescript() -> String {
+/// The declarations of the style types.
+pub fn declarations() -> String {
     use std::fmt::Write as _;
-    let mut out = super::banner("nsh_core's style properties (nsh_core::js::style)");
-    out.push_str(PRELUDE);
+    let mut out = String::from(PRELUDE);
     for (group, head, doc) in INTERFACES {
         let _ = write!(out, "\n/** {doc} */\nexport interface {head} {{\n");
         for t in STYLE_TYPES.iter().chain(OBJECT_STYLE_TYPES) {

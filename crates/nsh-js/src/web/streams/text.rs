@@ -210,6 +210,13 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "",
+            members: r#"readonly encoding: "utf-8";
+readonly readable: ReadableStream<Uint8Array>;
+readonly writable: WritableStream<string>;"#,
+        },
     },
     Spec {
         class: Class::TextDecoderStream,
@@ -227,6 +234,16 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "",
+            members: r#"constructor(label?: string, options?: { fatal?: boolean; ignoreBOM?: boolean });
+readonly encoding: string;
+readonly fatal: boolean;
+readonly ignoreBOM: boolean;
+readonly readable: ReadableStream<string>;
+readonly writable: WritableStream<BufferSource>;"#,
+        },
     },
 ];
 

@@ -35,8 +35,11 @@ pub(crate) const SPECIFIER: &str = "nsh:hot";
 const GLOBAL: &std::ffi::CStr = c"__nsh_hot";
 
 /// The exports of [`SPECIFIER`].
-pub(crate) const EXPORTS: &[(&str, crate::modules::Export)] =
-    &[("hot", crate::modules::Export::Value(install))];
+pub(crate) const EXPORTS: &[crate::modules::Item] = &[(
+    "hot",
+    crate::modules::Export::Value(install),
+    crate::modules::Ts::Internal,
+)];
 
 /// A context's hot state (empty until a development bundle starts).
 #[derive(Default)]

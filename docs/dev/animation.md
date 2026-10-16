@@ -5,7 +5,7 @@
   `easing`), `add/sub/mul/div/mod`, `diffClamp(min, max)`. `Easing` (React Native's: `linear`, `ease`, `quad`, `cubic`, `poly`,
   `sin`, `circle`, `exp`, `elastic`, `back`, `bounce`, `bezier`, `in` / `out` / `inOut`) is data decoded in Rust
   (`nsh_anim::Easing::Curve`), never a JS function: the curves, their parameters and defaults are one table
-  (`nsh_core::js::anim`), which decodes them, generates their types (`anim.gen.d.ts`) and gives `nsh/animated` its curves (`anim::tables`). `Animated.timing` / `spring` / `decay` / `sequence` / `parallel` / `stagger` /
+  (`nsh_core::js::anim`), which decodes them, declares their types (`anim::declarations`) and gives `nsh/animated` its curves (`anim::tables`). `Animated.timing` / `spring` / `decay` / `sequence` / `parallel` / `stagger` /
   `delay` / `loop` build a `Composite` tree that runs entirely natively (`AnimOp::StartComposite`): each step starts at the exact end
   time of the previous one (no frame gaps), `stop()` / `reset()` (back to the values at start) / `start(cb)` report `finished` once
   for the whole tree; leaf animations get internal ids (`LEAF_IDS`) that never reach JS. Composites are released when JS

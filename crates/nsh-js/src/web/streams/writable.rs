@@ -990,6 +990,15 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "<W = any>",
+            members: r#"constructor(underlyingSink?: UnderlyingSink<W>, strategy?: QueuingStrategy<W>);
+readonly locked: boolean;
+abort(reason?: any): Promise<void>;
+close(): Promise<void>;
+getWriter(): WritableStreamDefaultWriter<W>;"#,
+        },
     },
     Spec {
         class: Class::WritableStreamDefaultWriter,
@@ -1010,6 +1019,18 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "<W = any>",
+            members: r#"constructor(stream: WritableStream<W>);
+readonly closed: Promise<void>;
+readonly desiredSize: number | null;
+readonly ready: Promise<void>;
+abort(reason?: any): Promise<void>;
+close(): Promise<void>;
+releaseLock(): void;
+write(chunk?: W): Promise<void>;"#,
+        },
     },
     Spec {
         class: Class::WritableStreamDefaultController,
@@ -1021,5 +1042,21 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "",
+            members: r#"readonly signal: AbortSignal;
+error(e?: any): void;"#,
+        },
     },
 ];
+
+/// The TypeScript types of this file's classes (`globals.d.ts`).
+pub(crate) const TYPES: &str = r#"interface UnderlyingSink<W = any> {
+  start?(controller: WritableStreamDefaultController): any;
+  write?(chunk: W, controller: WritableStreamDefaultController): void | PromiseLike<void>;
+  close?(): void | PromiseLike<void>;
+  abort?(reason?: any): void | PromiseLike<void>;
+  type?: undefined;
+}
+"#;

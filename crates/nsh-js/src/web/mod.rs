@@ -112,6 +112,32 @@ pub(crate) struct Spec {
     pub(crate) constants: &'static [(&'static CStr, f64)],
     /// Defined on the global object.
     pub(crate) global: bool,
+    /// Its TypeScript declaration (`globals.d.ts`).
+    pub(crate) ts: ClassTs,
+}
+
+/// The TypeScript declaration of a global class: `declare class
+/// <name><head> { <members> }`, with its constants (`readonly NONE:
+/// number`) added from the spec. A test checks that the members are the
+/// spec's.
+pub(crate) struct ClassTs {
+    /// Documentation (plain text).
+    pub(crate) doc: &'static str,
+    /// What follows the name: type parameters and heritage (`<R = any>`,
+    /// ` extends EventTarget`).
+    pub(crate) head: &'static str,
+    /// The members' declarations, one per line as in a class body.
+    pub(crate) members: &'static str,
+}
+
+impl ClassTs {
+    /// Not declared: a class apps never name (`Iterator`'s prototype, the
+    /// streams' internals).
+    pub(crate) const NONE: ClassTs = ClassTs {
+        doc: "",
+        head: "",
+        members: "",
+    };
 }
 
 fn specs() -> impl Iterator<Item = &'static Spec> {
@@ -128,10 +154,44 @@ fn specs() -> impl Iterator<Item = &'static Spec> {
     .chain(streams::specs())
 }
 
+/// A global function (not a class) and its declaration.
+pub(crate) struct Function {
+    pub(crate) name: &'static CStr,
+    pub(crate) native: Native,
+    pub(crate) length: c_int,
+    /// Documentation (plain text).
+    pub(crate) doc: &'static str,
+    /// What follows the name in its declaration.
+    pub(crate) signature: &'static str,
+}
+
 /// Global functions (not classes).
-fn functions() -> impl Iterator<Item = &'static (&'static CStr, Native, c_int)> {
+pub(crate) fn functions() -> impl Iterator<Item = &'static Function> {
     fetch::FUNCTIONS.iter()
 }
+
+/// The global classes, as declared.
+pub(crate) fn declared_specs() -> impl Iterator<Item = &'static Spec> {
+    specs().filter(|s| s.global)
+}
+
+/// The classes apps never name.
+#[cfg(test)]
+pub(crate) fn internal_specs() -> impl Iterator<Item = &'static Spec> {
+    specs().filter(|s| !s.global)
+}
+
+/// The TypeScript types the classes use (`BodyInit`, `EventInit`, ...).
+pub(crate) const TYPES: &[&str] = &[
+    encoding::TYPES,
+    event::TYPES,
+    blob::TYPES,
+    streams::TYPES,
+    streams::readable::TYPES,
+    streams::writable::TYPES,
+    streams::transform::TYPES,
+    fetch::TYPES,
+];
 
 /// The per-context state: the classes and the prototypes.
 #[derive(Default)]
@@ -556,17 +616,17 @@ fn global_value(ctx: Ctx, name: &CStr) -> R<V> {
     if let Some(spec) = specs().find(|s| s.global && s.name == name) {
         return constructor(ctx, spec.class);
     }
-    let (n, f, length) = functions()
-        .find(|(n, _, _)| *n == name)
+    let f = functions()
+        .find(|f| f.name == name)
         .ok_or_else(|| js::type_error(ctx, "unknown global"))?;
-    js::function(ctx, n, *f, *length)
+    js::function(ctx, f.name, f.native, f.length)
 }
 
 fn global_names() -> impl Iterator<Item = &'static CStr> {
     specs()
         .filter(|s| s.global)
         .map(|s| s.name)
-        .chain(functions().map(|(n, _, _)| *n))
+        .chain(functions().map(|f| f.name))
 }
 
 /// Replaces the lazy accessors still in place with the values.

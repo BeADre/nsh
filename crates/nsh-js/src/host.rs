@@ -678,6 +678,42 @@ fn describe(value: Value<'_>) -> String {
     }
 }
 
+/// The declarations of the globals besides the web classes and functions
+/// (`web/`): the host's (console, timers, frames, below) and QuickJS-NG's
+/// that apps use. A test checks that each exists, and that every global
+/// the host adds is declared.
+pub(crate) const GLOBALS: &str = r#"declare var console: {
+  log(...data: unknown[]): void;
+  info(...data: unknown[]): void;
+  debug(...data: unknown[]): void;
+  warn(...data: unknown[]): void;
+  error(...data: unknown[]): void;
+};
+
+declare var performance: {
+  /** Milliseconds since the JS context started, with sub-millisecond precision. */
+  now(): number;
+};
+
+declare function setTimeout(handler: (...args: any[]) => void, timeout?: number, ...args: any[]): number;
+declare function setInterval(handler: (...args: any[]) => void, timeout?: number, ...args: any[]): number;
+declare function clearTimeout(id: number | undefined): void;
+declare function clearInterval(id: number | undefined): void;
+declare function queueMicrotask(callback: () => void): void;
+/** Runs `callback` at the next display frame with its time in milliseconds. */
+declare function requestAnimationFrame(callback: (time: number) => void): number;
+declare function cancelAnimationFrame(id: number): void;
+declare function atob(data: string): string;
+declare function btoa(data: string): string;
+
+declare class DOMException extends Error {
+  constructor(message?: string, name?: string);
+  readonly name: string;
+  readonly message: string;
+  readonly code: number;
+}
+"#;
+
 fn install(ctx: &Ctx<'_>, shared: &Rc<Shared>) -> rquickjs::Result<()> {
     let globals = ctx.globals();
     console::install(ctx)?;

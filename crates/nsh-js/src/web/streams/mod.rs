@@ -10,7 +10,7 @@
 
 pub(crate) mod readable;
 mod text;
-mod transform;
+pub(crate) mod transform;
 pub(crate) mod writable;
 
 use std::collections::VecDeque;
@@ -278,6 +278,13 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: " implements QueuingStrategy<ArrayBufferView>",
+            members: r#"constructor(init: { highWaterMark: number });
+readonly highWaterMark: number;
+readonly size: (chunk: ArrayBufferView) => number;"#,
+        },
     },
     Spec {
         class: Class::CountQueuingStrategy,
@@ -292,6 +299,13 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: " implements QueuingStrategy",
+            members: r#"constructor(init: { highWaterMark: number });
+readonly highWaterMark: number;
+readonly size: (chunk: any) => 1;"#,
+        },
     },
 ];
 
@@ -307,3 +321,10 @@ pub(crate) fn specs() -> impl Iterator<Item = &'static Spec> {
     .into_iter()
     .flatten()
 }
+
+/// The TypeScript types of this file's classes (`globals.d.ts`).
+pub(crate) const TYPES: &str = r#"interface QueuingStrategy<T = any> {
+  highWaterMark?: number;
+  size?: (chunk: T) => number;
+}
+"#;

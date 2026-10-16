@@ -59,10 +59,10 @@ pub(crate) struct ThemeSetup {
 }
 
 /// File types imported as image assets.
-const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "heic"];
+pub(crate) const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "heic"];
 
 /// File types imported as fonts.
-const FONT_EXTENSIONS: &[&str] = &["ttf", "otf"];
+pub(crate) const FONT_EXTENSIONS: &[&str] = &["ttf", "otf"];
 
 fn has_extension(path: &Path, extensions: &[&str]) -> bool {
     path.extension()

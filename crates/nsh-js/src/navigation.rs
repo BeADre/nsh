@@ -17,6 +17,7 @@ use rquickjs::qjs;
 
 use crate::{
     dom,
+    modules::{Export, Item, Ts},
     reactive::{self, arg},
 };
 
@@ -63,17 +64,87 @@ fn free(ctx: *mut JsContext, v: JsValue) {
     unsafe { qjs::JS_FreeValue(ctx, v) };
 }
 
-/// A native value of the mobile UI's navigation.
-pub(crate) fn export(ctx: *mut JsContext, name: &str) -> Option<JsValue> {
-    let (cname, f, length): (&CStr, reactive::Native, c_int) = match name {
-        "createNavigator" => (c"createNavigator", create_navigator, 1),
-        "Stack" => (c"Stack", stack, 1),
-        "Screen" => (c"Screen", screen, 1),
-        "Modal" => (c"Modal", modal, 1),
-        _ => return None,
-    };
-    Some(reactive::new_function(ctx, cname, f, length))
+/// The mobile UI's navigation (its `Registry::native_values`).
+pub(crate) const EXPORTS: &[Item] = &[
+    (
+        "createNavigator",
+        Export::Function(create_navigator, 1),
+        Ts::Function(
+            "A stack of routes for `<Stack>`, starting with `initial`.",
+            &["<R>(initial: R | R[]): Navigator<R>"],
+        ),
+    ),
+    (
+        "Stack",
+        Export::Function(stack, 1),
+        Ts::Function(
+            "A native navigation stack: UINavigationController on iOS (swipe back,\nnative header), a stack with a toolbar and predictive back on Android.\nScreens stay mounted (with their state) while they are in the stack.",
+            &["<R>(props: StackProps<R>): YNode"],
+        ),
+    ),
+    (
+        "Screen",
+        Export::Function(screen, 1),
+        Ts::Function(
+            "One screen of a `<Stack>`, with its header options.",
+            &["(props: ScreenProps): YNode"],
+        ),
+    ),
+    (
+        "Modal",
+        Export::Function(modal, 1),
+        Ts::Function(
+            "Content presented over everything else, in its own native window layer.",
+            &["(props: ModalProps): JSX.Element"],
+        ),
+    ),
+];
+
+/// The types of the navigation's exports.
+pub(crate) const TYPES: &str = r#"/** A stack of routes for `<Stack>`: plain values, compared by identity. */
+export interface Navigator<R> {
+  /** The routes, bottom to top (reactive). */
+  routes: Accessor<readonly R[]>;
+  /** Pushes a screen. */
+  push(route: R): void;
+  /** Pops `count` screens (at least one stays). */
+  pop(count?: number): void;
+  /** Pops back to the first screen. */
+  popToTop(): void;
+  /** Replaces the top screen. */
+  replace(route: R): void;
+  /** Replaces all screens. */
+  reset(routes: R[]): void;
+  /** Removes a route wherever it is (the user popped its screen). */
+  remove(route: R): void;
 }
+
+export interface StackProps<R> {
+  navigator: Navigator<R>;
+  style?: StyleProp<ViewStyle>;
+  /** Renders a route; return a `<Screen>` for header options. */
+  children: (route: R, index: Accessor<number>) => JSX.Element;
+}
+
+export interface ScreenProps extends ScreenHostProps {
+  headerLeft?: JSX.Element;
+  headerRight?: JSX.Element;
+  /** Replaces the title. */
+  headerTitle?: JSX.Element;
+  style?: StyleProp<ViewStyle>;
+  children?: JSX.Element;
+  ios?: IOSScreenHostProps;
+}
+
+export interface ModalProps extends ModalHostProps {
+  /** Shown while true (default). */
+  visible?: boolean;
+  style?: StyleProp<ViewStyle>;
+  children?: JSX.Element;
+  ios?: IOSModalHostProps;
+  android?: AndroidModalHostProps;
+}
+"#;
 
 // --- The navigator --------------------------------------------------------------
 

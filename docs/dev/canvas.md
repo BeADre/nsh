@@ -15,7 +15,7 @@
   (`OpArg`: numbers or native values, paints, `Path2D` lists, string unions; an invalid color or font drops the
   operation, as in HTML Canvas), and `method = …, params = …` / `property = …, initial = …` describe the methods and
   properties that only record (`moveTo`, `fillRect`, `lineWidth`, ...): `nsh-js` makes them natively from these specs
-  (`CanvasOp::methods` / `properties`) and their declarations are generated (`canvas.gen.d.ts`); what has logic
+  (`CanvasOp::methods` / `properties`) and their declarations are generated (`canvas::declarations`); what has logic
   (overloads, `roundRect`'s radii, `save` / `restore`, gradients, images) is written in `canvas.rs`. The core's decoder
   (`nsh_core::js::canvas::decode`) reads the recorded list. Recording costs: `docs/dev/performance.md`. iOS replays
   into the `drawRect:` context, keeping its own transform and path in view space; Android `CanvasBox.java` interprets an `int[]` (`encode.rs`). Not

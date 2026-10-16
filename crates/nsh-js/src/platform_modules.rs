@@ -16,7 +16,7 @@ use rquickjs::qjs;
 
 use crate::{
     dom,
-    modules::Export,
+    modules::{Export, Item, Ts},
     reactive::{self, arg},
 };
 
@@ -317,19 +317,38 @@ unsafe extern "C" fn on_back_press(
 }
 
 /// The hand-written exports of `nsh/android` (with the registry's).
-pub(crate) const ANDROID_EXPORTS: &[(&str, Export)] = &[
+pub(crate) const ANDROID_EXPORTS: &[Item] = &[
     (
         "isAvailable",
         Export::Value(|ctx| boolean(os(ctx) == Os::Android)),
+        Ts::Const("True on Android.", "boolean"),
     ),
-    ("BackHandler", Export::Value(back_handler)),
+    (
+        "BackHandler",
+        Export::Value(back_handler),
+        Ts::Const(
+            "The back button, after modals and stacks had their turn.",
+            "BackHandlerModule & BackListeners",
+        ),
+    ),
 ];
 
+/// `nsh/android`'s types (with the runtime registry's modules).
+pub(crate) const ANDROID_TYPES: &str = r#"/** The back button's listeners. */
+export interface BackListeners {
+  /** `listener` returns true when it handled the press; the most recently
+   * added listener runs first. Without a listener that handles it, the app
+   * exits. */
+  addEventListener(event: "hardwareBackPress", listener: () => boolean | void): { remove(): void };
+}
+"#;
+
 /// `nsh/ios`.
-pub(crate) const IOS_EXPORTS: &[(&str, Export)] = &[
+pub(crate) const IOS_EXPORTS: &[Item] = &[
     (
         "isAvailable",
         Export::Value(|ctx| boolean(os(ctx) == Os::Ios)),
+        Ts::Const("True on iOS (and Mac Catalyst).", "boolean"),
     ),
     (
         "InputAccessoryView",
@@ -340,20 +359,57 @@ pub(crate) const IOS_EXPORTS: &[(&str, Export)] = &[
                 reactive::new_function(ctx, c"InputAccessoryView", nothing, 1)
             }
         }),
+        Ts::Function(
+            "A bar over the keyboard of the inputs whose `inputAccessoryViewID` is its\n`nativeID` (iOS's `inputAccessoryView`): as wide as the window and as tall\nas its content, moving with the keyboard natively. It renders nothing where\nit is placed in the tree, and nothing at all on Android.",
+            &["(props: InputAccessoryViewProps): YNode | null"],
+        ),
     ),
 ];
 
+/// `nsh/ios`'s types.
+pub(crate) const IOS_TYPES: &str = r#"export interface InputAccessoryViewProps {
+  /** Inputs with this `inputAccessoryViewID` show the view over the keyboard. */
+  nativeID: string;
+  style?: StyleProp<ViewStyle>;
+  class?: string;
+  children?: JSX.Element;
+}
+"#;
+
 /// `nsh/webview`.
-pub(crate) const WEBVIEW_EXPORTS: &[(&str, Export)] = &[(
+pub(crate) const WEBVIEW_EXPORTS: &[Item] = &[(
     "WebView",
     Export::Value(|ctx| host_component(ctx, "webview", false)),
+    Ts::Const(
+        "A web page (WKWebView / android.webkit.WebView); its `ref` has\n`reload()`, `goBack()`, `goForward()`, `stopLoading()`,\n`injectJavaScript(script)` and `postMessage(data)`.",
+        "(props: WebViewProps) => YNode",
+    ),
 )];
 
+/// `nsh/webview`'s types.
+pub(crate) const WEBVIEW_TYPES: &str = r#"export type { WebViewNavigation };
+
+export interface WebViewProps extends Omit<ViewProps, "children" | "ios">, WebViewHostProps {
+  source: string | { uri: string } | { html: string; baseUrl?: string };
+  ios?: IOSWebViewHostProps;
+}
+"#;
+
 /// `nsh/video`.
-pub(crate) const VIDEO_EXPORTS: &[(&str, Export)] = &[(
+pub(crate) const VIDEO_EXPORTS: &[Item] = &[(
     "Video",
     Export::Value(|ctx| host_component(ctx, "video", false)),
+    Ts::Const(
+        "A video player (AVPlayer / MediaPlayer); its `ref` has `seek(seconds)`.",
+        "(props: VideoProps) => YNode",
+    ),
 )];
+
+/// `nsh/video`'s types.
+pub(crate) const VIDEO_TYPES: &str = r#"export interface VideoProps extends Omit<ViewProps, "children">, VideoHostProps {
+  source: string | { uri: string };
+}
+"#;
 
 // --- nsh/native ---------------------------------------------------------------------------
 
@@ -494,5 +550,31 @@ unsafe extern "C" fn native_event(
 }
 
 /// `nsh/native`.
-pub(crate) const NATIVE_EXPORTS: &[(&str, Export)] =
-    &[("nativeComponent", Export::Function(native_component, 2))];
+pub(crate) const NATIVE_EXPORTS: &[Item] = &[(
+    "nativeComponent",
+    Export::Function(native_component, 2),
+    Ts::Function(
+        "A component for the native component the embedding app registered as\n`name` (Swift `NshAppView.register(component:)`, Java\n`NshView.registerComponent`). It is laid out like a view, at the size its\nstyle gives it, else at the size the component reports. Its `ref` calls\ncommands: `ref.command(\"zoomTo\", { level: 3 })`. Where nothing is\nregistered under `name`, it renders an empty view.",
+        &[
+            "<P extends object = {}, E extends object = {}>(name: string, spec: NativeComponentSpec<P, E>): (props: NativeComponentProps<P, E>) => YNode",
+        ],
+    ),
+)];
+
+/// `nsh/native`'s types.
+pub(crate) const NATIVE_TYPES: &str = r#"/** Handlers of a native component's events: `regionChange` -> `onRegionChange`. */
+export type NativeEventHandlers<E> = { [K in keyof E & string as `on${Capitalize<K>}`]?: (data: E[K]) => void };
+
+/** The props of a native component: a view's (style, classes, layout,
+ * accessibility, `ref`), its own `P` and handlers of its events `E`. */
+export type NativeComponentProps<P, E> = Omit<ViewProps, "children"> & P & NativeEventHandlers<E>;
+
+/** What a native component takes and emits. */
+export interface NativeComponentSpec<P, E> {
+  /** Its own props: sent to the component (any JSON value), each when it
+   * changes. */
+  props: readonly (keyof P & string)[];
+  /** The events it emits. */
+  events?: readonly (keyof E & string)[];
+}
+"#;

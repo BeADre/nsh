@@ -568,6 +568,13 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "<I = any, O = any>",
+            members: r#"constructor(transformer?: Transformer<I, O>, writableStrategy?: QueuingStrategy<I>, readableStrategy?: QueuingStrategy<O>);
+readonly readable: ReadableStream<O>;
+readonly writable: WritableStream<I>;"#,
+        },
     },
     Spec {
         class: Class::TransformStreamDefaultController,
@@ -583,5 +590,22 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "<O = any>",
+            members: r#"readonly desiredSize: number | null;
+enqueue(chunk?: O): void;
+error(reason?: any): void;
+terminate(): void;"#,
+        },
     },
 ];
+
+/// The TypeScript types of this file's classes (`globals.d.ts`).
+pub(crate) const TYPES: &str = r#"interface Transformer<I = any, O = any> {
+  start?(controller: TransformStreamDefaultController<O>): any;
+  transform?(chunk: I, controller: TransformStreamDefaultController<O>): void | PromiseLike<void>;
+  flush?(controller: TransformStreamDefaultController<O>): void | PromiseLike<void>;
+  cancel?(reason?: any): void | PromiseLike<void>;
+}
+"#;

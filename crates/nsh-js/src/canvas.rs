@@ -34,7 +34,7 @@ use rquickjs::qjs;
 
 use crate::{
     dom,
-    modules::Export,
+    modules::{Export, Item, Ts},
     reactive::{self, Native, arg},
 };
 
@@ -1349,11 +1349,28 @@ fn send(ctx: *mut JsContext, node: JsValue, out: Vec<Rec>, mut used: Vec<JsValue
 }
 
 /// `nsh/canvas`.
-pub(crate) const EXPORTS: &[(&str, Export)] = &[
-    ("Canvas", Export::Function(canvas, 1)),
+pub(crate) const EXPORTS: &[Item] = &[
+    (
+        "Canvas",
+        Export::Function(canvas, 1),
+        Ts::Function(
+            "A view drawn with a 2D context (HTML Canvas 2D API). `draw` records the\ndrawing in one go; the platform replays it natively (CGContext, Android\nCanvas), at the screen's resolution.",
+            &["(props: CanvasProps): YNode"],
+        ),
+    ),
     (
         "Path2D",
         Export::Value(|ctx| class_function(ctx, c"Path2D", path_2d, PATH, 1)),
+        Ts::Class(
+            "A path to fill, stroke or clip; `new Path2D(\"M0 0 L10 10\")` takes SVG\npath data (parsed natively).",
+            r#" {
+  #private;
+  constructor(path?: Path2D | string);
+  /** Appends `path`'s subpaths. */
+  addPath(path: Path2D): void;
+}
+export interface Path2D extends CanvasPath {}"#,
+        ),
     ),
     (
         "CanvasRenderingContext2D",
@@ -1361,11 +1378,86 @@ pub(crate) const EXPORTS: &[(&str, Export)] = &[
             let name = c"CanvasRenderingContext2D";
             class_function(ctx, name, illegal_constructor, CONTEXT, 0)
         }),
+        Ts::Class(
+            "The 2D context `<Canvas draw>` gets (an HTML Canvas 2D subset). Calls only\nrecord operations; the platform draws them after `draw` returns (and again\nwhenever a native value they read changes). Coordinates are in points,\nthe origin at the canvas's top left.",
+            r#" {
+  #private;
+  /** The canvas's size in points. */
+  readonly canvas: { readonly width: number; readonly height: number };
+  fillStyle: CanvasPaint;
+  strokeStyle: CanvasPaint;
+  shadowOffsetX: number;
+  shadowOffsetY: number;
+  save(): void;
+  restore(): void;
+  resetTransform(): void;
+  setLineDash(segments: number[]): void;
+  getLineDash(): number[];
+  fill(path?: Path2D | "nonzero" | "evenodd", rule?: "nonzero" | "evenodd"): void;
+  stroke(path?: Path2D): void;
+  clip(path?: Path2D | "nonzero" | "evenodd", rule?: "nonzero" | "evenodd"): void;
+  fillText(text: string, x: CanvasNumber, y: CanvasNumber, maxWidth?: number): void;
+  strokeText(text: string, x: CanvasNumber, y: CanvasNumber, maxWidth?: number): void;
+  /** Measured by the platform's text engine with the current `font`. */
+  measureText(text: string): TextMetrics;
+  createLinearGradient(x0: number, y0: number, x1: number, y1: number): CanvasGradient;
+  createRadialGradient(x0: number, y0: number, r0: number, x1: number, y1: number, r1: number): CanvasGradient;
+  /** `startAngle` in radians, clockwise from the x axis. */
+  createConicGradient(startAngle: number, x: number, y: number): CanvasGradient;
+  /**
+   * Draws an image (a URL or an imported asset), loaded natively:
+   * `(image, dx, dy)` at its natural size, `(image, dx, dy, dw, dh)`, or
+   * `(image, sx, sy, sw, sh, dx, dy, dw, dh)` for part of it (source in
+   * image pixels). The canvas draws again once it has loaded.
+   */
+  drawImage(image: string | ImageAsset | { uri: string }, ...args: CanvasNumber[]): void;
+}
+export interface CanvasRenderingContext2D extends CanvasPath, CanvasContextMethods, CanvasProperties {}"#,
+        ),
     ),
     (
         "CanvasGradient",
         Export::Value(|ctx| {
             class_function(ctx, c"CanvasGradient", illegal_constructor, GRADIENT, 0)
         }),
+        Ts::Class(
+            "A gradient from `createLinearGradient` / `createRadialGradient` /\n`createConicGradient`.",
+            r#" {
+  #private;
+  /** `offset` 0..1; any CSS color. */
+  addColorStop(offset: number, color: string): void;
+}"#,
+        ),
     ),
 ];
+
+/// `nsh/canvas`'s types (with the recording methods' and properties' of
+/// `nsh_core::js::canvas::declarations`).
+pub(crate) const TYPES: &str = r#"/** A color, a gradient, or a native value interpolating colors. */
+export type CanvasPaint = string | CanvasGradient | NativeNode;
+
+/** Path building, shared by the context (its current path) and `Path2D`. */
+export interface CanvasPath extends CanvasPathMethods {
+  /** `radii`: one radius, or 2–4 as in CSS `border-radius` (top-left first). */
+  roundRect(x: CanvasNumber, y: CanvasNumber, w: CanvasNumber, h: CanvasNumber, radii?: CanvasNumber | CanvasNumber[]): void;
+}
+
+export interface TextMetrics {
+  /** The advance width in points. */
+  width: number;
+}
+
+export interface CanvasSize {
+  width: number;
+  height: number;
+}
+
+export interface CanvasProps extends ViewProps {
+  /**
+   * Draws the canvas. Runs again when signals it reads change and when the
+   * canvas resizes (it first runs once the size is known); native values
+   * passed as numbers or colors animate without running it.
+   */
+  draw: (ctx: CanvasRenderingContext2D, size: CanvasSize) => void;
+}
+"#;

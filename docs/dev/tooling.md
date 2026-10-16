@@ -3,19 +3,30 @@
 ## TypeScript
 
 - Every command that builds an app writes `.nsh/types` next to its entry (only changed files; files nsh no longer writes
-  are removed), from `nsh_bundler::type_definitions(elements)`: the hand-written declarations of the native modules
-  (`crates/nsh-bundler/types/nsh`: `index.d.ts` for `nsh`, one per `nsh/<module>`, `_core.d.ts`, `types.d.ts`,
-  `globals.d.ts` for the JS globals and asset imports), the ones generated from the Rust specs with Oxc isolated
-  declarations (`style.gen.d.ts`, `elements.gen.d.ts`, `anim.gen.d.ts`, `canvas.gen.d.ts`,
-  `ui/mobile/components.gen.d.ts`, the runtime's Rust modules: `js-modules.md`), and `nsh/jsx-runtime.d.ts`: the
-  built-in elements and the app's kebab-case components, rewritten after every build (`native-pipeline.md`). `nsh init`
-  writes a `tsconfig.json` mapping `nsh` and `nsh/*` there (`jsxImportSource: "nsh"`, no DOM library), so editors
-  type-check apps without `node_modules`.
-- The generated TypeScript needs explicit types (isolated declarations cannot infer; debug builds assert it). The
-  style types come from the core's `style_keys!` table, the host elements' props from `Prop`'s `#[derive(HostProps)]`;
-  the event handlers in `types.d.ts` follow the payloads of `nsh-js`'s `dispatch_event`, and each hand-written
-  declaration follows its native module (`declarations_cover_every_module` checks every module has one).
-- To check the declarations themselves, run `tsc -p .` in an app with `skipLibCheck` off.
+  are removed). None of it is checked in: `nsh_js::type_definitions(ui_sets)` makes the declarations of everything nsh
+  serves (`nsh-js` `declarations.rs`), and `nsh_bundler::type_definitions(elements)` the app's part. The files:
+  `nsh/index.d.ts` (`nsh`), one per module (`nsh/list.d.ts`, `nsh/ui/mobile.d.ts`, ...), `nsh/types.d.ts` (the
+  styles, the elements' props and events, `YNode`, the JSX element type; `nsh` exports them), `nsh/globals.d.ts`
+  (console, timers, frames and the web APIs), and from the bundler `nsh/jsx-runtime.d.ts` (the built-in elements and
+  the app's kebab-case components, rewritten after every build: `native-pipeline.md`) and `nsh/assets.d.ts` (what
+  image and font imports give). Each file declares its own names; the `import type` lines between them are worked out
+  from the names each uses. `nsh init` writes a `tsconfig.json` mapping `nsh` and `nsh/*` there (`jsxImportSource:
+  "nsh"`, no DOM library), so editors type-check apps without `node_modules`.
+- Where each declaration comes from:
+  - a native module's export: the `Ts` next to it in its table (`modules::Item`; the module's own interfaces in its
+    `types`);
+  - a registry's components and modules: their specs (`nsh_core::ui::declarations`; a module object's type is
+    `<Name>Module`, which a native module can build on: `BackHandlerModule & BackListeners`);
+  - the styles, host props, events, easings and canvas methods: the core's tables (`nsh_core::js::{style, host, anim,
+    canvas}::declarations`; an event's handler type is its row in `host::EVENTS`, an event no element declares is in
+    `INTERNAL_EVENTS`);
+  - a web class: its spec's `ClassTs` (members as in a class body; the constants come from the spec's table), the
+    types its file declares in `TYPES`, a global function's `web::Function`, the other globals `host::GLOBALS`.
+- The tests keep them true: every module is loaded and its exports compared with its declarations
+  (`declarations_match_the_modules`), every web class's members with its spec (`web_classes_declare_their_members`),
+  the globals with a host's (`globals_match_the_host`: what is declared exists, and every global the host adds to
+  QuickJS-NG's is declared), every event has a type or is internal, and every imported name has one home.
+- To check the declarations themselves, run `tsc -p . --skipLibCheck false` in an app.
 
 ## Dev server (nsh dev / nsh run)
 

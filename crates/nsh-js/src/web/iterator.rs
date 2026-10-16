@@ -69,4 +69,5 @@ pub(crate) const SPECS: &[Spec] = &[Spec {
     statics: &[],
     constants: &[],
     global: false,
+    ts: crate::web::ClassTs::NONE,
 }];

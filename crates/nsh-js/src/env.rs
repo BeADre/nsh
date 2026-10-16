@@ -15,7 +15,7 @@ use nsh_core::platform::{ColorScheme, Environment, Idiom, Os};
 use rquickjs::qjs;
 
 use crate::{
-    modules::Export,
+    modules::{Export, Item, Ts},
     reactive::{self, Native, arg},
 };
 
@@ -296,22 +296,51 @@ pub(crate) fn insets_context(ctx: *mut JsContext) -> JsValue {
     env(ctx).insets.get()
 }
 
-/// A runtime value a registry exports as it is.
+/// The values registries re-export as they are (`Registry::reexport`):
+/// the environment's accessors and hooks the mobile UI exports.
+pub(crate) const REEXPORTS: &[Item] = &[
+    (
+        "safeArea",
+        Export::Value(|ctx| accessor(ctx, Part::SafeArea)),
+        Ts::Const(
+            "Insets of the surface not covered by system UI (notch, home indicator,\ntitle bar), in points (reactive).",
+            "Accessor<Insets>",
+        ),
+    ),
+    (
+        "keyboard",
+        Export::Value(|ctx| accessor(ctx, Part::Keyboard)),
+        Ts::Const(
+            "Height of the software keyboard over the surface (0 when hidden) and the\nduration of its animation in seconds (reactive).",
+            "Accessor<{ height: number; duration: number }>",
+        ),
+    ),
+    (
+        "useSafeAreaInsets",
+        Export::Function(use_safe_area_insets, 0),
+        Ts::Function(
+            "Insets not covered by system UI or headers where this component renders:\nthe surface's safe area, a modal's, or a screen's (below its header).",
+            &["(): Accessor<Insets>"],
+        ),
+    ),
+];
+
+/// Value `name` a registry re-exports or names as native
+/// (`Registry::native_values`): [`REEXPORTS`] and navigation's.
 pub(crate) fn reexport(ctx: *mut JsContext, name: &str) -> JsValue {
-    if let Some(v) = crate::navigation::export(ctx, name) {
-        return v;
-    }
-    match name {
-        "safeArea" => accessor(ctx, Part::SafeArea),
-        "keyboard" => accessor(ctx, Part::Keyboard),
-        "windowSize" => accessor(ctx, Part::Window),
-        "colorScheme" => accessor(ctx, Part::ColorScheme),
-        "useSafeAreaInsets" => {
-            reactive::new_function(ctx, c"useSafeAreaInsets", use_safe_area_insets, 0)
+    let item = REEXPORTS
+        .iter()
+        .chain(crate::navigation::EXPORTS)
+        .find(|(n, ..)| *n == name);
+    match item {
+        Some((n, Export::Function(f, length), _)) => {
+            let cname = std::ffi::CString::new(*n).unwrap_or_default();
+            reactive::new_function(ctx, &cname, *f, *length)
         }
-        other => {
+        Some((_, Export::Value(make), _)) => make(ctx),
+        None => {
             let message =
-                std::ffi::CString::new(format!("nsh: the runtime has no native `{other}` yet"))
+                std::ffi::CString::new(format!("nsh: the runtime has no native `{name}`"))
                     .unwrap_or_default();
             // SAFETY: throws on a live context.
             unsafe { qjs::JS_ThrowReferenceError(ctx, c"%s".as_ptr(), message.as_ptr()) }
@@ -557,23 +586,111 @@ unsafe extern "C" fn force_rtl(
 }
 
 /// The exports of `nsh/device`.
-pub(crate) const DEVICE_EXPORTS: &[(&str, Export)] = &[
+pub(crate) const DEVICE_EXPORTS: &[Item] = &[
     (
         "windowSize",
         Export::Value(|ctx| accessor(ctx, Part::Window)),
+        Ts::Const(
+            "Size of the surface in points (reactive).",
+            "Accessor<{ width: number; height: number }>",
+        ),
     ),
     (
         "colorScheme",
         Export::Value(|ctx| accessor(ctx, Part::ColorScheme)),
+        Ts::Const(
+            "The system appearance (reactive).",
+            "Accessor<\"light\" | \"dark\">",
+        ),
     ),
     (
         "fontScale",
         Export::Value(|ctx| accessor(ctx, Part::FontScale)),
+        Ts::Const(
+            "The user's preferred text size relative to the default (reactive).",
+            "Accessor<number>",
+        ),
     ),
-    ("Platform", Export::Value(platform)),
-    ("PixelRatio", Export::Value(pixel_ratio)),
-    ("I18nManager", Export::Value(i18n_manager)),
+    (
+        "Platform",
+        Export::Value(platform),
+        Ts::Const(
+            "The platform the app runs on (React Native's `Platform`).",
+            "PlatformStatic",
+        ),
+    ),
+    (
+        "PixelRatio",
+        Export::Value(pixel_ratio),
+        Ts::Const(
+            "Device pixels per point (React Native's `PixelRatio`). Not reactive:\nread in components that also read `windowSize()` to follow a window\nmoving to another screen.",
+            "PixelRatioStatic",
+        ),
+    ),
+    (
+        "I18nManager",
+        Export::Value(i18n_manager),
+        Ts::Const(
+            "Right-to-left layout (React Native's `I18nManager`). Right to left,\nrows run from the right and `left` / `right` style properties mean start\nand end. Changes apply at once (no restart).",
+            "I18nManagerStatic",
+        ),
+    ),
 ];
+
+/// `nsh/device`'s types.
+pub(crate) const DEVICE_TYPES: &str = r#"export interface PlatformSelectSpec<T> {
+  ios?: T;
+  android?: T;
+  macos?: T;
+  windows?: T;
+  linux?: T;
+  /** iOS and Android. */
+  mobile?: T;
+  /** macOS, Windows and Linux. */
+  desktop?: T;
+  /** Every platform (nsh only runs natively). */
+  native?: T;
+  default?: T;
+}
+
+export interface PlatformStatic {
+  readonly OS: OS;
+  /** A desktop OS (macOS, Windows, Linux). */
+  readonly isDesktop: boolean;
+  /** iOS and desktops: the version string (`"17.5"`); Android: the API level. */
+  readonly Version: string | number;
+  readonly isPad: boolean;
+  readonly isTV: boolean;
+  /** Mac Catalyst in the Mac idiom. */
+  readonly isMacCatalyst: boolean;
+  readonly constants: {
+    readonly osVersion: string | number;
+    readonly interfaceIdiom: "phone" | "pad" | "mac" | "tv" | "desktop";
+  };
+  /** The value for this platform: its OS (`ios`, `macos`, ...), else
+   * `mobile` / `desktop`, else `native`, else `default`. */
+  select<T>(spec: PlatformSelectSpec<T>): T | undefined;
+}
+
+export interface PixelRatioStatic {
+  get(): number;
+  getFontScale(): number;
+  getPixelSizeForLayoutSize(size: number): number;
+  roundToNearestPixel(size: number): number;
+}
+
+export interface I18nManagerStatic {
+  /** Whether the app lays out right to left (reactive). */
+  isRTL: boolean;
+  /** `left` and `right` swap right to left (always, as React Native's default). */
+  doLeftAndRightSwapInRTL: true;
+  /** Follow right-to-left languages (default true). */
+  allowRTL(allow: boolean): void;
+  /** Lay out right to left whatever the language. */
+  forceRTL(force: boolean): void;
+  getConstants(): { isRTL: boolean; doLeftAndRightSwapInRTL: boolean };
+}
+"#;
 
 // --- nsh/accessibility --------------------------------------------------------------
 
@@ -696,14 +813,40 @@ unsafe extern "C" fn remove_listener(
 }
 
 /// The exports of `nsh/accessibility` (with the runtime registry's).
-pub(crate) const ACCESSIBILITY_EXPORTS: &[(&str, Export)] = &[
+pub(crate) const ACCESSIBILITY_EXPORTS: &[Item] = &[
     (
         "reduceMotion",
         Export::Value(|ctx| accessor(ctx, Part::ReduceMotion)),
+        Ts::Const(
+            "Whether the user asked for less motion (reactive; also `motion-reduce:`).",
+            "Accessor<boolean>",
+        ),
     ),
     (
         "screenReaderEnabled",
         Export::Value(|ctx| accessor(ctx, Part::ScreenReader)),
+        Ts::Const(
+            "Whether a screen reader (VoiceOver, TalkBack) runs (reactive).",
+            "Accessor<boolean>",
+        ),
     ),
-    ("AccessibilityInfo", Export::Value(accessibility_info)),
+    (
+        "AccessibilityInfo",
+        Export::Value(accessibility_info),
+        Ts::Const(
+            "Screen reader and motion settings. `screenReaderEnabled()` and\n`reduceMotion()` are the reactive forms.",
+            "AccessibilityInfoModule & AccessibilitySettings",
+        ),
+    ),
 ];
+
+/// `nsh/accessibility`'s types (with the runtime registry's module).
+pub(crate) const ACCESSIBILITY_TYPES: &str = r#"export type AccessibilityChangeEvent = "screenReaderChanged" | "reduceMotionChanged";
+
+/** The settings, at once, and their changes. */
+export interface AccessibilitySettings {
+  isScreenReaderEnabled(): Promise<boolean>;
+  isReduceMotionEnabled(): Promise<boolean>;
+  addEventListener(event: AccessibilityChangeEvent, listener: (enabled: boolean) => void): { remove(): void };
+}
+"#;

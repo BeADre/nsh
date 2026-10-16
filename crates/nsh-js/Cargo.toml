@@ -19,3 +19,6 @@ rustc-hash.workspace = true
 thiserror.workspace = true
 percent-encoding.workspace = true
 url.workspace = true
+
+[dev-dependencies]
+nsh-ui-mobile.workspace = true

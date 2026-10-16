@@ -303,26 +303,19 @@ pub(crate) fn line_dash<L: HostList<Item: HostInput>>(
     Ok(Some(CanvasOp::LineDash(dash.into())))
 }
 
-/// `canvas.gen.ts`: the recording methods and properties, from which the
-/// bundler takes their declarations (`canvas.gen.d.ts`; `nsh-js` records
-/// natively from the same specs).
-pub fn typescript() -> String {
+/// The declarations of the recording methods and properties (`nsh/canvas`
+/// declares the classes; `nsh-js` records natively from the same specs).
+pub fn declarations() -> String {
     use std::fmt::Write as _;
     let mut types = TsTypes::default();
     let (mut path, mut context, mut properties) = (Vec::new(), Vec::new(), Vec::new());
     PathOp::methods(&mut types, &mut path);
     CanvasOp::methods(&mut types, &mut context);
     CanvasOp::properties(&mut types, &mut properties);
-    let mut out = super::banner("nsh_core::js::canvas");
-    out.push_str(
-        "import type { NativeNode } from \"./animated\";\n\n\
-         /** A number in a drawing: a constant, or a native value the canvas reads\n \
+    let mut out = String::from(
+        "/** A number in a drawing: a constant, or a native value the canvas reads\n \
          * while it draws (its animations redraw natively, without JS). */\n\
-         export type CanvasNumber = number | NativeNode;\n\n\
-         /** Where the methods record. */\n\
-         export interface CanvasRecorder {\n  out: unknown[];\n}\n\n\
-         /** Where the properties record, and the state they keep. */\n\
-         export interface CanvasStateRecorder extends CanvasRecorder {\n  s: CanvasProperties;\n}\n",
+         export type CanvasNumber = number | NativeNode;\n",
     );
     for declaration in types.declarations() {
         let _ = write!(out, "\n{declaration}\n");
@@ -345,33 +338,7 @@ pub fn typescript() -> String {
                 .join(", ");
             let _ = writeln!(out, "  /** {} */\n  {}({params}): void;", m.doc, m.name);
         }
-        out.push_str("}\n\n");
-        let mut value = iface.to_owned();
-        if let Some(first) = value.get_mut(..1) {
-            first.make_ascii_lowercase();
-        }
-        let _ = writeln!(
-            out,
-            "export const {value}: {iface} & ThisType<CanvasRecorder> = {{"
-        );
-        for m in list {
-            let params = m
-                .params
-                .iter()
-                .map(|p| match p.default {
-                    Some(d) => format!("{} = {d}", p.name),
-                    None => p.name.to_owned(),
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            let args: String = m.params.iter().map(|p| format!(", {}", p.name)).collect();
-            let _ = writeln!(
-                out,
-                "  {}({params}) {{\n    this.out.push({}{args});\n  }},",
-                m.name, m.code
-            );
-        }
-        out.push_str("};\n");
+        out.push_str("}\n");
     };
     methods(
         &mut out,
@@ -389,20 +356,6 @@ pub fn typescript() -> String {
     for p in &properties {
         let _ = writeln!(out, "  /** {} */\n  {}: {};", p.doc, p.name, p.ts);
     }
-    out.push_str("}\n\n/** The state's initial values (HTML Canvas's). */\nexport const initialCanvasProperties: CanvasProperties = {\n");
-    for p in &properties {
-        let _ = writeln!(out, "  {}: {},", p.name, p.initial);
-    }
-    out.push_str("};\n\n/** The properties' accessors. */\nexport const canvasProperties: PropertyDescriptorMap = {\n");
-    for p in &properties {
-        let _ = writeln!(
-            out,
-            "  {0}: {{\n    get(this: CanvasStateRecorder): {1} {{\n      return this.s.{0};\n    }},\n    \
-             set(this: CanvasStateRecorder, v: {1}) {{\n      this.s.{0} = v;\n      this.out.push({2}, v);\n    }},\n    \
-             configurable: true,\n  }},",
-            p.name, p.ts, p.code
-        );
-    }
-    out.push_str("};\n");
+    out.push_str("}\n");
     out
 }

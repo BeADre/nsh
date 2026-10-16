@@ -19,7 +19,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     dom,
-    modules::Export,
+    modules::{Export, Item, Ts},
     reactive::{self, arg},
 };
 
@@ -28,33 +28,89 @@ type JsContext = qjs::JSContext;
 
 const UNDEFINED: JsValue = qjs::JS_UNDEFINED;
 
-/// The touch and responder props, by index.
-pub(crate) const TOUCH_PROPS: [&str; 20] = [
-    "onTouchStart",
-    "onTouchMove",
-    "onTouchEnd",
-    "onTouchCancel",
-    "onTouchStartCapture",
-    "onTouchMoveCapture",
-    "onTouchEndCapture",
-    "onTouchCancelCapture",
-    "onStartShouldSetResponder",
-    "onMoveShouldSetResponder",
-    "onStartShouldSetResponderCapture",
-    "onMoveShouldSetResponderCapture",
-    "onResponderGrant",
-    "onResponderReject",
-    "onResponderStart",
-    "onResponderMove",
-    "onResponderEnd",
-    "onResponderRelease",
-    "onResponderTerminate",
-    "onResponderTerminationRequest",
+/// The touch and responder props: name, handler type and documentation
+/// (the declarations of `TouchProps`).
+pub(crate) const TOUCH_PROPS: [(&str, &str, &str); 20] = [
+    ("onTouchStart", "(e: GestureResponderEvent) => void", ""),
+    ("onTouchMove", "(e: GestureResponderEvent) => void", ""),
+    ("onTouchEnd", "(e: GestureResponderEvent) => void", ""),
+    ("onTouchCancel", "(e: GestureResponderEvent) => void", ""),
+    (
+        "onTouchStartCapture",
+        "(e: GestureResponderEvent) => void",
+        "",
+    ),
+    (
+        "onTouchMoveCapture",
+        "(e: GestureResponderEvent) => void",
+        "",
+    ),
+    (
+        "onTouchEndCapture",
+        "(e: GestureResponderEvent) => void",
+        "",
+    ),
+    (
+        "onTouchCancelCapture",
+        "(e: GestureResponderEvent) => void",
+        "",
+    ),
+    (
+        "onStartShouldSetResponder",
+        "(e: GestureResponderEvent) => boolean",
+        "Become the responder when a finger goes down (asked from the target outwards).",
+    ),
+    (
+        "onMoveShouldSetResponder",
+        "(e: GestureResponderEvent) => boolean",
+        "Become the responder when a finger moves.",
+    ),
+    (
+        "onStartShouldSetResponderCapture",
+        "(e: GestureResponderEvent) => boolean",
+        "As above, asked from the outside in, before the bubbling ones.",
+    ),
+    (
+        "onMoveShouldSetResponderCapture",
+        "(e: GestureResponderEvent) => boolean",
+        "",
+    ),
+    (
+        "onResponderGrant",
+        "(e: GestureResponderEvent) => boolean | void",
+        "This view is the responder now. Return true to keep native scroll views from taking the touches.",
+    ),
+    (
+        "onResponderReject",
+        "(e: GestureResponderEvent) => void",
+        "Another view is the responder and would not let go.",
+    ),
+    ("onResponderStart", "(e: GestureResponderEvent) => void", ""),
+    ("onResponderMove", "(e: GestureResponderEvent) => void", ""),
+    ("onResponderEnd", "(e: GestureResponderEvent) => void", ""),
+    (
+        "onResponderRelease",
+        "(e: GestureResponderEvent) => void",
+        "The last finger lifted.",
+    ),
+    (
+        "onResponderTerminate",
+        "(e: GestureResponderEvent) => void",
+        "Another view (or a native gesture) took the touches.",
+    ),
+    (
+        "onResponderTerminationRequest",
+        "(e: GestureResponderEvent) => boolean",
+        "Another view wants the touches: return false to keep them (default true).",
+    ),
 ];
 
 /// The index of touch prop `name`.
 pub(crate) fn touch_prop(name: &str) -> Option<u8> {
-    TOUCH_PROPS.iter().position(|p| *p == name).map(|i| i as u8)
+    TOUCH_PROPS
+        .iter()
+        .position(|p| p.0 == name)
+        .map(|i| i as u8)
 }
 
 fn index(name: &str) -> u8 {
@@ -681,8 +737,88 @@ fn pan_responder(ctx: *mut JsContext) -> JsValue {
 }
 
 /// `nsh/gesture`.
-pub(crate) const GESTURE_EXPORTS: &[(&str, Export)] =
-    &[("PanResponder", Export::Value(pan_responder))];
+pub(crate) const GESTURE_EXPORTS: &[Item] = &[(
+    "PanResponder",
+    Export::Value(pan_responder),
+    Ts::Const(
+        "Pan gestures on top of the responder system (React Native's\n`PanResponder`).",
+        "{ create(config: PanResponderCallbacks): PanResponderInstance }",
+    ),
+)];
+
+/// The touch events' types (part of every element's props: `types.d.ts`).
+pub(crate) const TOUCH_TYPES: &str = r#"/** A finger of a touch event (points). */
+export interface TouchPoint {
+  /** Identifies the finger while it is down. */
+  identifier: number;
+  /** Position in the view the finger went down on (`target`). */
+  locationX: number;
+  locationY: number;
+  /** Position in the surface. */
+  pageX: number;
+  pageY: number;
+  /** Id of the view the finger went down on. */
+  target: number;
+  /** Milliseconds. */
+  timestamp: number;
+}
+
+/** A touch or responder event: the finger it is about, the fingers down
+ * and those that changed (React Native's `nativeEvent`, which it also is). */
+export interface GestureResponderEvent extends TouchPoint {
+  touches: TouchPoint[];
+  changedTouches: TouchPoint[];
+  nativeEvent: GestureResponderEvent;
+  /** Touch handlers (`onTouchStart`…): views further out do not see it. */
+  stopPropagation(): void;
+}
+"#;
+
+/// `nsh/gesture`'s types.
+pub(crate) const GESTURE_TYPES: &str = r#"/** The state of a pan gesture (React Native's `PanResponderGestureState`). */
+export interface PanResponderGestureState {
+  stateID: number;
+  /** Latest position of the touches' centroid (surface points). */
+  moveX: number;
+  moveY: number;
+  /** Where the centroid was when the responder was granted. */
+  x0: number;
+  y0: number;
+  /** Distance moved since the grant. */
+  dx: number;
+  dy: number;
+  /** Velocity (points per millisecond). */
+  vx: number;
+  vy: number;
+  numberActiveTouches: number;
+}
+
+/** A `PanResponder.create` callback. */
+export type PanHandler<R = void> = (e: GestureResponderEvent, gestureState: PanResponderGestureState) => R;
+
+/** `PanResponder.create` callbacks. */
+export interface PanResponderCallbacks {
+  onStartShouldSetPanResponder?: PanHandler<boolean>;
+  onStartShouldSetPanResponderCapture?: PanHandler<boolean>;
+  onMoveShouldSetPanResponder?: PanHandler<boolean>;
+  onMoveShouldSetPanResponderCapture?: PanHandler<boolean>;
+  onPanResponderGrant?: PanHandler;
+  onPanResponderReject?: PanHandler;
+  onPanResponderStart?: PanHandler;
+  onPanResponderMove?: PanHandler;
+  onPanResponderEnd?: PanHandler;
+  onPanResponderRelease?: PanHandler;
+  onPanResponderTerminate?: PanHandler;
+  onPanResponderTerminationRequest?: PanHandler<boolean>;
+  /** Keep native scroll views from taking the touches (default true). */
+  onShouldBlockNativeResponder?: PanHandler<boolean>;
+}
+
+/** What `PanResponder.create` returns: spread `panHandlers` on a view. */
+export interface PanResponderInstance {
+  panHandlers: TouchProps;
+}
+"#;
 
 #[cfg(test)]
 mod tests {

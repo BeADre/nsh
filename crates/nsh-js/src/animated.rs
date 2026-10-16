@@ -22,7 +22,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     dom,
-    modules::Export,
+    modules::{Export, Item, Ts},
     reactive::{self, Native, arg},
 };
 
@@ -1308,20 +1308,149 @@ fn layout_animation(ctx: *mut JsContext) -> JsValue {
 }
 
 /// `nsh/animated`.
-pub(crate) const EXPORTS: &[(&str, Export)] = &[
+pub(crate) const EXPORTS: &[Item] = &[
     (
         "NativeNode",
         Export::Value(|ctx| class_function(ctx, c"NativeNode", native_node, 0)),
+        Ts::Class(
+            "A node of the native animation graph: evaluated on the UI thread.",
+            r#" {
+  #private;
+  constructor(inputs?: NativeNode[]);
+  /** Maps this node through piecewise ranges: numbers, colors or angles
+   * (`"45deg"`, `"1rad"`). Outside the input range it clamps by default;
+   * `easing` shapes each segment. */
+  interpolate(config: {
+    inputRange: number[];
+    outputRange: number[] | string[];
+    extrapolate?: Extrapolation;
+    extrapolateLeft?: Extrapolation;
+    extrapolateRight?: Extrapolation;
+    easing?: Easing;
+  }): NativeNode;
+  /** Follows this node's changes, kept within `min..max` (a header that
+   * hides while content scrolls up and comes back as it scrolls down). */
+  diffClamp(min: number, max: number): NativeNode;
+  add(b: NativeNode | number): NativeNode;
+  sub(b: NativeNode | number): NativeNode;
+  mul(b: NativeNode | number): NativeNode;
+  div(b: NativeNode | number): NativeNode;
+  /** Modulo, never negative for a positive `b` (e.g. angles in 0..360). */
+  mod(b: NativeNode | number): NativeNode;
+}"#,
+        ),
     ),
     (
         "NativeValue",
         Export::Value(|ctx| class_function(ctx, c"NativeValue", native_value, 1)),
+        Ts::Class(
+            "A settable, animatable native value.",
+            r#" extends NativeNode {
+  constructor(value: number);
+  /** Jumps to `value`, stopping any animation. */
+  set(value: number): void;
+  /** Stops the running animation where it is. */
+  stop(): void;
+  /** Animates to `to` over `duration` ms. Resolves with `finished`. */
+  timing(to: number, options?: { duration?: number; easing?: Easing; delay?: number }): Promise<boolean>;
+  /** Springs to `to`. Resolves with `finished`. */
+  spring(to: number, options?: { stiffness?: number; damping?: number; mass?: number; velocity?: number }): Promise<boolean>;
+  /** Coasts from `velocity` (units per second) and slows down. */
+  decay(options?: { velocity?: number; deceleration?: number }): Promise<boolean>;
+}"#,
+        ),
     ),
-    ("createNativeValue", Export::Function(native_value, 1)),
-    ("Animated", Export::Value(animated)),
-    ("Easing", Export::Value(easing)),
-    ("LayoutAnimation", Export::Value(layout_animation)),
+    (
+        "createNativeValue",
+        Export::Function(native_value, 1),
+        Ts::Function(
+            "Creates a native value. Bind it (or nodes derived from it) to style\nproperties such as `opacity`, `transform` and `backgroundColor`, to a\nscroll position (`scrollValue`) or to drags (`pan`).",
+            &["(value?: number): NativeValue"],
+        ),
+    ),
+    (
+        "Animated",
+        Export::Value(animated),
+        Ts::Const(
+            "Animations composed natively (React Native's `Animated`): each step\nstarts on the UI thread the moment the previous one ends.",
+            "AnimatedModule",
+        ),
+    ),
+    (
+        "Easing",
+        Export::Value(easing),
+        Ts::Const(
+            "Easing functions (React Native's `Easing`): curves in their \"in\" form,\nturned around with `out` / `inOut`.",
+            "EasingModule",
+        ),
+    ),
+    (
+        "LayoutAnimation",
+        Export::Value(layout_animation),
+        Ts::Const(
+            "Animates the layout changes of the next render natively: frames move,\nnew views fade in, removed views fade out.",
+            "LayoutAnimationModule",
+        ),
+    ),
 ];
+
+/// `nsh/animated`'s types (with the easing and layout animation types of
+/// `nsh_core::js::anim::declarations`).
+pub(crate) const TYPES: &str = r#"export type Extrapolation = "extend" | "clamp" | "identity";
+
+/** Easing functions (React Native's `Easing`). */
+export interface EasingModule extends EasingCurves {
+  linear: Easing;
+  ease: Easing;
+  bezier(x1: number, y1: number, x2: number, y2: number): Easing;
+  in(e: Easing): Easing;
+  out(e: Easing): Easing;
+  inOut(e: Easing): Easing;
+}
+
+/** An animation built with `Animated`: runs natively, steps and all. */
+export interface CompositeAnimation {
+  /** Runs it (again). Resolves (and calls `callback`) with whether it
+   * finished rather than being stopped. */
+  start(callback?: (result: { finished: boolean }) => void): Promise<boolean>;
+  /** Stops it where it is. */
+  stop(): void;
+  /** Stops it and puts its values back where they were when it started. */
+  reset(): void;
+}
+
+/** Animations composed natively (React Native's `Animated`). */
+export interface AnimatedModule {
+  timing(value: NativeValue, config: { toValue: number; duration?: number; easing?: Easing; delay?: number }): CompositeAnimation;
+  spring(value: NativeValue, config: { toValue: number; stiffness?: number; damping?: number; mass?: number; velocity?: number }): CompositeAnimation;
+  decay(value: NativeValue, config?: { velocity?: number; deceleration?: number }): CompositeAnimation;
+  sequence(list: CompositeAnimation[]): CompositeAnimation;
+  parallel(list: CompositeAnimation[], config?: { stopTogether?: boolean }): CompositeAnimation;
+  stagger(ms: number, list: CompositeAnimation[]): CompositeAnimation;
+  delay(ms: number): CompositeAnimation;
+  loop(animation: CompositeAnimation, config?: { iterations?: number; resetBeforeIteration?: boolean }): CompositeAnimation;
+  add(a: NativeNode, b: NativeNode | number): NativeNode;
+  subtract(a: NativeNode, b: NativeNode | number): NativeNode;
+  multiply(a: NativeNode, b: NativeNode | number): NativeNode;
+  divide(a: NativeNode, b: NativeNode | number): NativeNode;
+  modulo(a: NativeNode, b: NativeNode | number): NativeNode;
+  diffClamp(a: NativeNode, min: number, max: number): NativeNode;
+}
+
+/** `LayoutAnimation`. */
+export interface LayoutAnimationModule {
+  /** Animates the changes of the next commit. `onEnd` runs when done. */
+  configureNext(config: LayoutAnimationConfig, onEnd?: () => void): void;
+  /** A config with `duration`, the same curve for all three phases. */
+  create: (duration: number, type?: LayoutAnimationType, property?: LayoutAnimationProperty) => LayoutAnimationConfig;
+  Types: LayoutAnimationTypes;
+  Properties: LayoutAnimationProperties;
+  Presets: LayoutAnimationPresets;
+  easeInEaseOut(onEnd?: () => void): void;
+  linear(onEnd?: () => void): void;
+  spring(onEnd?: () => void): void;
+}
+"#;
 
 #[cfg(test)]
 mod tests {

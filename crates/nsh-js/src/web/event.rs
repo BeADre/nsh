@@ -852,6 +852,22 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "",
+            members: r#"constructor();
+addEventListener(
+  type: string,
+  listener: EventListenerOrEventListenerObject | null,
+  options?: AddEventListenerOptions | boolean,
+): void;
+removeEventListener(
+  type: string,
+  listener: EventListenerOrEventListenerObject | null,
+  options?: { capture?: boolean } | boolean,
+): void;
+dispatchEvent(event: Event): boolean;"#,
+        },
     },
     Spec {
         class: Class::Event,
@@ -878,6 +894,31 @@ pub(crate) const SPECS: &[Spec] = &[
             (c"BUBBLING_PHASE", 3.0),
         ],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "",
+            members: r#"constructor(type: string, init?: EventInit);
+readonly type: string;
+readonly target: EventTarget | null;
+readonly currentTarget: EventTarget | null;
+readonly eventPhase: number;
+readonly bubbles: boolean;
+readonly cancelable: boolean;
+readonly defaultPrevented: boolean;
+readonly composed: boolean;
+readonly isTrusted: boolean;
+readonly timeStamp: number;
+returnValue: boolean;
+/** `target` (legacy). */
+readonly srcElement: EventTarget | null;
+/** Sets `type`, `bubbles` and `cancelable` of an event not dispatched yet (legacy). */
+initEvent(type: string, bubbles?: boolean, cancelable?: boolean): void;
+cancelBubble: boolean;
+composedPath(): EventTarget[];
+preventDefault(): void;
+stopPropagation(): void;
+stopImmediatePropagation(): void;"#,
+        },
     },
     Spec {
         class: Class::CustomEvent,
@@ -889,6 +930,12 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "<T = any> extends Event",
+            members: r#"constructor(type: string, init?: EventInit & { detail?: T });
+readonly detail: T;"#,
+        },
     },
     Spec {
         class: Class::AbortSignal,
@@ -908,6 +955,17 @@ pub(crate) const SPECS: &[Spec] = &[
         ],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: " extends EventTarget",
+            members: r#"readonly aborted: boolean;
+readonly reason: any;
+onabort: ((event: Event) => void) | null;
+throwIfAborted(): void;
+static abort(reason?: any): AbortSignal;
+static timeout(milliseconds: number): AbortSignal;
+static any(signals: Iterable<AbortSignal>): AbortSignal;"#,
+        },
     },
     Spec {
         class: Class::AbortController,
@@ -919,5 +977,28 @@ pub(crate) const SPECS: &[Spec] = &[
         statics: &[],
         constants: &[],
         global: true,
+        ts: crate::web::ClassTs {
+            doc: "",
+            head: "",
+            members: r#"readonly signal: AbortSignal;
+abort(reason?: any): void;"#,
+        },
     },
 ];
+
+/// The TypeScript types of this file's classes (`globals.d.ts`).
+pub(crate) const TYPES: &str = r#"type EventListenerOrEventListenerObject = ((event: Event) => void) | { handleEvent(event: Event): void };
+
+interface AddEventListenerOptions {
+  capture?: boolean;
+  once?: boolean;
+  passive?: boolean;
+  signal?: AbortSignal;
+}
+
+interface EventInit {
+  bubbles?: boolean;
+  cancelable?: boolean;
+  composed?: boolean;
+}
+"#;

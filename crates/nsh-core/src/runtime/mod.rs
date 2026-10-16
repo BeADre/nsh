@@ -1,8 +1,8 @@
-//! The runtime's modules written in Rust. Their JS face is generated like
-//! a UI set's ([`crate::ui::typescript`]): `nsh/android`'s `Toast`,
-//! `nsh/accessibility`'s commands, all of `nsh/image`. The hand-written TS
-//! of a runtime module re-exports its generated part and adds what has to
-//! run in JS (listeners of the app, reactive accessors).
+//! The runtime's modules written in Rust: `nsh/android`'s `Toast`,
+//! `nsh/accessibility`'s commands, all of `nsh/image`. Their JS face is made
+//! from their specs like a UI set's (`nsh-js` `components.rs`), and so are
+//! their declarations ([`crate::ui::declarations`]); `nsh-js` adds what has
+//! to run in JS (the app's listeners, reactive accessors).
 
 use std::sync::OnceLock;
 
