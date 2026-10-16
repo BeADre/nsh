@@ -90,6 +90,8 @@ struct NodeData {
     children: Vec<JsValue>,
     /// Event handlers (owned).
     handlers: Vec<(EventKind, JsValue)>,
+    /// Touch and responder handlers, by `touch::TOUCH_PROPS` index (owned).
+    touch: Vec<(u8, JsValue)>,
 }
 
 /// The renderer of `ctx`.
@@ -406,6 +408,7 @@ fn new_node(ctx: *mut JsContext, id: NodeId, text: bool, tag: Option<Tag>) -> Js
         text,
         tag,
         popped: UNDEFINED,
+        touch: Vec::new(),
         parent: DETACHED,
         children: Vec::new(),
         handlers: Vec::new(),
@@ -604,7 +607,12 @@ unsafe extern "C" fn node_finalize(rt: *mut qjs::JSRuntime, obj: JsValue) {
         // SAFETY: values the node owned.
         unsafe { qjs::JS_FreeValueRT(rt, v) };
     }
-    for (_, v) in data.handlers {
+    for v in data
+        .handlers
+        .into_iter()
+        .map(|(_, v)| v)
+        .chain(data.touch.into_iter().map(|(_, v)| v))
+    {
         unsafe { qjs::JS_FreeValueRT(rt, v) };
     }
     unsafe { qjs::JS_FreeValueRT(rt, data.popped) };
@@ -621,6 +629,9 @@ unsafe extern "C" fn node_mark(rt: *mut qjs::JSRuntime, obj: JsValue, mark: qjs:
         unsafe { qjs::JS_MarkValue(rt, v, mark) };
     }
     for &(_, v) in &data.handlers {
+        unsafe { qjs::JS_MarkValue(rt, v, mark) };
+    }
+    for &(_, v) in &data.touch {
         unsafe { qjs::JS_MarkValue(rt, v, mark) };
     }
     unsafe { qjs::JS_MarkValue(rt, data.popped, mark) };
@@ -861,6 +872,9 @@ fn set_prop(
         "ios" | "android" | "desktop" => return platform_props(ctx, node, name, value, prev),
         _ => {}
     }
+    if let Some(prop) = crate::touch::touch_prop(name) {
+        return set_touch(ctx, p, prop, value);
+    }
     if name.len() > 2
         && name.starts_with("on")
         && name.as_bytes()[2].is_ascii_uppercase()
@@ -923,6 +937,78 @@ fn set_event(
         unsafe { qjs::JS_FreeValue(ctx, old) };
     }
     pushed
+}
+
+/// Sets touch handler `prop` of node `p` to `value` (borrowed; not a
+/// function: none); the view listens to touches while it has any.
+fn set_touch(
+    ctx: *mut JsContext,
+    p: *mut NodeData,
+    prop: u8,
+    value: JsValue,
+) -> Result<(), JsValue> {
+    // SAFETY: live node data; an inline check, then a dup the node owns.
+    let id = unsafe { (*p).id };
+    let handler =
+        unsafe { qjs::JS_IsFunction(ctx, value) }.then(|| unsafe { qjs::JS_DupValue(ctx, value) });
+    let touch = unsafe { &mut (*p).touch };
+    let before = !touch.is_empty();
+    let old = match touch.iter().position(|&(i, _)| i == prop) {
+        Some(at) => Some(touch.remove(at).1),
+        None => None,
+    };
+    if let Some(h) = handler {
+        touch.push((prop, h));
+    }
+    let after = !touch.is_empty();
+    let pushed = if before != after {
+        dom(ctx).push(
+            ctx,
+            Op::Listen {
+                id,
+                event: EventKind::Touch,
+                enabled: after,
+            },
+        )
+    } else {
+        Ok(())
+    };
+    if let Some(old) = old {
+        unsafe { qjs::JS_FreeValue(ctx, old) };
+    }
+    pushed
+}
+
+/// Node `id`'s touch handler `prop` (owned), if it has one.
+pub(crate) fn touch_handler(ctx: *mut JsContext, id: NodeId, prop: u8) -> Option<JsValue> {
+    let p = dom(ctx).by_id(id);
+    if p.is_null() {
+        return None;
+    }
+    // SAFETY: live node data; a dup of the handler.
+    unsafe { &(*p).touch }
+        .iter()
+        .find(|&&(i, _)| i == prop)
+        .map(|&(_, h)| unsafe { qjs::JS_DupValue(ctx, h) })
+}
+
+/// Whether node `id` has touch handler `prop`.
+pub(crate) fn touch_handler_exists(ctx: *mut JsContext, id: NodeId, prop: u8) -> bool {
+    let p = dom(ctx).by_id(id);
+    // SAFETY: live node data.
+    !p.is_null() && unsafe { &(*p).touch }.iter().any(|&(i, _)| i == prop)
+}
+
+/// Whether node `id` has any touch handler.
+pub(crate) fn listens_to_touches(ctx: *mut JsContext, id: NodeId) -> bool {
+    let p = dom(ctx).by_id(id);
+    // SAFETY: live node data.
+    !p.is_null() && !unsafe { &(*p).touch }.is_empty()
+}
+
+/// Whether `node` is `of` or an ancestor of it.
+pub(crate) fn is_ancestor_of(ctx: *mut JsContext, node: NodeId, of: NodeId) -> bool {
+    is_ancestor(ctx, node, of)
 }
 
 /// `ios={{…}}` / `android={{…}}` / `desktop={{…}}`: the props of this

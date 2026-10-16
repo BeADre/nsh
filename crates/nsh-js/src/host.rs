@@ -265,6 +265,18 @@ impl Host {
     pub fn dispatch_event(&self, id: NodeId, event: EventKind, payload: &EventPayload) {
         self.guarded(Phase::Call, || {
             self.ctx.with(|ctx| {
+                // Touches of compiled JSX: the responder system is native.
+                if let (EventKind::Touch, EventPayload::Touch(touch)) = (event, payload)
+                    && !ctx
+                        .globals()
+                        .contains_key("__nsh_dispatch")
+                        .unwrap_or(false)
+                {
+                    if crate::touch::dispatch(ctx.as_raw().as_ptr(), touch).is_err() {
+                        self.report::<()>(&ctx, Err(rquickjs::Error::Exception));
+                    }
+                    return;
+                }
                 let payload = match (event, payload) {
                     // `onChangeText` receives the text itself, as in React Native.
                     (EventKind::ChangeText, EventPayload::Text { text, .. }) => {

@@ -25,6 +25,7 @@ pub(crate) struct State {
     pub(crate) components: Components,
     pub(crate) lists: Lists,
     pub(crate) platform: crate::platform_modules::PlatformModules,
+    pub(crate) touches: crate::touch::Touches,
     /// The native modules the context serves (the loader reads it).
     pub(crate) modules: ModuleTable,
 }
@@ -66,6 +67,7 @@ pub(crate) fn install(ctx: &Ctx<'_>, shared: Rc<Shared>, ui_sets: &[Registry]) {
             components: Components::default(),
             lists: Lists::default(),
             platform: Default::default(),
+            touches: Default::default(),
             modules: ModuleTable::new(ui_sets),
         }));
         qjs::JS_SetContextOpaque(raw, state as *mut c_void);

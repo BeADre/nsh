@@ -21,6 +21,7 @@ use rquickjs::qjs;
 use crate::{
     components, dom, env, platform_modules,
     reactive::{self, Native},
+    touch,
 };
 
 type JsValue = qjs::JSValue;
@@ -89,6 +90,10 @@ const MODULES: &[NativeModule] = &[
     NativeModule {
         name: "nsh/native",
         exports: platform_modules::NATIVE_EXPORTS,
+    },
+    NativeModule {
+        name: "nsh/gesture",
+        exports: touch::GESTURE_EXPORTS,
     },
 ];
 

@@ -26,6 +26,7 @@ mod reactive;
 mod sandbox;
 mod state;
 mod timers;
+mod touch;
 mod web;
 
 pub use nsh_core::{
