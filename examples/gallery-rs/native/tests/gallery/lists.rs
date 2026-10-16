@@ -1,36 +1,13 @@
 //! The Lists demo on a headless engine: its tabs switch, the chat sends,
 //! the empty list fills and clears.
 
-mod common;
+use nsh_core::{EventKind, EventPayload};
 
-use crossbeam_channel::Receiver;
-use nsh_core::{EventKind, EventPayload, MountBatch};
-use nsh_engine::Engine;
-
-/// Presses the text `label` itself (a tab or a link: texts with their
-/// own press handler), and waits for what it changes.
-fn press_text(
-    engine: &Engine,
-    rx: &Receiver<MountBatch>,
-    screen: &mut common::Screen,
-    label: &str,
-) {
-    let text = screen
-        .find(label)
-        .unwrap_or_else(|| panic!("no {label}: {:?}", screen.texts));
-    engine
-        .control()
-        .dispatch_event(text, EventKind::Press, EventPayload::None);
-    common::drain(rx, screen);
-}
-
-fn shows(screen: &common::Screen, label: &str) -> bool {
-    screen.find(label).is_some()
-}
+use crate::common::{press_text, shows};
 
 #[test]
 fn lists_switch_tabs_and_change_their_rows() {
-    let (engine, rx, mut screen) = common::open("Lists");
+    let (engine, rx, mut screen) = crate::common::open("Lists");
     for label in [
         "Grid", "Sections", "Chat", "More", "Visible ", "Item 60", "End", "0", "1",
     ] {
@@ -62,7 +39,7 @@ fn lists_switch_tabs_and_change_their_rows() {
             count: 1,
         },
     );
-    common::drain(&rx, &mut screen);
+    crate::common::drain(&rx, &mut screen);
     press_text(&engine, &rx, &mut screen, "Send");
     assert!(shows(&screen, "Hello there"), "{:?}", screen.texts);
 

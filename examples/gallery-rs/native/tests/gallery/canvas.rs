@@ -1,8 +1,6 @@
 //! The Canvas demo on a headless engine: its sections render and its
 //! buttons draw again.
 
-mod common;
-
 use std::time::Duration;
 
 use crossbeam_channel::Receiver;
@@ -14,7 +12,7 @@ use nsh_engine::Engine;
 fn press_drawing(
     engine: &Engine,
     rx: &Receiver<MountBatch>,
-    screen: &mut common::Screen,
+    screen: &mut crate::common::Screen,
     label: &str,
 ) -> Vec<String> {
     let text = screen
@@ -41,7 +39,7 @@ fn press_drawing(
 
 #[test]
 fn canvas_renders_its_sections() {
-    let (_engine, _rx, screen) = common::open("Canvas");
+    let (_engine, _rx, screen) = crate::common::open("Canvas");
     for text in [
         "NATIVE ANIMATION (PROGRESS RING)",
         "CHART",
@@ -65,7 +63,7 @@ fn canvas_renders_its_sections() {
 
 #[test]
 fn full_draws_the_ring_again() {
-    let (engine, rx, mut screen) = common::open("Canvas");
+    let (engine, rx, mut screen) = crate::common::open("Canvas");
     let drawn = press_drawing(&engine, &rx, &mut screen, "Full");
     assert!(drawn.iter().any(|t| t == "100%"), "{drawn:?}");
 }

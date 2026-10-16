@@ -2,13 +2,9 @@
 //! reach the button under the overlay, touches are logged with their
 //! fingers.
 
-mod common;
-
 use nsh_core::{EventKind, EventPayload, TouchEvent, TouchPhase, TouchPoint};
 
-fn has(screen: &common::Screen, text: &str) -> bool {
-    screen.texts.iter().any(|t| t.1 == text)
-}
+use crate::common::shows;
 
 /// A touch of one finger on `target` at `(x, y)`.
 fn touch(phase: TouchPhase, target: u32, x: f32, y: f32) -> EventPayload {
@@ -30,7 +26,7 @@ fn touch(phase: TouchPhase, target: u32, x: f32, y: f32) -> EventPayload {
 
 #[test]
 fn gestures_log_presses_and_touches() {
-    let (engine, rx, mut screen) = common::open("Gestures");
+    let (engine, rx, mut screen) = crate::common::open("Gestures");
     for text in [
         "PRESS EVENTS",
         "No events yet",
@@ -40,22 +36,22 @@ fn gestures_log_presses_and_touches() {
         "The dot takes taps 30 pt around it: 0",
         "Ripple, long press 250 ms",
     ] {
-        assert!(has(&screen, text), "{text}: {:?}", screen.texts);
+        assert!(shows(&screen, text), "{text}: {:?}", screen.texts);
     }
 
-    common::press(&engine, &rx, &mut screen, "Tap, hold, or slide off");
-    assert!(has(&screen, "press"), "{:?}", screen.texts);
-    common::press(
+    crate::common::press(&engine, &rx, &mut screen, "Tap, hold, or slide off");
+    assert!(shows(&screen, "press"), "{:?}", screen.texts);
+    crate::common::press(
         &engine,
         &rx,
         &mut screen,
         "Like (labelled for VoiceOver / TalkBack)",
     );
-    assert!(has(&screen, "Like · press"), "{:?}", screen.texts);
+    assert!(shows(&screen, "Like · press"), "{:?}", screen.texts);
 
-    common::press(&engine, &rx, &mut screen, "Button under an overlay: 0");
+    crate::common::press(&engine, &rx, &mut screen, "Button under an overlay: 0");
     assert!(
-        has(&screen, "Button under an overlay: 1"),
+        shows(&screen, "Button under an overlay: 1"),
         "{:?}",
         screen.texts
     );
@@ -67,9 +63,9 @@ fn gestures_log_presses_and_touches() {
         EventKind::Touch,
         touch(TouchPhase::Start, area, 10.4, 20.6),
     );
-    common::drain(&rx, &mut screen);
+    crate::common::drain(&rx, &mut screen);
     assert!(
-        has(&screen, "start at 10,21 (page 110,221), 1 down"),
+        shows(&screen, "start at 10,21 (page 110,221), 1 down"),
         "{:?}",
         screen.texts
     );
@@ -78,9 +74,9 @@ fn gestures_log_presses_and_touches() {
         EventKind::Touch,
         touch(TouchPhase::End, area, 12.0, 22.0),
     );
-    common::drain(&rx, &mut screen);
+    crate::common::drain(&rx, &mut screen);
     assert!(
-        has(
+        shows(
             &screen,
             "end at 12,22 (page 112,222), 0 down\nstart at 10,21 (page 110,221), 1 down"
         ),

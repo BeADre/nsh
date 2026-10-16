@@ -1,8 +1,6 @@
 //! The Images demo on a headless engine: its sections render, its images
 //! report their events, "Show" and "Reload" change what loads.
 
-mod common;
-
 use std::time::Duration;
 
 use crossbeam_channel::Receiver;
@@ -12,7 +10,7 @@ use nsh_engine::Engine;
 /// What is on screen, and the sources of the images by node.
 #[derive(Default)]
 struct Shown {
-    screen: common::Screen,
+    screen: crate::common::Screen,
     images: Vec<(u32, String)>,
 }
 
@@ -42,7 +40,7 @@ impl Shown {
             .0
     }
 
-    fn has(&self, text: &str) -> bool {
+    fn shows(&self, text: &str) -> bool {
         self.screen.texts.iter().any(|t| t.1 == text)
     }
 
@@ -72,7 +70,7 @@ impl Shown {
 }
 
 fn open() -> (Engine, Receiver<MountBatch>, Shown) {
-    let (engine, rx) = common::start();
+    let (engine, rx) = crate::common::start();
     let mut shown = Shown::default();
     shown.drain(&rx);
     shown.press(&engine, &rx, "Images");
@@ -99,7 +97,7 @@ fn images_render_their_sections() {
         "Prefetch, then show: no download, no progress",
         "no load events yet",
     ] {
-        assert!(shown.has(text), "{text}: {:?}", shown.screen.texts);
+        assert!(shown.shows(text), "{text}: {:?}", shown.screen.texts);
     }
     shown.image("asset:/bounce.gif");
     shown.image("https://picsum.photos/seed/nsh-fade-1-1000/300/300");
@@ -118,7 +116,11 @@ fn images_report_their_events() {
             message: "not found".into(),
         },
     );
-    assert!(shown.has("onError: not found"), "{:?}", shown.screen.texts);
+    assert!(
+        shown.shows("onError: not found"),
+        "{:?}",
+        shown.screen.texts
+    );
 
     let loads = shown.image("https://picsum.photos/seed/nsh-load/300/200");
     shown.send(
@@ -139,9 +141,9 @@ fn images_report_their_events() {
         },
     );
     shown.send(&engine, &rx, loads, EventKind::LoadEnd, EventPayload::None);
-    assert!(shown.has("onLoad: 300×200"), "{:?}", shown.screen.texts);
+    assert!(shown.shows("onLoad: 300×200"), "{:?}", shown.screen.texts);
     assert!(
-        shown.has("onLoadStart → onLoad → onLoadEnd"),
+        shown.shows("onLoadStart → onLoad → onLoadEnd"),
         "{:?}",
         shown.screen.texts
     );
@@ -151,7 +153,7 @@ fn images_report_their_events() {
 fn show_and_reload_change_what_loads() {
     let (engine, rx, mut shown) = open();
     shown.press(&engine, &rx, "Show");
-    assert!(shown.has("Hide"), "{:?}", shown.screen.texts);
+    assert!(shown.shows("Hide"), "{:?}", shown.screen.texts);
     let big = shown.image("https://picsum.photos/seed/nsh-progress/2400/1600");
     shown.send(
         &engine,
@@ -164,7 +166,7 @@ fn show_and_reload_change_what_loads() {
         },
     );
     assert!(
-        shown.has("loaded (no download)"),
+        shown.shows("loaded (no download)"),
         "{:?}",
         shown.screen.texts
     );

@@ -1,17 +1,17 @@
 //! The Physics demo on a headless engine: releases are counted, a long
 //! press resets the count.
 
-mod common;
-
 use crossbeam_channel::Receiver;
 use nsh_core::{EventKind, EventPayload, MountBatch};
 use nsh_engine::Engine;
+
+use crate::common::shows;
 
 /// Sends `kind` with `payload` to the parent of the text `label`.
 fn dispatch(
     engine: &Engine,
     rx: &Receiver<MountBatch>,
-    screen: &mut common::Screen,
+    screen: &mut crate::common::Screen,
     label: &str,
     kind: EventKind,
     payload: EventPayload,
@@ -19,21 +19,17 @@ fn dispatch(
     let text = screen.find(label).unwrap_or_else(|| panic!("no {label}"));
     let target = screen.parents[&text];
     engine.control().dispatch_event(target, kind, payload);
-    common::drain(rx, screen);
-}
-
-fn has(screen: &common::Screen, text: &str) -> bool {
-    screen.texts.iter().any(|t| t.1 == text)
+    crate::common::drain(rx, screen);
 }
 
 #[test]
 fn physics_counts_releases() {
-    let (engine, rx, mut screen) = common::open("Physics");
-    assert!(has(
+    let (engine, rx, mut screen) = crate::common::open("Physics");
+    assert!(shows(
         &screen,
         "Drag the card, tap it to pulse, long-press to reset"
     ));
-    assert!(has(&screen, "Released 0 times"), "{:?}", screen.texts);
+    assert!(shows(&screen, "Released 0 times"), "{:?}", screen.texts);
 
     let release = EventPayload::Pan {
         translation_x: 80.0,
@@ -59,11 +55,11 @@ fn physics_counts_releases() {
         EventKind::PanEnd,
         release,
     );
-    assert!(has(&screen, "Released 2 times"), "{:?}", screen.texts);
+    assert!(shows(&screen, "Released 2 times"), "{:?}", screen.texts);
 
     // A tap pulses (natively; the count stays).
-    common::press(&engine, &rx, &mut screen, "Drag me");
-    assert!(has(&screen, "Released 2 times"), "{:?}", screen.texts);
+    crate::common::press(&engine, &rx, &mut screen, "Drag me");
+    assert!(shows(&screen, "Released 2 times"), "{:?}", screen.texts);
 
     dispatch(
         &engine,
@@ -73,5 +69,5 @@ fn physics_counts_releases() {
         EventKind::LongPress,
         EventPayload::None,
     );
-    assert!(has(&screen, "Released 0 times"), "{:?}", screen.texts);
+    assert!(shows(&screen, "Released 0 times"), "{:?}", screen.texts);
 }

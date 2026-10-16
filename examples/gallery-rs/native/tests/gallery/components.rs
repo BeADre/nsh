@@ -2,15 +2,11 @@
 //! mobile UI's buttons and the press feedback cards answer presses, the
 //! keyboard avoiding view's screen pushes.
 
-mod common;
-
-fn shows(screen: &common::Screen, label: &str) -> bool {
-    screen.find(label).is_some()
-}
+use crate::common::shows;
 
 #[test]
 fn components_render_and_answer_presses() {
-    let (engine, rx, mut screen) = common::open("Components");
+    let (engine, rx, mut screen) = crate::common::open("Components");
     for label in [
         "NSH/UI/MOBILE",
         "Primary (0)",
@@ -28,14 +24,14 @@ fn components_render_and_answer_presses() {
         assert!(shows(&screen, label), "{label}: {:?}", screen.texts);
     }
     // A nested Rust component's event reaches this demo's state.
-    common::press(&engine, &rx, &mut screen, "Primary (0)");
-    common::press(&engine, &rx, &mut screen, "Secondary");
+    crate::common::press(&engine, &rx, &mut screen, "Primary (0)");
+    crate::common::press(&engine, &rx, &mut screen, "Secondary");
     assert!(shows(&screen, "Primary (2)"), "{:?}", screen.texts);
     // Its slot's content: the footer's button.
-    common::press(&engine, &rx, &mut screen, "Reset");
+    crate::common::press(&engine, &rx, &mut screen, "Reset");
     assert!(shows(&screen, "Primary (0)"), "{:?}", screen.texts);
 
-    common::press(
+    crate::common::press(
         &engine,
         &rx,
         &mut screen,
@@ -46,7 +42,7 @@ fn components_render_and_answer_presses() {
         "{:?}",
         screen.texts
     );
-    common::press(&engine, &rx, &mut screen, "Disable");
+    crate::common::press(&engine, &rx, &mut screen, "Disable");
     assert!(
         shows(&screen, "disabled: takes no presses") && shows(&screen, "Enable"),
         "{:?}",
@@ -55,12 +51,12 @@ fn components_render_and_answer_presses() {
 
     // Layout animation: the boxes 1, 2, 3; Add puts 4 first.
     assert!(!shows(&screen, "4"), "{:?}", screen.texts);
-    common::press(&engine, &rx, &mut screen, "Add");
+    crate::common::press(&engine, &rx, &mut screen, "Add");
     assert!(shows(&screen, "4"), "{:?}", screen.texts);
 
-    common::press(&engine, &rx, &mut screen, "statusBarTranslucent: false");
+    crate::common::press(&engine, &rx, &mut screen, "statusBarTranslucent: false");
     assert!(shows(&screen, "statusBarTranslucent: true"));
-    common::press(&engine, &rx, &mut screen, "Open");
+    crate::common::press(&engine, &rx, &mut screen, "Open");
     assert!(
         shows(
             &screen,
@@ -73,15 +69,15 @@ fn components_render_and_answer_presses() {
 
 #[test]
 fn components_push_the_keyboard_avoiding_view() {
-    let (engine, rx, mut screen) = common::open("Components");
-    common::press(&engine, &rx, &mut screen, "padding / height / position");
+    let (engine, rx, mut screen) = crate::common::open("Components");
+    crate::common::press(&engine, &rx, &mut screen, "padding / height / position");
     assert!(
         screen.titles.iter().any(|t| t.1 == "KeyboardAvoidingView"),
         "{:?}",
         screen.titles
     );
     assert!(shows(&screen, "behavior=\"padding\""), "{:?}", screen.texts);
-    common::press(&engine, &rx, &mut screen, "position");
+    crate::common::press(&engine, &rx, &mut screen, "position");
     assert!(
         shows(&screen, "behavior=\"position\""),
         "{:?}",

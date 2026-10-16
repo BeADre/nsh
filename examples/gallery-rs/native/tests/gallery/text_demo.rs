@@ -1,17 +1,17 @@
 //! The Text demo on a headless engine: its texts render, links and the
 //! button inside a sentence take presses.
 
-mod common;
-
 use crossbeam_channel::Receiver;
 use nsh_core::{EventKind, EventPayload, MountBatch};
 use nsh_engine::Engine;
+
+use crate::common::shows;
 
 /// Sends `kind` to the text `label` itself (a link, not its sentence).
 fn on_text(
     engine: &Engine,
     rx: &Receiver<MountBatch>,
-    screen: &mut common::Screen,
+    screen: &mut crate::common::Screen,
     label: &str,
     kind: EventKind,
 ) {
@@ -21,16 +21,12 @@ fn on_text(
     engine
         .control()
         .dispatch_event(text, kind, EventPayload::None);
-    common::drain(rx, screen);
-}
-
-fn shows(screen: &common::Screen, text: &str) -> bool {
-    screen.texts.iter().any(|t| t.1 == text)
+    crate::common::drain(rx, screen);
 }
 
 #[test]
 fn text_renders_its_samples() {
-    let (_engine, _rx, screen) = common::open("Text");
+    let (_engine, _rx, screen) = crate::common::open("Text");
     for text in [
         "Terms of service",
         "Pressed: Tap a link in the sentence",
@@ -49,7 +45,7 @@ fn text_renders_its_samples() {
 
 #[test]
 fn links_and_the_inline_button_take_presses() {
-    let (engine, rx, mut screen) = common::open("Text");
+    let (engine, rx, mut screen) = crate::common::open("Text");
     on_text(
         &engine,
         &rx,
@@ -81,12 +77,12 @@ fn links_and_the_inline_button_take_presses() {
         screen.texts
     );
     // The sentence around the links.
-    common::press(&engine, &rx, &mut screen, "Privacy policy");
+    crate::common::press(&engine, &rx, &mut screen, "Privacy policy");
     assert!(
         shows(&screen, "Pressed: the sentence (not a link)"),
         "{:?}",
         screen.texts
     );
-    common::press(&engine, &rx, &mut screen, "♥ 3");
+    crate::common::press(&engine, &rx, &mut screen, "♥ 3");
     assert!(shows(&screen, "♥ 4"), "{:?}", screen.texts);
 }

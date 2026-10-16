@@ -127,3 +127,20 @@ pub fn open(name: &str) -> (Engine, Receiver<MountBatch>, Screen) {
     );
     (engine, rx, screen)
 }
+
+/// Whether text `text` is on screen.
+pub fn shows(screen: &Screen, text: &str) -> bool {
+    screen.texts.iter().any(|t| t.1 == text)
+}
+
+/// Presses the text `label` itself (a pressable text: a link, a chip, a
+/// tab), and waits for what it changes.
+pub fn press_text(engine: &Engine, rx: &Receiver<MountBatch>, screen: &mut Screen, label: &str) {
+    let text = screen
+        .find(label)
+        .unwrap_or_else(|| panic!("no {label}: {:?}", screen.texts));
+    engine
+        .control()
+        .dispatch_event(text, EventKind::Press, EventPayload::None);
+    drain(rx, screen);
+}

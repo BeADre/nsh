@@ -2,36 +2,13 @@
 //! are logged, the zoom buttons, the feed and the keyboard taps choice
 //! change what shows.
 
-mod common;
+use nsh_core::{EventKind, EventPayload};
 
-use crossbeam_channel::Receiver;
-use nsh_core::{EventKind, EventPayload, MountBatch};
-use nsh_engine::Engine;
-
-/// Presses the text `label` itself (a choice: a text with its own press
-/// handler), and waits for what it changes.
-fn press_text(
-    engine: &Engine,
-    rx: &Receiver<MountBatch>,
-    screen: &mut common::Screen,
-    label: &str,
-) {
-    let text = screen
-        .find(label)
-        .unwrap_or_else(|| panic!("no {label}: {:?}", screen.texts));
-    engine
-        .control()
-        .dispatch_event(text, EventKind::Press, EventPayload::None);
-    common::drain(rx, screen);
-}
-
-fn shows(screen: &common::Screen, label: &str) -> bool {
-    screen.find(label).is_some()
-}
+use crate::common::{press_text, shows};
 
 #[test]
 fn scrolling_sections_react() {
-    let (engine, rx, mut screen) = common::open("Scrolling");
+    let (engine, rx, mut screen) = crate::common::open("Scrolling");
     for label in [
         "PAGING",
         "Page 1",
@@ -62,13 +39,13 @@ fn scrolling_sections_react() {
         EventKind::ScrollBeginDrag,
         EventPayload::Scroll { x: 0.0, y: 12.0 },
     );
-    common::drain(&rx, &mut screen);
+    crate::common::drain(&rx, &mut screen);
     assert!(shows(&screen, "begin drag @ 12"), "{:?}", screen.texts);
 
-    common::press(&engine, &rx, &mut screen, "2×");
+    crate::common::press(&engine, &rx, &mut screen, "2×");
     assert!(shows(&screen, "Zoom 2.00×"), "{:?}", screen.texts);
 
-    common::press(&engine, &rx, &mut screen, "Add 3 posts on top");
+    crate::common::press(&engine, &rx, &mut screen, "Add 3 posts on top");
     assert!(shows(&screen, "New 1"), "{:?}", screen.texts);
 
     press_text(&engine, &rx, &mut screen, "handled");
@@ -81,6 +58,6 @@ fn scrolling_sections_react() {
         screen.texts
     );
 
-    common::press(&engine, &rx, &mut screen, "Pressed 0 times");
+    crate::common::press(&engine, &rx, &mut screen, "Pressed 0 times");
     assert!(shows(&screen, "Pressed 1 times"), "{:?}", screen.texts);
 }

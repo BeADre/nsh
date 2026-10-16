@@ -1,8 +1,6 @@
 //! The System demo: the environment, the status bar's settings, system
 //! dialogs and their answers, a timer.
 
-mod common;
-
 use std::time::Duration;
 
 use crossbeam_channel::Receiver;
@@ -11,15 +9,13 @@ use nsh_core::{
 };
 use nsh_engine::Engine;
 
-fn shows(screen: &common::Screen, text: &str) -> bool {
-    screen.texts.iter().any(|t| t.1 == text)
-}
+use crate::common::shows;
 
 /// Presses the parent of the text `label` and returns the dialog it shows.
 fn press_for_dialog(
     engine: &Engine,
     rx: &Receiver<MountBatch>,
-    screen: &mut common::Screen,
+    screen: &mut crate::common::Screen,
     label: &str,
 ) -> Dialog {
     let text = screen.find(label).expect(label);
@@ -46,7 +42,7 @@ fn press_for_dialog(
 fn answer(
     engine: &Engine,
     rx: &Receiver<MountBatch>,
-    screen: &mut common::Screen,
+    screen: &mut crate::common::Screen,
     dialog: &Dialog,
     index: i32,
 ) {
@@ -58,12 +54,12 @@ fn answer(
             ("index", PayloadValue::Number(index as f64)),
         ]),
     );
-    common::drain(rx, screen);
+    crate::common::drain(rx, screen);
 }
 
 #[test]
 fn system_shows_the_environment_and_the_status_bar() {
-    let (engine, rx, mut screen) = common::open("System");
+    let (engine, rx, mut screen) = crate::common::open("System");
     for text in [
         "ENVIRONMENT (REACTIVE)",
         "390 × 844",
@@ -79,17 +75,17 @@ fn system_shows_the_environment_and_the_status_bar() {
     ] {
         assert!(shows(&screen, text), "{text}: {:?}", screen.texts);
     }
-    common::press(&engine, &rx, &mut screen, "Next style");
+    crate::common::press(&engine, &rx, &mut screen, "Next style");
     assert!(shows(&screen, "light-content"), "{:?}", screen.texts);
-    common::press(&engine, &rx, &mut screen, "Next style");
+    crate::common::press(&engine, &rx, &mut screen, "Next style");
     assert!(shows(&screen, "dark-content"), "{:?}", screen.texts);
-    common::press(&engine, &rx, &mut screen, "Hide");
+    crate::common::press(&engine, &rx, &mut screen, "Hide");
     assert!(shows(&screen, "Show"), "{:?}", screen.texts);
 }
 
 #[test]
 fn system_shows_what_dialogs_answer() {
-    let (engine, rx, mut screen) = common::open("System");
+    let (engine, rx, mut screen) = crate::common::open("System");
     let dialog = press_for_dialog(&engine, &rx, &mut screen, "Confirm (cancel / destructive)");
     assert_eq!(dialog.title.as_deref(), Some("Delete the photo?"));
     assert_eq!(dialog.buttons.len(), 2);
@@ -111,9 +107,9 @@ fn system_shows_what_dialogs_answer() {
 
 #[test]
 fn system_counts_seconds() {
-    let (_engine, rx, mut screen) = common::open("System");
+    let (_engine, rx, mut screen) = crate::common::open("System");
     std::thread::sleep(Duration::from_millis(1100));
-    common::drain(&rx, &mut screen);
+    crate::common::drain(&rx, &mut screen);
     assert!(
         screen
             .texts

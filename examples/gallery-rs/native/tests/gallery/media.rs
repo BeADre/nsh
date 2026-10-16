@@ -1,8 +1,6 @@
 //! The Web and video demo: two web views and a video, the buttons driving
 //! them and what they tell the app.
 
-mod common;
-
 use std::time::Duration;
 
 use crossbeam_channel::Receiver;
@@ -11,15 +9,13 @@ use nsh_core::{
 };
 use nsh_engine::Engine;
 
-fn shows(screen: &common::Screen, text: &str) -> bool {
-    screen.texts.iter().any(|t| t.1 == text)
-}
+use crate::common::shows;
 
 /// What the gallery shows, the nodes of its web views and video, and the
 /// commands sent to nodes.
 #[derive(Default)]
 struct Media {
-    screen: common::Screen,
+    screen: crate::common::Screen,
     web_views: Vec<NodeId>,
     videos: Vec<NodeId>,
     commands: Vec<(NodeId, Command)>,
@@ -79,7 +75,7 @@ impl Media {
 /// The gallery with the demo open: the index first, then the demo's
 /// mount items, so the views it creates are seen.
 fn open() -> (Engine, Receiver<MountBatch>, Media) {
-    let (engine, rx) = common::start();
+    let (engine, rx) = crate::common::start();
     let mut media = Media::default();
     media.drain(&rx);
     media.press(&engine, &rx, "Web and video");
