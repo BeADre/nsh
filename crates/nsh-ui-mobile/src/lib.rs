@@ -62,7 +62,9 @@ pub fn registry() -> Registry {
         .module::<Keyboard>()
         .module::<StatusBar>()
         // The runtime's accessors and hooks of the mobile UI, as they are.
-        .reexport(&["safeArea", "keyboard", "useSafeAreaInsets"], &["Insets"]);
+        .reexport(&["safeArea", "keyboard", "useSafeAreaInsets"], &["Insets"])
+        // Navigation: in `js/ui/mobile/navigation.ts` for the JS runtime.
+        .native_values(&["Stack", "Screen", "Modal", "createNavigator"]);
     registry
 }
 

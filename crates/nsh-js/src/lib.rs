@@ -18,6 +18,7 @@ mod error;
 mod host;
 mod list;
 mod modules;
+mod navigation;
 mod net;
 mod protocol;
 mod reactive;

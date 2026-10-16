@@ -138,3 +138,152 @@ fn a_single_file_app_on_the_native_modules() {
     t.sort();
     assert_eq!(t, ["0b", "1a"]);
 }
+
+const NAVIGATION: &str = r#"import { signal, mount } from "nsh";
+import { Modal, Screen, Stack, createNavigator, useSafeAreaInsets } from "nsh/ui/mobile";
+
+type Route = { name: string };
+const nav = createNavigator<Route>({ name: "home" });
+const open = signal(false);
+
+function Insets() {
+  const insets = useSafeAreaInsets();
+  return <text>{`inset ${insets().top}`}</text>;
+}
+
+mount(() => (
+  <view style={{ flex: 1 }}>
+    <stack navigator={nav} style={{ flex: 1 }}>
+      {(route) => (
+        <screen title={route.name} headerRight={<text onPress={() => open.set(true)}>open</text>}>
+          <view>
+            <text onPress={() => nav.push({ name: `page${nav.routes().length}` })}>push {route.name}</text>
+            <insets />
+          </view>
+        </screen>
+      )}
+    </stack>
+    <modal visible={open()} onRequestClose={() => open.set(false)}>
+      <text>in modal</text>
+    </modal>
+  </view>
+));
+"#;
+
+fn start_app(app: &str) -> (Engine, Receiver<MountBatch>) {
+    let dir = std::env::temp_dir().join(format!(
+        "nsh-compiled-nav-{}-{}",
+        std::process::id(),
+        app.len()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("nsh.json"), r#"{ "compiler": "nsh" }"#).unwrap();
+    std::fs::write(dir.join("App.tsx"), app).unwrap();
+    let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {
+        entry: dir.join("App.tsx"),
+        minify: false,
+    })
+    .unwrap();
+    let bytecode =
+        nsh_js::compile_bytecode_with(&bundle.code, false, &[nsh_ui_mobile::registry()]).unwrap();
+    let (tx, rx) = crossbeam_channel::unbounded();
+    let config = EngineConfig {
+        // SAFETY: compiled just now by this runtime.
+        app: nsh_engine::App::Js(unsafe { Bundle::bytecode(bytecode) }),
+        viewport: Size::new(390.0, 844.0),
+        trace: false,
+        network: None,
+        assets: None,
+        environment: Default::default(),
+        header_heights: (44.0, 96.0),
+        limits: nsh_engine::Limits::default(),
+        components: nsh_ui_mobile::registry(),
+        runtime: None,
+    };
+    (
+        Engine::start(config, || ApproxTextEngine, ChannelSink(tx)).unwrap(),
+        rx,
+    )
+}
+
+fn text_id(batch: &MountBatch, wanted: &str) -> Option<u32> {
+    batch.items.iter().find_map(|i| match i {
+        MountItem::Text { id, text, .. } if text.text == wanted => Some(*id),
+        _ => None,
+    })
+}
+
+fn titles(batch: &MountBatch) -> Vec<(u32, String)> {
+    batch
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            MountItem::ScreenConfig { id, config } => {
+                Some((*id, config.title.as_deref()?.to_owned()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn native_navigation_stacks_screens_and_modals() {
+    let (engine, rx) = start_app(NAVIGATION);
+    let control = engine.control();
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    let home = titles(&first);
+    assert_eq!(home.last().map(|t| t.1.as_str()), Some("home"), "{home:?}");
+    let home_screen = home[0].0;
+    assert!(text_id(&first, "inset 0").is_some(), "{:?}", texts(&first));
+    // The screen reports its insets: what it renders sees them.
+    let insets = |top: f64| {
+        EventPayload::Map(vec![
+            ("top", nsh_core::PayloadValue::Number(top)),
+            ("right", nsh_core::PayloadValue::Number(0.0)),
+            ("bottom", nsh_core::PayloadValue::Number(34.0)),
+            ("left", nsh_core::PayloadValue::Number(0.0)),
+        ])
+    };
+    control.dispatch_event(home_screen, EventKind::Insets, insets(100.0));
+    let batch = rx.recv_timeout(Duration::from_secs(5)).expect("insets");
+    assert!(
+        texts(&batch).contains(&"inset 100".to_owned()),
+        "{:?}",
+        texts(&batch)
+    );
+    // Push: a second screen.
+    let push = text_id(&first, "push home").unwrap();
+    control.dispatch_event(push, EventKind::Press, EventPayload::None);
+    let batch = rx.recv_timeout(Duration::from_secs(5)).expect("pushed");
+    let page = titles(&batch);
+    assert_eq!(page.last().map(|t| t.1.as_str()), Some("page1"), "{page:?}");
+    let page_screen = page[0].0;
+    // The user pops it natively: its route goes, so the next push is page1
+    // again.
+    control.dispatch_event(page_screen, EventKind::Dismiss, EventPayload::None);
+    while rx.recv_timeout(Duration::from_millis(200)).is_ok() {}
+    control.dispatch_event(push, EventKind::Press, EventPayload::None);
+    let batch = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("pushed again");
+    assert_eq!(titles(&batch).last().map(|t| t.1.as_str()), Some("page1"));
+    // The header's button opens the modal.
+    let open = text_id(&first, "open").expect("a header item");
+    control.dispatch_event(open, EventKind::Press, EventPayload::None);
+    let batch = rx.recv_timeout(Duration::from_secs(5)).expect("modal");
+    assert!(
+        batch.items.iter().any(|i| matches!(
+            i,
+            MountItem::Create {
+                kind: nsh_core::ViewKind::Modal,
+                ..
+            }
+        )),
+        "{:?}",
+        batch.items
+    );
+    assert!(text_id(&batch, "in modal").is_some());
+}

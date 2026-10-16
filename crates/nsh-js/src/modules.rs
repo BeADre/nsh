@@ -141,7 +141,12 @@ impl ModuleTable {
                     out.push((m.name.to_owned(), Made::Module(m.clone(), namespace)));
                 }
             }
-            for &value in registry.reexports().0 {
+            for &value in registry
+                .reexports()
+                .0
+                .iter()
+                .chain(registry.native_value_names())
+            {
                 out.push((value.to_owned(), Made::Reexport(value)));
             }
         }

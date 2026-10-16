@@ -302,12 +302,6 @@ pub fn type_definitions_for(
         for (path, contents) in [
             ("nsh/index.d.ts", NATIVE_NSH.to_owned()),
             ("nsh/jsx-runtime.d.ts", native_jsx(elements)),
-            // Its Rust components and modules (navigation is not native
-            // yet).
-            (
-                "nsh/ui/mobile.d.ts",
-                "export * from \"./mobile/components.gen\";\n".to_owned(),
-            ),
         ] {
             match files.iter_mut().find(|(p, _)| p == path) {
                 Some(file) => file.1 = contents,

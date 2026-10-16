@@ -291,8 +291,16 @@ unsafe extern "C" fn use_safe_area_insets(
     unsafe { qjs::JS_Call(ctx, insets, UNDEFINED, 0, ptr::null_mut()) }
 }
 
+/// The insets context (borrowed), which screens and modals provide.
+pub(crate) fn insets_context(ctx: *mut JsContext) -> JsValue {
+    env(ctx).insets.get()
+}
+
 /// A runtime value a registry exports as it is.
 pub(crate) fn reexport(ctx: *mut JsContext, name: &str) -> JsValue {
+    if let Some(v) = crate::navigation::export(ctx, name) {
+        return v;
+    }
     match name {
         "safeArea" => accessor(ctx, Part::SafeArea),
         "keyboard" => accessor(ctx, Part::Keyboard),

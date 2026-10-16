@@ -94,6 +94,14 @@ One Oxc pass removes TypeScript and lowers JSX (`plugin.rs` `compile_native`):
   `scrollToOffset`, `scrollToIndex`, `scrollToEnd`, the web view's and video's): each sends a command
   (`protocol::decode_command`).
 
+## Navigation
+
+`createNavigator`, `Stack`, `Screen` and `Modal` are natives too (`navigation.rs`, the port of `navigation.ts`), which
+the mobile UI exports (`Registry::native_values`; the JS runtime keeps `navigation.ts` until the switch). A stack
+renders each route (by identity) with the app's function into a screen, the app's `<Screen>` or one around what it
+rendered; a screen the user pops natively removes its route; screens and modals provide the insets they report to what
+they render (`useSafeAreaInsets`).
+
 ## Types (`crates/nsh-bundler/src/types.rs`)
 
 `.nsh/types` of a native app has the native `nsh` and a JSX namespace with the built-ins and the app's kebab-case
@@ -106,6 +114,5 @@ kebab tag uses (`Card` for `<card>`) stays, one only types use goes even without
 
 ## Not there yet
 
-Navigation (`Stack`, `Screen`, `Modal`), `animated`, `canvas`, gestures and the responder system, `webview` / `video`
-/ `native`, the hand-written parts of `nsh/android` and `nsh/ios`, and hot module replacement (a development build
-reloads the whole bundle).
+`animated`, `canvas`, gestures and the responder system, `webview` / `video` / `native`, the hand-written parts of
+`nsh/android` and `nsh/ios`, and hot module replacement (a development build reloads the whole bundle).

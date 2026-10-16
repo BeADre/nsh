@@ -599,6 +599,9 @@ pub struct Registry {
     modules: Arc<FxHashMap<&'static str, ModuleType>>,
     /// Values and types of `nsh/_core` exported as they are.
     reexports: Arc<(Vec<&'static str>, Vec<&'static str>)>,
+    /// Values only the native runtime provides (apps compiled by nsh); the
+    /// JS runtime's are in the set's own JS until it goes.
+    native_values: Arc<Vec<&'static str>>,
     /// The runtime module the functions belong to (`nsh/android`): JS
     /// calls them as `nsh/android:Toast.show`, apart from any UI set's.
     namespace: Option<&'static str>,
@@ -671,6 +674,18 @@ impl Registry {
     /// ([`Registry::reexport`]).
     pub fn reexports(&self) -> (&[&'static str], &[&'static str]) {
         (&self.reexports.0, &self.reexports.1)
+    }
+
+    /// Exports `values` of the native runtime (apps compiled by nsh): what
+    /// the set's own JS provides to the JS runtime (`Stack`, `Screen`).
+    pub fn native_values(&mut self, values: &[&'static str]) -> &mut Self {
+        Arc::make_mut(&mut self.native_values).extend_from_slice(values);
+        self
+    }
+
+    /// The values of [`Registry::native_values`].
+    pub fn native_value_names(&self) -> &[&'static str] {
+        &self.native_values
     }
 
     /// A registry of the runtime's module `namespace` (`nsh/android`).

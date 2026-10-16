@@ -80,6 +80,10 @@ struct NodeData {
     id: NodeId,
     /// A text node.
     text: bool,
+    /// An element's tag (`None`: a text node or the root).
+    tag: Option<Tag>,
+    /// A screen's callback for when the user popped it natively (owned).
+    popped: JsValue,
     /// The parent in the mirror ([`DETACHED`]: none).
     parent: NodeId,
     /// The children in order (owned objects).
@@ -385,16 +389,18 @@ unsafe extern "C" fn node_method(
 
 /// Makes the root view's object (after the state is installed).
 pub(crate) fn init(raw: *mut JsContext) {
-    let root = new_node(raw, ROOT, false);
+    let root = new_node(raw, ROOT, false, None);
     dom(raw).root.set(root);
 }
 
 /// A new node object for id `id` (owned).
-fn new_node(ctx: *mut JsContext, id: NodeId, text: bool) -> JsValue {
+fn new_node(ctx: *mut JsContext, id: NodeId, text: bool, tag: Option<Tag>) -> JsValue {
     let d = dom(ctx);
     let data = Box::into_raw(Box::new(NodeData {
         id,
         text,
+        tag,
+        popped: UNDEFINED,
         parent: DETACHED,
         children: Vec::new(),
         handlers: Vec::new(),
@@ -431,7 +437,69 @@ pub(crate) fn push_op(ctx: *mut JsContext, op: Op) -> Result<(), JsValue> {
 pub(crate) fn create_element(ctx: *mut JsContext, tag: Tag) -> Result<JsValue, JsValue> {
     let id = next_id(ctx);
     dom(ctx).push(ctx, Op::Create { id, tag })?;
-    Ok(new_node(ctx, id, false))
+    Ok(new_node(ctx, id, false, Some(tag)))
+}
+
+/// The tag of element `v`, if it is one.
+pub(crate) fn node_tag(ctx: *mut JsContext, v: JsValue) -> Option<Tag> {
+    let p = node_ptr(ctx, v);
+    // SAFETY: live node data.
+    if p.is_null() {
+        None
+    } else {
+        unsafe { (*p).tag }
+    }
+}
+
+/// Sets screen `v`'s callback for a native pop to `f` (borrowed).
+pub(crate) fn set_popped(ctx: *mut JsContext, v: JsValue, f: JsValue) {
+    let p = node_ptr(ctx, v);
+    if p.is_null() {
+        return;
+    }
+    // SAFETY: live node data; the node owns a dup; the old one is freed.
+    unsafe {
+        let old = std::mem::replace(&mut (*p).popped, qjs::JS_DupValue(ctx, f));
+        qjs::JS_FreeValue(ctx, old);
+    }
+}
+
+/// Screen `v`'s callback for a native pop (owned), if set.
+pub(crate) fn popped(ctx: *mut JsContext, v: JsValue) -> JsValue {
+    let p = node_ptr(ctx, v);
+    if p.is_null() {
+        return UNDEFINED;
+    }
+    // SAFETY: a dup of what the node owns.
+    unsafe { qjs::JS_DupValue(ctx, (*p).popped) }
+}
+
+/// [`spread`] of `props` onto `node` without the keys `skip`.
+pub(crate) fn spread_except(
+    ctx: *mut JsContext,
+    node: JsValue,
+    props: JsValue,
+    skip: &[&str],
+) -> Result<(), JsValue> {
+    let mut keys: Vec<JsValue> = skip
+        .iter()
+        // SAFETY: new strings the array takes.
+        .map(|k| unsafe { qjs::JS_NewStringLen(ctx, k.as_ptr().cast(), k.len() as _) })
+        .collect();
+    let skip = unsafe { qjs::JS_NewArrayFrom(ctx, keys.len() as c_int, keys.as_mut_ptr()) };
+    let mut data = [node, props, skip];
+    // SAFETY: the function keeps dups of `data`; ours is freed.
+    let func =
+        unsafe { qjs::JS_NewCFunctionData(ctx, Some(spread_run), 1, 1, 3, data.as_mut_ptr()) };
+    unsafe { qjs::JS_FreeValue(ctx, skip) };
+    let r = reactive::render_effect(ctx, func);
+    unsafe { qjs::JS_FreeValue(ctx, r) };
+    let r = reactive::finish_value(ctx, UNDEFINED);
+    if unsafe { qjs::JS_IsException(r) } {
+        Err(r)
+    } else {
+        Ok(())
+    }
 }
 
 /// Sets prop `name` of `node` (borrowed values) to `value`.
@@ -534,6 +602,7 @@ unsafe extern "C" fn node_finalize(rt: *mut qjs::JSRuntime, obj: JsValue) {
     for (_, v) in data.handlers {
         unsafe { qjs::JS_FreeValueRT(rt, v) };
     }
+    unsafe { qjs::JS_FreeValueRT(rt, data.popped) };
 }
 
 unsafe extern "C" fn node_mark(rt: *mut qjs::JSRuntime, obj: JsValue, mark: qjs::JS_MarkFunc) {
@@ -549,6 +618,7 @@ unsafe extern "C" fn node_mark(rt: *mut qjs::JSRuntime, obj: JsValue, mark: qjs:
     for &(_, v) in &data.handlers {
         unsafe { qjs::JS_MarkValue(rt, v, mark) };
     }
+    unsafe { qjs::JS_MarkValue(rt, data.popped, mark) };
 }
 
 // --- The tree mirror ----------------------------------------------------------
@@ -713,14 +783,14 @@ unsafe extern "C" fn element(
     if let Err(e) = dom(ctx).push(ctx, Op::Create { id, tag }) {
         return e;
     }
-    new_node(ctx, id, false)
+    new_node(ctx, id, false, Some(tag))
 }
 
 /// A new text node showing `text`.
 fn text_node(ctx: *mut JsContext, text: String) -> Result<JsValue, JsValue> {
     let id = next_id(ctx);
     dom(ctx).push(ctx, Op::CreateText { id, text })?;
-    Ok(new_node(ctx, id, true))
+    Ok(new_node(ctx, id, true, None))
 }
 
 /// `text(value)`: a new text node.
@@ -1018,12 +1088,26 @@ unsafe extern "C" fn spread_run(
     _this: JsValue,
     argc: c_int,
     argv: *mut JsValue,
-    _magic: c_int,
+    magic: c_int,
     data: *mut JsValue,
 ) -> JsValue {
-    // SAFETY: two data values (`spread`); every value got is freed.
+    // SAFETY: two data values (`spread`), three with magic 1
+    // (`spread_except`); every value got is freed.
     unsafe {
         let (node, props) = (*data, *data.add(1));
+        // A third value: keys to leave out (`spread_except`).
+        let skip: Vec<String> = if magic == 1 {
+            array_items(ctx, *data.add(2))
+                .into_iter()
+                .map(|k| {
+                    let s = to_string(ctx, k).unwrap_or_default();
+                    qjs::JS_FreeValue(ctx, k);
+                    s
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         let prev = arg(argc, argv, 0);
         let next = qjs::JS_NewObject(ctx);
         let mut tab: *mut qjs::JSPropertyEnum = ptr::null_mut();
@@ -1061,6 +1145,11 @@ unsafe extern "C" fn spread_run(
             }
             let name_str = CStr::from_ptr(name).to_string_lossy().into_owned();
             qjs::JS_FreeCString(ctx, name);
+            if skip.contains(&name_str) {
+                qjs::JS_FreeValue(ctx, old);
+                qjs::JS_FreeValue(ctx, v);
+                continue;
+            }
             let r = if qjs::JS_IsStrictEqual(ctx, old, v) {
                 Ok(())
             } else {
@@ -1691,7 +1780,7 @@ unsafe extern "C" fn each_mark(rt: *mut qjs::JSRuntime, obj: JsValue, mark: qjs:
 /// `each(list, render, key)`: `render(item, index)` for each item of
 /// `list()` (both accessors), one row per key (`key(item)`, or the item
 /// itself) kept while the key stays.
-unsafe extern "C" fn each(
+pub(crate) unsafe extern "C" fn each(
     ctx: *mut JsContext,
     _this: JsValue,
     argc: c_int,
