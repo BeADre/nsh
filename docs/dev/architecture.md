@@ -29,9 +29,13 @@ Input                        native gestures -> EngineControl::dispatch_event ->
 - **Android**: the engine thread typesets with `StaticLayout` through JNI; each commit is one `byte[]` plus an object
   table handed to `Mounter.java` on the UI thread, and animation items stay in Rust (the flow, the units and the JNI
   rules: `crates/nsh-platform-android/src/encode.rs`).
-- **Networking**: `fetch` (and `Headers`, `Request`, `Response`, `AbortController`, `URL`, `URLSearchParams`, `TextEncoder`/`Decoder`)
-  is defined by `crates/nsh-js/src/web.js`, precompiled to bytecode at build time and loaded on first use of any of those globals
-  (zero startup cost for apps that do not use them). Requests go to the platform stack through `nsh_engine::Network`
+- **Web APIs** (TS apps only; Rust code uses crates of its choice): `fetch` with `Headers` / `Request` / `Response`, the
+  Streams API (readable streams with byte streams and BYOB readers, writable and transform streams, `pipeTo` /
+  `pipeThrough`, `TextEncoderStream` / `TextDecoderStream`), `Blob` / `File` / `FormData`, `URL` / `URLSearchParams`,
+  `TextEncoder` / `TextDecoder`, `Event` / `CustomEvent` / `EventTarget`, `AbortController` / `AbortSignal`: native
+  classes in `crates/nsh-js/src/web/` (module docs there), made on first use of any of those globals (zero startup cost
+  otherwise), as in browsers so libraries such as axios work (`fetch.rs` lists where they differ).
+- **Networking**: requests go to the platform stack through `nsh_engine::Network`
   (NSURLSession, HttpURLConnection; ureq for `nsh trace`), streaming both ways: the stack reports the response head,
   then body chunks as they arrive (`FetchEvent`), and JS can pause reading (back pressure); a streamed request body is
   sent in chunks the stack asks for one at a time (`FetchEvent::BodyWanted`, chunked transfer encoding).

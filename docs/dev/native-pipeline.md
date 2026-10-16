@@ -126,5 +126,4 @@ kebab tag uses (`Card` for `<card>`) stays, one only types use goes even without
 
 ## Not there yet
 
-The web APIs of `web.js` (`fetch`, `URL`, `TextEncoder`, ...: JS globals for TS apps only; Rust code uses crates of
-its choice), and hot module replacement (a development build reloads the whole bundle).
+Hot module replacement (a development build reloads the whole bundle).

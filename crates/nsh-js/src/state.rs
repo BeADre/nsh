@@ -28,6 +28,7 @@ pub(crate) struct State {
     pub(crate) touches: crate::touch::Touches,
     pub(crate) animations: crate::animated::Animations,
     pub(crate) canvases: crate::canvas::Canvases,
+    pub(crate) web: crate::web::Web,
     /// The native modules the context serves (the loader reads it).
     pub(crate) modules: ModuleTable,
 }
@@ -72,6 +73,7 @@ pub(crate) fn install(ctx: &Ctx<'_>, shared: Rc<Shared>, ui_sets: &[Registry]) {
             touches: Default::default(),
             animations: Default::default(),
             canvases: Default::default(),
+            web: Default::default(),
             modules: ModuleTable::new(ui_sets),
         }));
         qjs::JS_SetContextOpaque(raw, state as *mut c_void);
@@ -98,6 +100,7 @@ pub(crate) fn uninstall(ctx: &Ctx<'_>) {
         STATES.with(|m| m.borrow_mut().remove(&(rt as usize)));
         qjs::JS_SetContextOpaque(raw, ptr::null_mut());
         let mut state = Box::from_raw(p);
+        state.web.free_all();
         state.canvases.free_all(raw);
         state.animations.free_all(raw);
         state.platform.free_all(raw);

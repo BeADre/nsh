@@ -40,9 +40,9 @@ pub(crate) struct Shared {
     timers: RefCell<Timers>,
     pub(crate) warnings: RefCell<Warnings>,
     pub(crate) net: RefCell<NetworkQueue>,
-    /// Responses being received, until complete.
-    pub(crate) responses:
-        RefCell<rustc_hash::FxHashMap<RequestId, (crate::net::HttpHead, Vec<u8>)>>,
+    /// Requests whose response bodies were collected unread (finalizers
+    /// queue them here; the next [`Host::take_network`] cancels them).
+    pub(crate) dropped_fetches: RefCell<Vec<RequestId>>,
     /// Font assets imported by the app, not yet registered.
     fonts: RefCell<Vec<String>>,
     /// `requestAnimationFrame` callbacks waiting for the next frame.
@@ -174,7 +174,7 @@ impl Host {
     fn classify(&self, mut err: JsError) -> JsError {
         if let Some(trip) = self.budget.take_trip() {
             err.message = format!("{trip}\n{}", err.message);
-        } else if err.message.contains("out of memory") {
+        } else if err.message.contains("out of memory") || (err.null && self.at_memory_limit()) {
             let reason = format!(
                 "the script ran out of memory (limit {} MB) and was stopped",
                 self.budget.limits().memory_bytes >> 20
@@ -185,11 +185,15 @@ impl Host {
         err
     }
 
+    /// Whether the heap is (all but) full.
+    fn at_memory_limit(&self) -> bool {
+        let limit = self.budget.limits().memory_bytes as i64;
+        limit > 0 && self.rt.memory_usage().malloc_size + (1 << 20) >= limit
+    }
+
     /// The error for a call refused because the VM was stopped.
     fn stopped(&self) -> JsError {
-        JsError {
-            message: self.fatal().unwrap_or_default(),
-        }
+        JsError::new(self.fatal().unwrap_or_default())
     }
 
     /// Sets what canvas `measureText` measures with.
@@ -426,8 +430,11 @@ impl Host {
         self.guarded(Phase::Call, || {
             while self.rt.is_job_pending() {
                 if let Err(err) = self.rt.execute_pending_job() {
-                    let err = err.0.with(|ctx| JsError {
-                        message: describe(ctx.catch()),
+                    let err = err.0.with(|ctx| {
+                        let caught = ctx.catch();
+                        let mut err = JsError::new(describe(caught.clone()));
+                        err.null = caught.is_null();
+                        err
                     });
                     self.uncaught(&err);
                 }
@@ -438,6 +445,10 @@ impl Host {
     /// Moves the network requests and cancellations made since the last
     /// call into `out`.
     pub fn take_network(&self, out: &mut NetworkQueue) {
+        if !self.shared.dropped_fetches.borrow().is_empty() {
+            self.ctx
+                .with(|ctx| crate::web::forget_dropped_fetches(ctx.as_raw().as_ptr()));
+        }
         out.ops.append(&mut self.shared.net.borrow_mut().ops);
     }
 
@@ -507,11 +518,18 @@ impl Host {
     pub fn fetch_event(&self, id: RequestId, event: FetchEvent) {
         self.guarded(Phase::Call, || {
             self.ctx.with(|ctx| {
-                let result = web::fetch_event(&ctx, &self.shared, id, event);
+                let raw = ctx.as_raw().as_ptr();
+                let result =
+                    crate::web::fetch_event(raw, id, event).map_err(|_| rquickjs::Error::Exception);
                 self.report(&ctx, result);
             });
             self.run_jobs();
         });
+    }
+
+    /// The number of live JS objects (diagnostics: leak checks).
+    pub fn object_count(&self) -> i64 {
+        self.rt.memory_usage().obj_count
     }
 
     /// Runs the cycle collector. Call when idle so released nodes are
@@ -774,7 +792,7 @@ fn describe(value: Value<'_>) -> String {
 fn install(ctx: &Ctx<'_>, shared: &Rc<Shared>) -> rquickjs::Result<()> {
     let globals = ctx.globals();
     console::install(ctx)?;
-    web::install(ctx, shared)?;
+    web::install(ctx.as_raw().as_ptr())?;
 
     let s = shared.clone();
     globals.set(
@@ -1100,6 +1118,21 @@ mod tests {
             class MyError extends Error { constructor() { super("x"); this.name = "MyError"; } }
             attempt(() => { const e = new MyError(); if (e.name !== "MyError") throw new Error(); });
             attempt(() => [1, 2].map((x) => x * 2));
+            // Members of the frozen prototypes can still be overridden on
+            // other objects (no override mistake), not on the prototypes.
+            attempt(() => {
+                "use strict";
+                function A() {}
+                A.prototype = Object.create(Object.prototype);
+                A.prototype.constructor = A;
+                const o = { toString: undefined };
+                o.toString = () => "mine";
+                const d = new Date(0);
+                d.toJSON = () => "j";
+                if (new A().constructor !== A || String(o) !== "mine" || JSON.stringify(d) !== '"j"') throw new Error();
+                if (({}).constructor !== Object || [].toString() !== "") throw new Error();
+            });
+            attempt(() => { "use strict"; Object.prototype.toString = null; });
             __nsh_commit([1, 1, results.join(",")]);
             "#,
         )
@@ -1110,7 +1143,7 @@ mod tests {
         };
         assert_eq!(
             text,
-            "ReferenceError,TypeError,TypeError,TypeError,TypeError,TypeError,TypeError,ran,ran"
+            "ReferenceError,TypeError,TypeError,TypeError,TypeError,TypeError,TypeError,ran,ran,ran,TypeError"
         );
     }
 

@@ -23,7 +23,8 @@ crates/
   nsh-anim/            Native animation graph (pure Rust): value / interpolate / math nodes, timing / spring / decay drivers
   nsh-js/              QuickJS host: console / timers / op bridge, op buffer decoding, bytecode compilation and loading;
                        the native reactive graph (`reactive.rs`: signals, memos, effects, owners, context), the native
-                       modules `nsh` / `nsh:rt` (`modules.rs`) and the renderer of compiled JSX (`dom.rs`)
+                       modules `nsh` / `nsh:rt` (`modules.rs`) and the renderer of compiled JSX (`dom.rs`); the web APIs
+                       of TS apps (`web/`: fetch, streams, Blob / FormData, URL, encoding, events), native classes
   nsh-engine/          Engine thread: drives nsh-js + nsh-core and hands one MountBatch per frame to the platform
   nsh-package/         Signed packages (`.nshpkg`): Ed25519 keys, release-key certificates, revocation lists, the trust store
   nsh-bundler/         Bundler: rolldown + Oxc (TS stripping) + Solid universal JSX compiler + embedded JS packages + source maps;

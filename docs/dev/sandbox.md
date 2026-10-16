@@ -15,7 +15,10 @@ trusted as the app's own code: every limit and check is enforced in Rust, never 
 - **Hardening** (`Policy::harden`, on unless the bundle came from a dev server): `eval` is deleted, the `Function`,
   `AsyncFunction` and generator constructors throw, and the shared prototypes (`Object`, `Array`, `Function`, `String`,
   `Number`, `Promise`, `Map`, typed arrays, ...) are frozen so one module cannot change them for the others.
-  `Error.prototype` stays writable (subclasses set `this.name`). Hot updates are evaluated from Rust and need none of it.
+  `Error.prototype` stays writable (subclasses set `this.name`). Their commonly overridden members (`constructor`,
+  `toString`, `valueOf`, `toJSON`, ...) become accessors whose setter defines the property on the object assigned to:
+  without that, `Sub.prototype.constructor = Sub` or `obj.toString = …` throws (the "override mistake"), which breaks
+  libraries such as axios. Hot updates are evaluated from Rust and need none of it.
 - **Capabilities** (`nsh_core::access`): an app declares what it may reach in `nsh.json` `"capabilities"` — `network`
   (`hosts`: `*`, `*.example.com` or a host, any method; `http`: a host with `methods` / `schemes` / `pathPrefix`),
   `webview` (`hosts` a web view may show and navigate to), `statusBar`. Everything not listed is denied and unknown keys

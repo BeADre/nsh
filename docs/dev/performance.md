@@ -16,8 +16,8 @@ after `nsh trace` timings and item counts. Current baselines (Apple Silicon):
   single-frame `nsh trace` timings are dominated by the clock state.
 - On Catalyst (release), rebinding one row while scrolling slowly takes ~0.4ms (clocked down) and rebinding a whole screen of ~32 rows on a
   fast fling 0.9–1.6ms.
-- Host startup (`Host::new`, release): ~155µs. The web APIs add nothing until first used (they used to cost ~0.8ms as source,
-  ~0.33ms as bytecode).
+- Host startup (`Host::new`, release): ~75–155µs (clock state). The web APIs add nothing until first used, then ~90µs to
+  make their classes (`bench_first_web_global`; as JS they cost ~0.8ms as source, ~0.33ms as bytecode).
 - Android emulator (arm64, release): rebinding one gallery row while scrolling ~0.3–0.4ms (JS ~60µs); text costs per new
   text: `PrecomputedText` ~120µs, measure ~50µs, final layout reused. First gallery frame 20–50ms (noisy on the emulator).
 

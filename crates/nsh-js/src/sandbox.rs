@@ -140,14 +140,41 @@ const HARDEN: &str = r#"
   replace(async function* () {}, deny("the AsyncGeneratorFunction constructor"));
   Object.defineProperty(globalThis, "Function", { value: blocked, writable: false, configurable: false });
   delete globalThis.eval;
+  // Assigning a property an object inherits read-only fails (the
+  // "override mistake"): `Sub.prototype.constructor = Sub` or
+  // `obj.toString = …` would throw once these prototypes are frozen. Their
+  // commonly overridden members become accessors whose setter defines the
+  // property on the object assigned to, as on an unfrozen prototype (the
+  // prototype itself still cannot change).
+  const tamed = [
+    "constructor", "toString", "toLocaleString", "valueOf", "hasOwnProperty", "isPrototypeOf",
+    "propertyIsEnumerable", "toJSON",
+  ];
+  const tame = (proto) => {
+    for (const name of tamed) {
+      const d = Object.getOwnPropertyDescriptor(proto, name);
+      if (!d || !("value" in d) || !d.writable) continue;
+      const value = d.value;
+      Object.defineProperty(proto, name, {
+        get() { return value; },
+        set(v) {
+          if (this === proto) throw new TypeError(`Cannot assign to read only property '${name}'`);
+          Object.defineProperty(this, name, { value: v, writable: true, enumerable: true, configurable: true });
+        },
+        enumerable: d.enumerable,
+        configurable: false,
+      });
+    }
+  };
   // Not Error.prototype: `this.name = "MyError"` in a subclass constructor
-  // would then fail (an inherited read-only property blocks the assignment).
+  // assigns a property it has.
   for (const proto of [
     Object.prototype, Array.prototype, Function.prototype, String.prototype, Number.prototype,
     Boolean.prototype, Symbol.prototype, RegExp.prototype, Promise.prototype, Map.prototype,
     Set.prototype, WeakMap.prototype, WeakSet.prototype, Date.prototype,
     Object.getPrototypeOf(Uint8Array.prototype),
   ]) {
+    tame(proto);
     Object.freeze(proto);
   }
 })();

@@ -1919,6 +1919,7 @@ dependencies = [
  "log",
  "nsh-anim",
  "nsh-core",
+ "percent-encoding",
  "rquickjs",
  "rustc-hash",
  "serde_json",
