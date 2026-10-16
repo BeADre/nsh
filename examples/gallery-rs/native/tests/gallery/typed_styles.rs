@@ -85,19 +85,7 @@ fn typed_styles_draws_gradients_on_canvases() {
         nsh_core::EventKind::Press,
         nsh_core::EventPayload::None,
     );
-    // The four gradients' canvases; the gradient card's comes once the
-    // card knows its size.
-    assert_eq!(canvases(&rx, &mut screen), 4);
-    let title = screen.find("Gradient card").expect("the gradient card");
-    engine.control().dispatch_event(
-        screen.parents[&title],
-        nsh_core::EventKind::Layout,
-        nsh_core::EventPayload::Layout {
-            x: 0.0,
-            y: 0.0,
-            width: 326.0,
-            height: 100.0,
-        },
-    );
-    assert_eq!(canvases(&rx, &mut screen), 1);
+    // The four gradients' canvases, and the gradient card's once its
+    // layout tells the card its size.
+    assert_eq!(canvases(&rx, &mut screen), 5);
 }
