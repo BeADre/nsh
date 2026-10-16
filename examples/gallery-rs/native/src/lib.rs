@@ -1,8 +1,16 @@
 //! The Rust gallery (`examples/gallery-rs`): the app's TSX mounts one
-//! component of this crate, and everything it shows is written in Rust.
-//! The app imports the set as `gallery/native` (`nsh.json` `"rust"`).
+//! component of this crate, [`Gallery`], and everything it shows is written
+//! in Rust: the same demos as the TSX gallery (`examples/gallery`), on
+//! nsh's Rust component API. The app imports the set as `gallery/native`
+//! (`nsh.json` `"rust"`).
+
+mod demos;
+mod nav;
+mod ui;
 
 use nsh_core::ui::{Registry, prelude::*};
+
+use crate::nav::Routes;
 
 /// The UI set of the gallery: what `App.tsx` imports from `gallery/native`.
 pub fn registry() -> Registry {
@@ -11,11 +19,9 @@ pub fn registry() -> Registry {
     registry
 }
 
-/// The gallery.
+/// The gallery: a native stack of its index and the screens pushed on it.
 #[derive(Debug, Default)]
-pub struct Gallery {
-    taps: u32,
-}
+pub struct Gallery;
 
 impl Component for Gallery {
     const NAME: &'static str = "gallery.gallery";
@@ -23,25 +29,22 @@ impl Component for Gallery {
     type Event = NoEvent;
 
     fn render(&self, _: &(), cx: &mut RenderCx<'_, Self>) -> impl IntoElement {
-        let theme = cx.theme();
+        let routes = cx.global::<Routes>().screens();
+        let index = demos::index(cx);
+        let pushed: Vec<_> = routes
+            .into_iter()
+            .enumerate()
+            .map(|(depth, route)| {
+                (route.screen)(cx)
+                    .key(route.key)
+                    // The user popped it natively: it and what is above it go.
+                    .on_dismiss(cx.listener(move |_: &mut Self, _, cx| {
+                        cx.update_global::<Routes, _>(|routes, _| routes.truncate(depth));
+                    }))
+            })
+            .collect();
         view()
             .flex_1()
-            .items_center()
-            .justify_center()
-            .gap_4()
-            .bg(theme.background)
-            .child(
-                text("Rust gallery")
-                    .text_size(px(28.0))
-                    .font_weight(FontWeight::BOLD),
-            )
-            .child(
-                text(format!("Tapped {} times", self.taps))
-                    .text_color(theme.muted_foreground)
-                    .on_press(cx.listener(|this, _, cx| {
-                        this.taps += 1;
-                        cx.notify();
-                    })),
-            )
+            .child(stack().flex_1().child(index).children(pushed))
     }
 }

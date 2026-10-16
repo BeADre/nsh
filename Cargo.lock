@@ -970,7 +970,10 @@ dependencies = [
 name = "gallery-native"
 version = "0.1.0"
 dependencies = [
+ "crossbeam-channel",
+ "log",
  "nsh-core",
+ "nsh-engine",
  "nsh-ui-mobile",
 ]
 
