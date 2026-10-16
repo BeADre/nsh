@@ -383,9 +383,10 @@ pub struct EngineConfig {
     pub header_heights: (f32, f32),
     /// The JS VM's resource limits (a JS app's; Rust code has none).
     pub limits: Limits,
-    /// The Rust components JS can render by name (`nsh_ui_mobile::registry()`
-    /// on mobile); a Rust app's components need no registration.
-    pub components: nsh_core::ui::Registry,
+    /// The UI sets JS imports (`nsh_ui_mobile::registry()` on mobile, the
+    /// app's own): their Rust components and modules. A Rust app's
+    /// components need no registration.
+    pub ui_sets: Vec<nsh_core::ui::Registry>,
     /// The tokio runtime the components' async tasks use (timers, IO,
     /// background work); `None`: one shared by the engines of the process.
     pub runtime: Option<tokio::runtime::Handle>,
@@ -420,7 +421,7 @@ impl std::fmt::Debug for EngineConfig {
             .field("environment", &self.environment)
             .field("header_heights", &self.header_heights)
             .field("limits", &self.limits)
-            .field("components", &self.components)
+            .field("ui_sets", &self.ui_sets)
             .finish()
     }
 }
@@ -616,7 +617,7 @@ fn run<M: TextEngine + 'static, S: MountSink>(
         App::Rust(_) => Policy::default().access(),
     });
     let mut core = Core::new(text_engine.clone(), config.viewport);
-    core.set_components(config.components.clone());
+    core.set_components(nsh_core::ui::Registry::merged(&config.ui_sets));
     if let App::Js(_) = &config.app {
         // Only JS is limited (Rust code is as trusted as the platform).
         core.set_max_nodes(config.limits.max_nodes);
@@ -675,7 +676,7 @@ fn run<M: TextEngine + 'static, S: MountSink>(
         App::Js(bundle) => match Script::start(
             bundle,
             config.limits,
-            &config.components,
+            &config.ui_sets,
             &environment,
             text_engine,
             stop,

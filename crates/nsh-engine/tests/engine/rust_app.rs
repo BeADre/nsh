@@ -67,7 +67,7 @@ fn start() -> (Engine, Receiver<MountBatch>) {
         header_heights: (44.0, 96.0),
         limits: nsh_engine::Limits::default(),
         // Nothing registered: Rust renders its components by type.
-        components: Default::default(),
+        ui_sets: Vec::new(),
         runtime: None,
     };
     (
