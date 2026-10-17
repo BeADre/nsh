@@ -1,7 +1,8 @@
 ---
 title: Embedding in iOS Apps
 description: Add NativeShell.xcframework to an existing iOS app, show nsh apps in an NshAppView, and load bundles, signed packages or a dev server.
-order: 3.1
+order: 11
+group: platforms
 ---
 
 # Embedding in iOS Apps

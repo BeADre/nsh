@@ -1,7 +1,8 @@
 ---
 title: 嵌入 Android 应用
 description: 把 nsh.aar 加入现有 Android 应用，在 NshView 中显示 nsh 应用，并加载 bundle、签名包或连接开发服务器。
-order: 3.2
+order: 12
+group: platforms
 ---
 
 # 嵌入 Android 应用

@@ -1,7 +1,8 @@
 ---
 title: Embedding in Android Apps
 description: Add nsh.aar to an existing Android app, show nsh apps in an NshView, and load bundles, signed packages or a dev server.
-order: 3.2
+order: 12
+group: platforms
 ---
 
 # Embedding in Android Apps

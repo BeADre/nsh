@@ -596,6 +596,13 @@ html[lang^="zh"] :is(h1, h2, h3, h4) { letter-spacing: -0.01em; }
 }
 
 .sidebar-group__items { margin: 0; padding: 0; list-style: none; }
+.sidebar-subgroup {
+  margin: 1.1rem 0 0.3rem;
+  color: var(--foreground);
+  font-size: 0.75rem;
+  font-weight: 620;
+}
+.sidebar-subgroup:first-child { margin-top: 0.25rem; }
 
 .sidebar-item {
   display: block;
