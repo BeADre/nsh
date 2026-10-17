@@ -1094,6 +1094,10 @@ struct ModalNav {
     /// Dims the window behind a sheet; clicking it asks to close.
     scrim: Option<Scrim>,
     reported: Option<(Size, EdgeInsets)>,
+    /// The field that had the keyboard focus when it was presented: it
+    /// gets it back when the modal closes, as a desktop dialog gives it
+    /// back.
+    restore: Option<NshView>,
 }
 
 /// The screen under the moving one darkening (a fill it hosts while the
@@ -1230,6 +1234,14 @@ impl Nav {
         self.screens
             .entry(view.id())
             .or_insert_with(|| ScreenNav::new(view))
+    }
+
+    /// The newest presented modal's view.
+    fn focus_scope(&self) -> Option<NshView> {
+        self.order
+            .last()
+            .and_then(|id| self.modals.get(id))
+            .and_then(|m| m.view.clone())
     }
 
     fn take_image(&mut self, id: NodeId) -> Option<Picture> {
@@ -1668,10 +1680,19 @@ impl Nav {
             b.unparent();
         }
         let scrim = m.scrim.take().map(|s| s.view);
+        let restore = m.restore.take();
         drop_focus(surface, &view);
         view.unparent();
         set_shift(&view, (0.0, 0.0));
         set_fade(&view, 1.0);
+        let scope = self.focus_scope().unwrap_or_else(|| surface.root.clone());
+        if let Some(field) = restore
+            && crate::text_input::focused(surface).is_none()
+            && is_ancestor(&scope, &field)
+            && is_shown(&field)
+        {
+            crate::text_input::focus(&field);
+        }
         match (motion, image) {
             (Some((duration, fade)), Some(picture)) => {
                 let layer = layer_view();
@@ -1962,21 +1983,26 @@ fn go_back_from(surface: &Rc<Surface>, screen: NodeId) {
 }
 
 /// A key nothing in the window used: Escape, Alt+Left and the Browser Back
-/// key go back. Whether it was taken. Escape in a focused text field only
-/// leaves the field (a desktop convention: it never navigates away from
-/// what is being typed); Alt+Left and the Back key still go back. A key
+/// key go back. Whether it was taken. A focused text field takes Escape
+/// (it leaves the field: a desktop never navigates away from what is being
+/// typed) but not Alt+Left and the Back key, which still go back. A key
 /// held down goes back once.
 pub(crate) fn key_pressed(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
     if !event.down || event.repeat || !is_back_key(event.vk, event.modifiers) {
         return false;
     }
-    if event.vk == VK_ESCAPE
-        && let Some(field) = crate::text_input::focused(surface)
-    {
-        crate::text_input::blur(&field);
-        return true;
-    }
     go_back(surface)
+}
+
+/// Where the keyboard focus stays: the newest presented modal, else the
+/// whole surface (Tab never reaches the views under a modal).
+pub(crate) fn focus_scope(surface: &Surface) -> NshView {
+    let top = surface
+        .nav
+        .try_borrow()
+        .ok()
+        .and_then(|nav| nav.focus_scope());
+    top.unwrap_or_else(|| surface.root.clone())
 }
 
 /// A view is about to be removed or deleted: when it is (or is inside) the
@@ -2114,6 +2140,10 @@ pub(crate) fn present(surface: &Rc<Surface>, view: &NshView) {
     if m.view.is_some() {
         return;
     }
+    // The field being typed in under the modal leaves it until the modal
+    // closes.
+    let field = crate::text_input::focused(surface).filter(|f| !is_ancestor(view, f));
+    m.restore = field.clone();
     m.view = Some(view.clone());
     m.closed = false;
     m.reported = None;
@@ -2131,6 +2161,10 @@ pub(crate) fn present(surface: &Rc<Surface>, view: &NshView) {
         }
     }
     nav.presenting.push(id);
+    drop(nav);
+    if let Some(field) = field {
+        crate::text_input::blur(&field);
+    }
 }
 
 /// A modal was removed: dismiss it.

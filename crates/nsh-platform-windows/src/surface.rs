@@ -27,6 +27,7 @@ use windows::Win32::Foundation::{HWND, RECT};
 
 use crate::{
     animation::UiAnimation,
+    input::KeyEvent,
     mount::Mounter,
     text::DWriteTextEngine,
     view::{Hosted, NshView},
@@ -91,6 +92,11 @@ pub(crate) type FrameClient = Box<dyn FnMut(&Rc<Surface>, f64) -> bool>;
 /// Called with the new size (points) when the surface is resized.
 pub(crate) type ResizeHandler = Box<dyn Fn(f32, f32)>;
 
+/// Takes a key before the app's views ([`Surface::shortcut`]): window
+/// shortcuts of the standalone app, the dev host's reload. True when it
+/// took the key.
+pub(crate) type KeyHandler = Rc<dyn Fn(&KeyEvent) -> bool>;
+
 /// Called when the app reports a fatal error (development hosts show it).
 pub(crate) type ErrorHandler = Box<dyn Fn(&str)>;
 
@@ -151,6 +157,8 @@ pub(crate) struct Surface {
     placed: RefCell<Vec<Rc<dyn Hosted>>>,
     /// Called after the surface is resized (development overlays).
     pub(crate) on_resized: RefCell<Vec<ResizeHandler>>,
+    /// Shortcuts of the window around the app ([`Surface::shortcut`]).
+    pub(crate) on_key: RefCell<Vec<KeyHandler>>,
 }
 
 impl Surface {
@@ -190,6 +198,7 @@ impl Surface {
             native: Default::default(),
             placed: RefCell::default(),
             on_resized: RefCell::default(),
+            on_key: RefCell::default(),
         });
         SURFACES.with(|s| s.borrow_mut().insert(key, Rc::downgrade(&surface)));
         let weak = Rc::downgrade(&surface);
@@ -325,6 +334,14 @@ impl Surface {
             self.control(|c| c.set_environment(environment));
             crate::system::environment_applied(self);
         }
+    }
+
+    /// Offers a key to the window's shortcuts ([`Surface::on_key`]),
+    /// before the app's views see it. True when one took it.
+    pub(crate) fn shortcut(&self, event: &KeyEvent) -> bool {
+        // A handler may reload the app: none is borrowed while it runs.
+        let handlers: Vec<KeyHandler> = self.on_key.borrow().clone();
+        handlers.iter().any(|f| f(event))
     }
 
     /// The window's client area is `pixels` big at `scale` pixels per point.

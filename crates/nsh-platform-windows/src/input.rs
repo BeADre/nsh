@@ -102,6 +102,10 @@ const FADE_OUT: f64 = 0.25;
 const VK_TAB: u16 = 0x09;
 /// `VK_MENU` (Alt).
 const VK_MENU: u16 = 0x12;
+/// `VK_SPACE`.
+const VK_SPACE: u16 = 0x20;
+/// `VK_F4`.
+const VK_F4: u16 = 0x73;
 
 /// What a pointer did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -825,6 +829,11 @@ pub(crate) fn wheel(surface: &Rc<Surface>, event: WheelEvent) {
 
 /// A key from the window; true when handled. Only key downs (and their
 /// repeats) go to the modules; ups are not acted on.
+///
+/// Order: the window's shortcuts ([`Surface::shortcut`]), a dialog (it is
+/// modal), the focused field, selectable text, navigation, scroll views,
+/// then Tab into the fields. Alt+F4 and Alt+Space are never taken: they
+/// close the window and open its menu, as everywhere on Windows.
 pub(crate) fn key(surface: &Rc<Surface>, event: KeyEvent) -> bool {
     let input = &surface.input;
     if !event.down {
@@ -832,7 +841,11 @@ pub(crate) fn key(surface: &Rc<Surface>, event: KeyEvent) -> bool {
         // it saw no other key: swallow the release once Alt + key was ours.
         return event.vk == VK_MENU && input.alt_combo.replace(false);
     }
-    let handled = crate::system::key(surface, &event)
+    if is_system_key(&event) {
+        return false;
+    }
+    let handled = surface.shortcut(&event)
+        || crate::system::key(surface, &event)
         || crate::text_input::key(surface, &event)
         || crate::text::key(surface, &event)
         || crate::navigation::key_pressed(surface, &event)
@@ -847,15 +860,21 @@ pub(crate) fn key(surface: &Rc<Surface>, event: KeyEvent) -> bool {
     handled
 }
 
-/// Tab and Shift + Tab move the keyboard focus between the text fields, in
-/// tree order (GTK's focus chain does this on Linux).
+/// Keys of the window manager: Alt+F4 closes the window, Alt+Space opens
+/// its menu (`DefWindowProc` does both).
+fn is_system_key(event: &KeyEvent) -> bool {
+    let m = event.modifiers;
+    m.alt && !m.ctrl && (event.vk == VK_F4 || event.vk == VK_SPACE)
+}
+
+/// Tab and Shift + Tab move the keyboard focus between the text fields
+/// when none has it ([`crate::text_input`] moves it from a field).
 fn tab(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
     let m = event.modifiers;
     if event.vk != VK_TAB || m.ctrl || m.alt || m.meta {
         return false;
     }
-    let mut fields = Vec::new();
-    collect_fields(&surface.root, &mut fields);
+    let fields = fields(surface);
     if fields.is_empty() {
         return false;
     }
@@ -870,6 +889,17 @@ fn tab(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
     };
     crate::text_input::focus(&fields[next]);
     true
+}
+
+/// The text fields Tab goes through, in tree order (the order Windows
+/// apps declare their controls in, which WinUI's tab order follows):
+/// those shown and enabled inside the newest modal, else in the whole
+/// surface. Screens a stack does not show are concealed, so their fields
+/// are never reached.
+pub(crate) fn fields(surface: &Surface) -> Vec<NshView> {
+    let mut fields = Vec::new();
+    collect_fields(&crate::navigation::focus_scope(surface), &mut fields);
+    fields
 }
 
 /// The enabled text fields shown under `view`, in tree order.
@@ -2123,6 +2153,42 @@ mod tests {
     }
 
     use crate::geom::rect;
+
+    #[test]
+    fn alt_f4_and_alt_space_are_the_systems() {
+        let key = |vk, alt, ctrl| KeyEvent {
+            vk,
+            down: true,
+            repeat: false,
+            modifiers: Modifiers {
+                alt,
+                ctrl,
+                ..Modifiers::default()
+            },
+        };
+        assert!(is_system_key(&key(VK_F4, true, false)));
+        assert!(is_system_key(&key(VK_SPACE, true, false)));
+        assert!(!is_system_key(&key(VK_SPACE, false, false)));
+        assert!(!is_system_key(&key(VK_F4, false, false)));
+        assert!(!is_system_key(&key(VK_F4, true, true)));
+    }
+
+    #[test]
+    fn tab_skips_hidden_disabled_and_concealed_fields() {
+        let root = root();
+        let a = view(&root, 2, ViewKind::Input, rect(0.0, 0.0, 100.0, 30.0));
+        let screen = view(&root, 4, ViewKind::View, rect(0.0, 40.0, 100.0, 100.0));
+        let b = view(&screen, 6, ViewKind::Input, rect(0.0, 0.0, 100.0, 30.0));
+        let c = view(&root, 8, ViewKind::Input, rect(0.0, 200.0, 100.0, 30.0));
+        let mut fields = Vec::new();
+        collect_fields(&root, &mut fields);
+        assert_eq!(fields, [a.clone(), b, c.clone()]);
+        screen.state_mut().concealed = true;
+        c.state_mut().props.accessibility.state.disabled = true;
+        let mut fields = Vec::new();
+        collect_fields(&root, &mut fields);
+        assert_eq!(fields, [a]);
+    }
 
     #[test]
     fn picks_the_innermost_topmost_view() {

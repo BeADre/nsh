@@ -30,7 +30,8 @@ use windows::{
         Graphics::{
             Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmFlush, DwmSetWindowAttribute},
             Gdi::{
-                BeginPaint, EndPaint, InvalidateRect, PAINTSTRUCT, ScreenToClient, UpdateWindow,
+                BeginPaint, EndPaint, GetMonitorInfoW, InvalidateRect, MONITOR_DEFAULTTONEAREST,
+                MONITORINFO, MonitorFromWindow, PAINTSTRUCT, ScreenToClient, UpdateWindow,
             },
         },
         System::LibraryLoader::GetModuleHandleW,
@@ -78,6 +79,11 @@ struct WindowData {
     last_press: Cell<(u32, (i32, i32), u32)>,
     /// A high surrogate waiting for its low half (`WM_CHAR`).
     surrogate: Cell<u16>,
+    /// The last key down was handled: its `WM_SYSCHAR` (Alt + key) is not
+    /// passed on, where `DefWindowProc` would beep for a missing menu.
+    handled_key: Cell<bool>,
+    /// Where a full screen window goes back to ([`toggle_full_screen`]).
+    windowed: RefCell<Option<WINDOWPLACEMENT>>,
 }
 
 thread_local! {
@@ -160,6 +166,8 @@ pub(crate) fn create(
         buttons: Cell::new(0),
         last_press: Cell::new((0, (0, 0), 0)),
         surrogate: Cell::new(0),
+        handled_key: Cell::new(false),
+        windowed: RefCell::new(None),
     });
     let title: Vec<u16> = title.encode_utf16().chain(Some(0)).collect();
     let (style, ex_style) = match parent {
@@ -220,6 +228,72 @@ pub(crate) fn show(hwnd: HWND) {
         let _ = ShowWindow(hwnd, SW_SHOW);
         let _ = UpdateWindow(hwnd);
     }
+}
+
+/// Makes a top-level window cover its monitor without a frame, or gives
+/// it back its frame and place (F11, as Windows apps do).
+pub(crate) fn toggle_full_screen(hwnd: HWND) {
+    let Some(data) = data(hwnd).filter(|d| d.top_level) else {
+        return;
+    };
+    // SAFETY: plain calls on a live top-level window with local out values.
+    unsafe {
+        let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
+        let windowed = data.windowed.take();
+        match windowed {
+            None => {
+                let mut placement = WINDOWPLACEMENT {
+                    length: std::mem::size_of::<WINDOWPLACEMENT>() as u32,
+                    ..Default::default()
+                };
+                let mut monitor = MONITORINFO {
+                    cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                    ..Default::default()
+                };
+                if GetWindowPlacement(hwnd, &mut placement).is_err()
+                    || !GetMonitorInfoW(
+                        MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
+                        &mut monitor,
+                    )
+                    .as_bool()
+                {
+                    return;
+                }
+                *data.windowed.borrow_mut() = Some(placement);
+                SetWindowLongW(hwnd, GWL_STYLE, (style & !WS_OVERLAPPEDWINDOW.0) as i32);
+                let r = monitor.rcMonitor;
+                let _ = SetWindowPos(
+                    hwnd,
+                    Some(HWND_TOP),
+                    r.left,
+                    r.top,
+                    r.right - r.left,
+                    r.bottom - r.top,
+                    SWP_NOOWNERZORDER | SWP_FRAMECHANGED,
+                );
+            }
+            Some(placement) => {
+                SetWindowLongW(hwnd, GWL_STYLE, (style | WS_OVERLAPPEDWINDOW.0) as i32);
+                let _ = SetWindowPlacement(hwnd, &placement);
+                let _ = SetWindowPos(
+                    hwnd,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED,
+                );
+            }
+        }
+    }
+}
+
+/// Asks a window to close, as its close button does.
+pub(crate) fn close(hwnd: HWND) {
+    // SAFETY: posting to a window handle; a window that is gone makes the
+    // call fail harmlessly.
+    let _ = unsafe { PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)) };
 }
 
 /// The window's DPI (96 at 100%).
@@ -619,11 +693,16 @@ fn handle(
                 repeat: down && (lparam.0 >> 30) & 1 == 1,
                 modifiers: modifiers(),
             };
-            if crate::input::key(surface, event) {
+            let handled = crate::input::key(surface, event);
+            if down {
+                data.handled_key.set(handled);
+            }
+            if handled {
                 return Some(LRESULT(0));
             }
             // Alt+F4 and the system menu keep working.
         }
+        WM_SYSCHAR if data.handled_key.get() => return Some(LRESULT(0)),
         WM_CHAR => {
             let unit = wparam.0 as u16;
             if (0xD800..0xDC00).contains(&unit) {

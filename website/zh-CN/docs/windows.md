@@ -104,6 +104,28 @@ QuickJS 字节码是受信任的输入，只能从你自己应用的文件中加
 （Windows 11 上也是：Windows 沿用了这个版本号）。深色模式实时跟随“设置 > 个性化 > 颜色”，`fontScale()` 跟随“文本大小”设置，
 减少动态效果跟随“动画效果”设置，区域设置跟随用户的区域格式。见[设备与环境](./device-and-environment.md)。
 
+### 键盘
+
+| 按键 | 作用 |
+|---|---|
+| Return | 在 `Input` 中按 `submitBehavior` 行事：提交（`onSubmitEditing`）、提交并离开输入框，或换行（多行输入框） |
+| Shift+Return、Alt+Return | 在回车即提交的多行输入框中换行（Ctrl+Return 提交） |
+| Ctrl+Tab | 在多行输入框中输入制表符 |
+| Tab、Shift+Tab | 按应用声明的顺序移到下一个 / 上一个输入框，只在最上层的模态窗口之内；与 Windows 对话框一样，移到的输入框会全选其文本 |
+| Escape | 离开有焦点的输入框；否则清除文本选区，再返回上一页或请求关闭最上层的模态窗口 |
+| Alt+Left、浏览器后退键、鼠标的后退键 | 返回上一页（在输入框中也是） |
+| Ctrl+Left / Right、Home / End、Ctrl+Home / End、Ctrl+Up / Down，加 Shift；Ctrl+Backspace / Delete | 在输入框中按词、行、段落（多行）以及到开头 / 结尾移动、选择、删除 |
+| Ctrl+Z、Ctrl+Y 或 Ctrl+Shift+Z、Ctrl+X / C / V / A；Shift+Delete、Ctrl+Insert、Shift+Insert | 撤销、重做、剪切、复制、粘贴、全选（密码输入框拒绝剪切和复制）；Ctrl+A / Ctrl+C 选择并复制 `selectable` 文本 |
+| 方向键；Page Up / Down、Space、Shift+Space；Home / End、Ctrl+Home / End | 滚动鼠标下方的滚动视图：一行、一页、到开头 / 结尾（输入框有焦点时不滚动） |
+| Alt+F4、Ctrl+W | 关闭窗口（Ctrl+W 用于 `nsh package` 和 `nsh run` 的应用） |
+| F11 | 进入和退出全屏（`nsh package` 和 `nsh run` 的应用） |
+| Ctrl+R、F5 | 重新加载最新的构建（`nsh run`） |
+
+字母快捷键与所有 Windows 应用一样按 Windows 的虚拟键匹配：在拉丁字母布局（AZERTY、Dvorak 等）下，Ctrl+A 是输入 A 的那个键；
+在西里尔或希腊字母布局下，是美式布局中 A 所在位置的键。在密码输入框中，Ctrl 移动和删除到开头或结尾（密码视为一个词）。
+确认输入法组合文字（中文、日文等）的回车不会提交。`onKeyPress` 报告的与 React Native 一致：插入的文字（换行为 `"Enter"`）、
+`"Backspace"`（在空输入框中也报告）和 `"Escape"`；Tab 和导航键不报告。
+
 不同之处或不支持的功能：
 
 - **`WebView`** 是一个 WebView2 子窗口：绘制在它上方的 nsh 内容（对话框、sheet）会被它遮住。不支持 HTML 的
@@ -113,7 +135,7 @@ QuickJS 字节码是受信任的输入，只能从你自己应用的文件中加
 - **`mixBlendMode` 和 `backdropFilter`** 会绘制，但在带 `filter` 或 3D 变换的视图内部不生效；`borderCurve: "continuous"`
   绘制为圆形圆角。
 - **文本**：头部和中间省略号只用于单行（多行时改为尾部省略号）；彩色 emoji 只支持 COLR 字体；小型大写字母只在字体提供时可用。
-- **文本输入**：没有上下文菜单；键盘类型和自动填充不适用；Tab 在文本框之间切换。
+- **文本输入**：没有上下文菜单；键盘类型和自动填充不适用；Tab 只在文本框之间切换（可按压的视图不获得键盘焦点）。
 - **无障碍**（UI Automation）：导航栏的标题和按钮、对话框和 toast 不会暴露出来；标题（heading）的级别都报告为 1。
 - **输入辅助视图**和**状态栏**（桌面上没有对应物）。
 

@@ -283,6 +283,24 @@ impl Model {
         (start, end)
     }
 
+    /// Where Ctrl+Down (`forward`) or Ctrl+Up takes the caret from `at`:
+    /// the start of the next paragraph, or of this one (of the one before
+    /// when `at` is there already), as in Windows' editors.
+    pub(crate) fn paragraph(&self, at: usize, forward: bool) -> usize {
+        let at = at.min(self.text.len());
+        if forward {
+            return self.text[at..]
+                .find('\n')
+                .map_or(self.text.len(), |i| at + i + 1);
+        }
+        let start = self.line_at(at).0;
+        if start < at || at == 0 {
+            start
+        } else {
+            self.line_at(at - 1).0
+        }
+    }
+
     /// The text shown: the text with the composition at the caret.
     pub(crate) fn display(&self) -> std::borrow::Cow<'_, str> {
         match &self.composition {
@@ -601,6 +619,21 @@ pub(crate) fn pasted(text: &str, multiline: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ctrl_up_and_down_move_by_paragraph() {
+        let m = model("one two\nthree\n\nfour");
+        // Forward: the next paragraph's start, else the end.
+        assert_eq!(m.paragraph(2, true), 8);
+        assert_eq!(m.paragraph(8, true), 14);
+        assert_eq!(m.paragraph(14, true), 15);
+        assert_eq!(m.paragraph(16, true), 19);
+        // Back: this paragraph's start, else the one before.
+        assert_eq!(m.paragraph(10, false), 8);
+        assert_eq!(m.paragraph(8, false), 0);
+        assert_eq!(m.paragraph(15, false), 14);
+        assert_eq!(m.paragraph(0, false), 0);
+    }
 
     fn model(text: &str) -> Model {
         let mut m = Model::default();

@@ -24,6 +24,7 @@ use windows::{
 
 use crate::{
     image::{AssetBase, AssetReader},
+    input::KeyEvent,
     surface::Surface,
 };
 
@@ -287,6 +288,7 @@ fn run_on_this_thread(source: AppSource, options: AppOptions) -> std::process::E
         AppSource::DevServer(url) => crate::dev::start(&view, url),
     }
     crate::system::environment_applied(view.surface());
+    install_shortcuts(&view);
     view.show();
     if let Some(script) = &options.script {
         crate::script::run(view.surface().clone(), script);
@@ -302,6 +304,51 @@ fn run_on_this_thread(source: AppSource, options: AppOptions) -> std::process::E
     } else {
         std::process::ExitCode::FAILURE
     }
+}
+
+/// A window shortcut of the standalone app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Shortcut {
+    /// F11: full screen, and back.
+    FullScreen,
+    /// Ctrl+W: closes the window (which quits).
+    Close,
+}
+
+/// The window shortcut `event` is, as Windows apps have them (Alt+F4 is
+/// `DefWindowProc`'s). Repeats of a key held down do nothing.
+fn shortcut(event: &KeyEvent) -> Option<Shortcut> {
+    const VK_W: u16 = 0x57;
+    const VK_F11: u16 = 0x7A;
+    let m = event.modifiers;
+    if !event.down || event.repeat || m.alt || m.meta || m.shift {
+        return None;
+    }
+    match event.vk {
+        VK_F11 if !m.ctrl => Some(Shortcut::FullScreen),
+        VK_W if m.ctrl => Some(Shortcut::Close),
+        _ => None,
+    }
+}
+
+/// The standalone app's window shortcuts; an embedded `AppView` has none
+/// (its window belongs to the embedding app).
+fn install_shortcuts(view: &AppView) {
+    let hwnd = view.hwnd;
+    view.surface
+        .on_key
+        .borrow_mut()
+        .push(Rc::new(move |event| match shortcut(event) {
+            Some(Shortcut::FullScreen) => {
+                crate::window::toggle_full_screen(hwnd);
+                true
+            }
+            Some(Shortcut::Close) => {
+                crate::window::close(hwnd);
+                true
+            }
+            None => false,
+        }));
 }
 
 /// Writes `text` to the debugger's output (`OutputDebugString`): where a
@@ -323,5 +370,40 @@ pub fn fatal_error(message: &str) {
             &HSTRING::from("nsh"),
             MB_OK | MB_ICONERROR,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::input::Modifiers;
+
+    fn key(vk: u16, modifiers: Modifiers) -> KeyEvent {
+        KeyEvent {
+            vk,
+            down: true,
+            repeat: false,
+            modifiers,
+        }
+    }
+
+    #[test]
+    fn window_shortcuts() {
+        let none = Modifiers::default();
+        let ctrl = Modifiers { ctrl: true, ..none };
+        assert_eq!(shortcut(&key(0x7A, none)), Some(Shortcut::FullScreen));
+        assert_eq!(shortcut(&key(0x57, ctrl)), Some(Shortcut::Close));
+        assert_eq!(shortcut(&key(0x57, none)), None);
+        assert_eq!(shortcut(&key(0x7A, ctrl)), None);
+        let held = KeyEvent {
+            repeat: true,
+            ..key(0x7A, none)
+        };
+        assert_eq!(shortcut(&held), None);
+        let shift = Modifiers {
+            shift: true,
+            ..ctrl
+        };
+        assert_eq!(shortcut(&key(0x57, shift)), None);
     }
 }

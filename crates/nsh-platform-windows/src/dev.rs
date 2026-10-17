@@ -50,7 +50,7 @@ use crate::{
     app::AppView,
     geom::rect,
     image::AssetBase,
-    input::{Cursor, PointerKind},
+    input::{Cursor, KeyEvent, PointerKind},
     render::{DrawCx, rect_f},
     view::{Hosted, ItemPointer, NshView},
 };
@@ -185,6 +185,13 @@ pub(crate) fn start(view: &Rc<AppView>, url: String) {
     }));
     SESSIONS.with(|s| s.borrow_mut().insert(key, ui.clone()));
     show_status(&ui, Status::Connecting(&url));
+    surface.on_key.borrow_mut().push(Rc::new(move |event| {
+        is_reload_key(event)
+            && session(key).is_some_and(|ui| {
+                reload_latest(&ui);
+                true
+            })
+    }));
 
     surface.set_error_handler(Box::new(move |message| {
         if let Some(ui) = session(key) {
@@ -385,6 +392,38 @@ fn reload(ui: &Rc<RefCell<DevUi>>) {
     };
     if let Some(view) = view {
         log::info!("reloading after an update that could not be applied in place");
+        view.load(App::Js(bundle));
+    }
+}
+
+/// Ctrl+R and F5 reload, as in Windows' browsers; not a key held down.
+fn is_reload_key(event: &KeyEvent) -> bool {
+    const VK_R: u16 = 0x52;
+    const VK_F5: u16 = 0x74;
+    let m = event.modifiers;
+    if !event.down || event.repeat || m.alt || m.meta || m.shift {
+        return false;
+    }
+    match event.vk {
+        VK_R => m.ctrl,
+        VK_F5 => !m.ctrl,
+        _ => false,
+    }
+}
+
+/// Loads the latest build from scratch (Ctrl+R, F5).
+fn reload_latest(ui: &Rc<RefCell<DevUi>>) {
+    let (view, bundle) = {
+        let mut ui = ui.borrow_mut();
+        let Some((session, version, bundle)) = ui.latest.clone() else {
+            return;
+        };
+        ui.running = Some((session, version));
+        (ui.view.upgrade(), bundle)
+    };
+    if let Some(view) = view {
+        log::info!("reloading");
+        hide_error(ui);
         view.load(App::Js(bundle));
     }
 }
@@ -660,7 +699,7 @@ impl ErrorOverlay {
             .and_then(|f| layout(&self.title, &f, width, size.1));
         let title_height = title.as_ref().map_or(0.0, |l| measure(l).1);
         let hint = text_format("Segoe UI", 11.0, DWRITE_FONT_WEIGHT_NORMAL)
-            .and_then(|f| layout("Click to dismiss", &f, width, size.1));
+            .and_then(|f| layout("Click to dismiss · Ctrl+R to reload", &f, width, size.1));
         let hint_height = hint.as_ref().map_or(0.0, |l| measure(l).1);
         let room = (size.1
             - ERROR_TOP
@@ -876,6 +915,25 @@ fn truncate_at(text: &str, keep: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::input::Modifiers;
+
+    #[test]
+    fn reload_keys() {
+        let key = |vk, ctrl, repeat| KeyEvent {
+            vk,
+            down: true,
+            repeat,
+            modifiers: Modifiers {
+                ctrl,
+                ..Modifiers::default()
+            },
+        };
+        assert!(is_reload_key(&key(0x52, true, false)));
+        assert!(is_reload_key(&key(0x74, false, false)));
+        assert!(!is_reload_key(&key(0x52, false, false)));
+        assert!(!is_reload_key(&key(0x52, true, true)));
+        assert!(!is_reload_key(&key(0x74, true, false)));
+    }
 
     #[test]
     fn asset_base_from_ws_url() {

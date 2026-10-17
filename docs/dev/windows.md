@@ -85,11 +85,11 @@ server client, log forwarding, the error overlay: `dev.rs`). The host turns on `
 | Decoration | `decor.rs` | Direct2D geometries: shadows (React Native's take the box's shape with a fill, the content's without, as iOS), blurred once into bitmaps cached by what they look like (`decor/cache.rs`); colors; linear and radial gradients as gradient brushes, conic ones drawn into cached bitmaps (`decor/gradient.rs`); inset shadows; borders per side (over the children, as UIKit); outlines; `filter`s as Direct2D effects on the subtree recorded offscreen (`decor/layer.rs`); `mixBlendMode` and `backdropFilter` read the backdrop out of the pass's target |
 | Images | `image.rs` | Loaded and decoded on worker threads: WIC (PNG, JPEG, BMP, TIFF, ICO, HEIF / WebP with their codecs), the `image` crate for GIF and WebP (every frame of animations); pixels in an LRU cache per resolved location, Direct2D bitmaps made when first drawn and made again after a device loss; animated GIF / WebP on thread timers at their frame delays (paused while not drawn); blur and tint as effects at draw time |
 | Canvas | `canvas.rs` | The recorded drawing replayed into an `ID2D1CommandList` when it changes (vector: sharp at any scale), played back with the view's transform; the current path kept in canvas' model; shadows through the shadow effect; composite operations through the Composite / Blend effects; conic gradients as thin wedges masked by the shape; text in DirectWrite, the fonts `measureText` uses |
-| Scroll views | `scroll.rs` | Offsets of their own (`ScrollState`), reported as UIKit's `contentOffset`; wheel / touchpad / drag / touch scrolling with UIKit-like deceleration, snapping, paging, sticky cells, rubber banding for touch drags (wheels stop at the edges); the keyboard (arrows by 40 pt, Page Up / Page Down by 87.5% of a page, Home / End, animated); mirrored horizontal lists for right to left; an indicator that fades |
-| Input | `input.rs`, `window.rs` | Its own hit testing over the views (frames, scroll offsets, 3D transforms inverted, `pointerEvents`, `hitSlop`, `overflow: hidden`, `Overflow` areas); mouse from the `WM_*BUTTON*` messages, touch and pen from `WM_POINTER*`; touches for the responder system with `panActivation` gates; presses, long presses, hover and pressed states, cursors; pan / pinch / rotate native values (Ctrl + wheel, and precision touchpads' pinch, which Windows sends as Ctrl + wheel, pinch the view under the pointer); wheel and precision touchpad scrolling routed to scroll views, staying on the view it began in; keys go to the system (dialogs), the focused field, selectable text, navigation, scroll views, then Tab between text fields |
+| Scroll views | `scroll.rs` | Offsets of their own (`ScrollState`), reported as UIKit's `contentOffset`; wheel / touchpad / drag / touch scrolling with UIKit-like deceleration, snapping, paging, sticky cells, rubber banding for touch drags (wheels stop at the edges); the keyboard (arrows by 40 pt, Page Up / Page Down and Space / Shift+Space by 87.5% of a page, Home / End and Ctrl+Home / End, animated); mirrored horizontal lists for right to left; an indicator that fades |
+| Input | `input.rs`, `window.rs` | Its own hit testing over the views (frames, scroll offsets, 3D transforms inverted, `pointerEvents`, `hitSlop`, `overflow: hidden`, `Overflow` areas); mouse from the `WM_*BUTTON*` messages, touch and pen from `WM_POINTER*`; touches for the responder system with `panActivation` gates; presses, long presses, hover and pressed states, cursors; pan / pinch / rotate native values (Ctrl + wheel, and precision touchpads' pinch, which Windows sends as Ctrl + wheel, pinch the view under the pointer); wheel and precision touchpad scrolling routed to scroll views, staying on the view it began in; keys as in "Keyboard" below |
 | Text inputs | `text_input.rs` | An editor of nsh's own (`text_input/model.rs`: text, selection, words, undo), drawn with DirectWrite and Direct2D as a hosted item at the content box; the view draws the decoration; IME composition through IMM32 (`ImmGetCompositionStringW`, the candidate window placed at the caret), enabled only while an editable, non-secure field has the focus; caret blinking on a thread timer; edit counts drop stale JS values; offsets converted between UTF-16 and UTF-8 |
-| Navigation | `navigation.rs` | Screens are child views, only the top one (and the one below during a transition) drawn; native headers (bar, hairline, title, back button) drawn as hosted items, of a fixed height reported to the core (`set_screen_header`); leaving screens and modals slide out as images recorded into command lists; Escape (unless a text field has the focus: Escape leaves the field), Alt+Left, the Browser Back key and the mouse's back button pop natively (a stack inside the newest modal first, else that modal is asked to close) |
-| Modals | `navigation.rs` | Children of the root above the app's views, sliding up or fading in; page and form sheets are centered cards (720 / 540 points wide at most) over a scrim that dims the window, and clicking the scrim asks them to close |
+| Navigation | `navigation.rs` | Screens are child views, only the top one (and the one below during a transition) drawn; native headers (bar, hairline, title, back button) drawn as hosted items, of a fixed height reported to the core (`set_screen_header`); leaving screens and modals slide out as images recorded into command lists; Escape (a focused text field takes it to leave the field), Alt+Left, the Browser Back key and the mouse's back button pop natively (a stack inside the newest modal first, else that modal is asked to close) |
+| Modals | `navigation.rs` | Children of the root above the app's views, sliding up or fading in; page and form sheets are centered cards (720 / 540 points wide at most) over a scrim that dims the window, and clicking the scrim asks them to close; a modal takes the keyboard focus from the field under it and gives it back when it closes |
 | Dialogs, toasts | `system.rs` | Drawn in the surface as items the root hosts, in Windows 11's content dialog style (a rounded card, the default button in the system's accent color), not `MessageBox` / `TaskDialog`: they stay with an embedded surface and never run a modal loop of their own |
 | Video | `native/video.rs` | Media Foundation's media engine in frame-server mode on the thread's Direct3D 11 device (a DXGI device manager); each frame is copied into a texture Direct2D draws, so a video clips, transforms and is covered like any view; `controls` draws nsh's own control bar (play / pause, scrubber, time) |
 | Web views | `native/web.rs` | WebView2 (`webview2-com`, the loader linked statically: apps ship no `WebView2Loader.dll`) in a child window that follows its view after every frame, clipped with a window region; one environment per thread and profile folder (`%LOCALAPPDATA%\<app id>\WebView2`); a placeholder without the WebView2 Runtime |
@@ -99,6 +99,48 @@ server client, log forwarding, the error overlay: `dev.rs`). The host turns on `
 | Clipboard | `system.rs` | The Win32 clipboard (`CF_UNICODETEXT`); reads are synchronous, so `Clipboard.getString` is answered at once |
 | Networking | `net.rs` | ureq (rustls, webpki roots), one thread per request, streaming both ways; only connecting and the response head have deadlines |
 | Dev | `dev.rs` | The dev server client on its own thread; the status pill and the error overlay drawn as items the root hosts, above the app and its modals |
+
+## Keyboard
+
+`WM_KEYDOWN` / `WM_SYSKEYDOWN` become `input::KeyEvent`s (the virtual key and the modifiers held, from
+`GetKeyState`) for `input::key`, which offers each key down in turn to:
+
+1. **The window's shortcuts** (`Surface::on_key`, `Surface::shortcut`): the standalone app's (`app.rs`
+   `install_shortcuts`, not an embedded `AppView`'s) F11, full screen (the frame dropped, the window over its monitor,
+   `window::toggle_full_screen`), and Ctrl+W, close the window; the dev host's (`dev.rs`) Ctrl+R and F5 reload the
+   latest build. Alt+F4 and Alt+Space are never taken (`input::is_system_key`): `DefWindowProc` closes the window and
+   opens its menu, also while a dialog shows.
+2. **A dialog** (`system::key`): modal, it takes every other key (Tab and the arrows move between its buttons, Return
+   and Space press, Escape cancels).
+3. **The focused field** (`text_input::key`): Left / Right and Ctrl+Left / Right (by word; in a secure field to the
+   ends), Home / End (the visual line; Ctrl, or one line: the text), Up / Down / Page Up / Page Down (multiline),
+   Ctrl+Up / Down (paragraphs, `Model::paragraph`), all with Shift to select; Backspace / Delete and their Ctrl
+   variants; Ctrl+A / C / X / V / Z / Y, Ctrl+Shift+Z, Ctrl+Insert, Shift+Insert, Shift+Delete (a secure field
+   refuses copy and cut; `editable={false}` refuses edits, `maxLength` clips pasted text in `Model::insert`). Return
+   follows `InputConfig::submit()` (`return_action`): in a multiline field that submits, Shift+Return and Alt+Return
+   insert a line break and Ctrl+Return submits. Escape reports `onKeyPress` `"Escape"` and leaves the field;
+   Ctrl+Tab types a tab in a multiline field; Tab / Shift+Tab go to the next field. Alt + arrow keys are not the
+   field's, so Alt+Left goes back from a field. While the IME composes, keys come as `VK_PROCESSKEY` and go to the
+   IME, so a return that commits a composition never submits.
+4. **Selectable text** with a selection (`text::key`): Ctrl+A, Ctrl+C / Ctrl+Insert, Escape (which goes on without a
+   selection).
+5. **Navigation** (`navigation::key_pressed`): Escape, Alt+Left and the Browser Back key go back.
+6. **Scroll views** (`scroll::key`, not while a field has the focus): the innermost one under the mouse (or the middle
+   of the window) that can move that way.
+7. **Tab** (`input::tab`) into the fields when none has the focus.
+
+Tab's order is the fields' tree order (the order the app declares them, which WinUI's default tab order follows too),
+inside `navigation::focus_scope`: the newest presented modal, else the root (`input::fields`). Concealed screens,
+hidden views, `pointerEvents="none"` and disabled inputs are skipped. Presenting a modal takes the focus from the field
+under it (`ModalNav::restore`), which gets it back when the modal closes if nothing else took it.
+
+Letter shortcuts match virtual keys, as Windows apps do: Windows gives the letter keys of a Latin layout the VK codes of
+their letters, and those of a non-Latin layout (Cyrillic, Greek) the US layout's, so Ctrl+C is copy on any layout. A
+handled key down suppresses its `WM_SYSCHAR` (`WindowData::handled_key`), for which `DefWindowProc` would beep; when
+Alt + a key was handled, the release of Alt is swallowed so the window menu does not open.
+
+`onKeyPress` reports what React Native's does: the inserted text (typed or pasted; `"Enter"` for a line break),
+`"Backspace"` for a deletion (in an empty input too) and `"Escape"`; Tab and navigation keys are not reported.
 
 ## Checking a change: `--script`
 
@@ -145,7 +187,7 @@ Without `--bundle` the host connects to the dev server on this machine (`--dev-s
 - **Text**: head and middle ellipses apply to a single line only (more lines fall back to a tail ellipsis); the
   paragraph direction is set per text, not per paragraph; color emoji come from COLR fonts only (Segoe UI Emoji is
   one); small caps are not synthesized (only fonts with the `smcp` feature have them).
-- **Text inputs**: Tab moves between text fields only; there is no context menu; keyboard types and autofill do not
+- **Text inputs**: Tab moves between text fields only (pressables take no keyboard focus); there is no context menu; keyboard types and autofill do not
   apply; the IME's composition is drawn inline at the caret. Clicking outside a field leaves the focus where it is (as
   on Linux and Mac Catalyst; a click on another field moves it).
 - **Accessibility** (UI Automation): items nsh draws itself (header titles and buttons, dialogs, toasts) are not in the

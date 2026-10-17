@@ -39,7 +39,8 @@ use std::{
 };
 
 use nsh_core::{
-    Color, EventKind, EventPayload, InputConfig, PayloadValue, Rect, TextAlign, tailwind::state,
+    Color, EventKind, EventPayload, InputConfig, PayloadValue, Rect, SubmitBehavior, TextAlign,
+    tailwind::state,
 };
 use rustc_hash::FxHashMap;
 use windows::{
@@ -70,8 +71,8 @@ use windows::{
                     NOTIFY_IME_INDEX,
                 },
                 KeyboardAndMouse::{
-                    VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_HOME, VK_INSERT, VK_LEFT, VK_NEXT,
-                    VK_PRIOR, VK_RETURN, VK_RIGHT, VK_TAB, VK_UP,
+                    VK_BACK, VK_DELETE, VK_DOWN, VK_END, VK_ESCAPE, VK_HOME, VK_INSERT, VK_LEFT,
+                    VK_NEXT, VK_PRIOR, VK_RETURN, VK_RIGHT, VK_TAB, VK_UP,
                 },
             },
             WindowsAndMessaging::{
@@ -88,7 +89,7 @@ use windows_numerics::Vector2;
 
 use self::model::{Composition, Model, Unit, key_of, pasted, utf16_to_byte};
 use crate::{
-    input::{KeyEvent, PointerKind},
+    input::{KeyEvent, Modifiers, PointerKind},
     render::{DrawCx, rect_f},
     surface::Surface,
     view::{Hosted, ItemPointer, NshView},
@@ -806,23 +807,11 @@ fn set_focus(surface: &Rc<Surface>, view: Option<&NshView>) {
     place_ime(surface);
 }
 
-/// The next (or previous) input of the surface in tree order after
-/// `from`, skipping hidden ones; wraps around.
+/// The next (or previous) field after `from` that Tab reaches
+/// ([`crate::input::fields`]: inside the newest modal, in tree order);
+/// wraps around.
 fn next_input(surface: &Surface, from: &NshView, forward: bool) -> Option<NshView> {
-    fn walk(view: &NshView, out: &mut Vec<NshView>) {
-        {
-            let s = view.state();
-            if s.style.hidden || s.concealed {
-                return;
-            }
-            if s.input.is_some() {
-                out.push(view.clone());
-            }
-        }
-        view.with_children(|children| children.iter().for_each(|c| walk(c, out)));
-    }
-    let mut inputs = Vec::new();
-    walk(&surface.root, &mut inputs);
+    let inputs = crate::input::fields(surface);
     let at = inputs.iter().position(|v| v == from)?;
     let n = inputs.len();
     let next = if forward {
@@ -1157,15 +1146,37 @@ fn insert(surface: &Surface, view: &NshView, input: &InputState, text: &str) {
     after_edit(surface, view, input, inserted.is_some());
 }
 
-/// Return in a single-line input.
-fn submit(surface: &Rc<Surface>, view: &NshView, input: &InputState) {
+/// What return does in a field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Return {
+    /// Reports `onSubmitEditing`, and leaves the field when `blur`.
+    Submit { blur: bool },
+    /// Inserts a line break.
+    Newline,
+}
+
+/// What return with modifiers `m` does in a field submitting as
+/// `behavior` (`InputConfig::submit`). A multiline field that submits
+/// still takes a line break from Shift+Return and Alt+Return, as chat
+/// apps on Windows do; Ctrl+Return submits.
+fn return_action(behavior: SubmitBehavior, multiline: bool, m: Modifiers) -> Return {
+    match behavior {
+        SubmitBehavior::Newline => Return::Newline,
+        _ if multiline && (m.shift || m.alt) => Return::Newline,
+        SubmitBehavior::Submit => Return::Submit { blur: false },
+        SubmitBehavior::BlurAndSubmit => Return::Submit { blur: true },
+    }
+}
+
+/// Return that submits: reports the key press, then `onSubmitEditing`.
+fn submit(surface: &Rc<Surface>, view: &NshView, input: &InputState, blur: bool) {
     key_press(surface, view, "Enter");
     let text = input.model.borrow().text().to_owned();
     let count = input.count.get();
     send(surface, view, EventKind::SubmitEditing, || {
         EventPayload::Text { text, count }
     });
-    if input.config.borrow().blur_on_submit {
+    if blur {
         set_focus(surface, None);
     }
 }
@@ -1493,7 +1504,9 @@ pub(crate) fn wheel(view: &NshView, dy: f32) -> bool {
     moved
 }
 
-/// A key for the focused field; true when handled.
+/// A key for the focused field; true when handled. Keys a field does not
+/// use go on (Alt+Left goes back, Ctrl+W closes the window), those it uses
+/// never reach the scroll views or navigation.
 pub(crate) fn key(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
     if !event.down {
         return false;
@@ -1505,12 +1518,28 @@ pub(crate) fn key(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
         return false;
     };
     let m = event.modifiers;
-    let (editable, secure, multiline) = {
+    let (editable, secure, multiline, behavior) = {
         let c = input.config.borrow();
-        (c.editable, c.secure, c.multiline)
+        (c.editable, c.secure, c.multiline, c.submit())
     };
-    let unit = if m.ctrl { Unit::Word } else { Unit::Char };
     let vk = event.vk;
+    let navigation = [
+        VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN, VK_HOME, VK_END, VK_PRIOR, VK_NEXT,
+    ]
+    .iter()
+    .any(|k| k.0 == vk);
+    // Alt + arrows are the window's (Alt+Left goes back), never the caret's.
+    if navigation && m.alt {
+        return false;
+    }
+    // While the IME composes, its keys come as VK_PROCESSKEY; one that
+    // still gets here must not submit or leave what is being composed.
+    if input.model.borrow().composition.is_some() && (vk == VK_RETURN.0 || vk == VK_ESCAPE.0) {
+        return true;
+    }
+    // In a password Ctrl moves and deletes to its ends (it is one word:
+    // words would tell where its spaces are).
+    let unit = if m.ctrl { Unit::Word } else { Unit::Char };
     // Movements: the caret goes, the text stays.
     let moved = |f: &dyn Fn(&mut Model)| {
         f(&mut input.model.borrow_mut());
@@ -1520,7 +1549,12 @@ pub(crate) fn key(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
     match vk {
         _ if vk == VK_LEFT.0 || vk == VK_RIGHT.0 => {
             input.goal_x.set(None);
-            moved(&|model| model.step(unit, vk == VK_RIGHT.0, m.shift))
+            let forward = vk == VK_RIGHT.0;
+            if secure && m.ctrl {
+                let len = input.model.borrow().text().len();
+                return moved(&|model| model.move_to(if forward { len } else { 0 }, m.shift));
+            }
+            moved(&|model| model.step(unit, forward, m.shift))
         }
         _ if vk == VK_HOME.0 || vk == VK_END.0 => {
             input.goal_x.set(None);
@@ -1534,6 +1568,14 @@ pub(crate) fn key(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
             };
             moved(&|model| model.move_to(to, m.shift))
         }
+        _ if multiline && m.ctrl && (vk == VK_UP.0 || vk == VK_DOWN.0) => {
+            input.goal_x.set(None);
+            let down = vk == VK_DOWN.0;
+            moved(&|model| {
+                let to = model.paragraph(model.caret(), down);
+                model.move_to(to, m.shift);
+            })
+        }
         _ if multiline
             && (vk == VK_UP.0 || vk == VK_DOWN.0 || vk == VK_PRIOR.0 || vk == VK_NEXT.0) =>
         {
@@ -1546,14 +1588,19 @@ pub(crate) fn key(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
             if !editable {
                 return true;
             }
-            if vk == VK_DELETE.0 && m.shift && !m.ctrl {
+            let forward = vk == VK_DELETE.0;
+            if forward && m.shift && !m.ctrl {
                 // Shift+Delete cuts, as in every Windows editor.
                 return cut(surface, &view, &input, secure);
             }
             let (deleted, empty) = {
                 let mut model = input.model.borrow_mut();
                 let empty = model.text().is_empty();
-                (model.delete(unit, vk == VK_DELETE.0), empty)
+                if secure && m.ctrl && !model.has_selection() {
+                    let edge = if forward { model.text().len() } else { 0 };
+                    model.move_to(edge, true);
+                }
+                (model.delete(unit, forward), empty)
             };
             // Backspace in an empty field deletes nothing but is still a
             // key press.
@@ -1565,11 +1612,24 @@ pub(crate) fn key(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
             true
         }
         _ if vk == VK_RETURN.0 => {
-            if multiline {
-                insert(surface, &view, &input, "\n");
-            } else {
-                submit(surface, &view, &input);
+            match return_action(behavior, multiline, m) {
+                Return::Newline => insert(surface, &view, &input, "\n"),
+                Return::Submit { blur } => submit(surface, &view, &input, blur),
             }
+            true
+        }
+        _ if vk == VK_ESCAPE.0 && !m.ctrl && !m.alt => {
+            // Escape leaves the field (it never goes back from it).
+            if !event.repeat {
+                key_press(surface, &view, "Escape");
+                set_focus(surface, None);
+            }
+            true
+        }
+        // Ctrl+Tab types a tab in a multiline field, as in Windows'
+        // dialogs, where Tab moves the focus.
+        _ if vk == VK_TAB.0 && m.ctrl && !m.alt && !m.shift && multiline => {
+            insert(surface, &view, &input, "\t");
             true
         }
         _ if vk == VK_TAB.0 && !m.ctrl && !m.alt => match next_input(surface, &view, !m.shift) {
@@ -1814,6 +1874,33 @@ mod tests {
         assert_eq!(family(Some("'Noto Sans', serif")), "Noto Sans");
         assert_eq!(family(Some("serif")), "Times New Roman");
         assert!(!family(None).is_empty());
+    }
+
+    #[test]
+    fn return_follows_submit_behavior() {
+        use SubmitBehavior as S;
+        let none = Modifiers::default();
+        let shift = Modifiers {
+            shift: true,
+            ..none
+        };
+        let alt = Modifiers { alt: true, ..none };
+        let ctrl = Modifiers { ctrl: true, ..none };
+        let submit = Return::Submit { blur: false };
+        let blur = Return::Submit { blur: true };
+        // One line submits whatever the modifiers.
+        assert_eq!(return_action(S::BlurAndSubmit, false, none), blur);
+        assert_eq!(return_action(S::BlurAndSubmit, false, shift), blur);
+        assert_eq!(return_action(S::Submit, false, alt), submit);
+        // Several lines that submit: Shift / Alt + Return break the line,
+        // Ctrl + Return submits.
+        assert_eq!(return_action(S::Submit, true, none), submit);
+        assert_eq!(return_action(S::BlurAndSubmit, true, ctrl), blur);
+        assert_eq!(return_action(S::Submit, true, shift), Return::Newline);
+        assert_eq!(return_action(S::BlurAndSubmit, true, alt), Return::Newline);
+        // Several lines that take line breaks.
+        assert_eq!(return_action(S::Newline, true, none), Return::Newline);
+        assert_eq!(return_action(S::Newline, true, ctrl), Return::Newline);
     }
 
     #[test]

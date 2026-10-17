@@ -113,6 +113,29 @@ The environment is a desktop's: the safe area and the keyboard height are 0, `Pl
 follows Settings > Personalization > Colors live, `fontScale()` the Text size setting, reduce motion the animation
 effects setting and the locale the user's regional format. See [Device and environment](./device-and-environment.md).
 
+### Keyboard
+
+| Keys | Do |
+|---|---|
+| Return | In an `Input`, what `submitBehavior` says: submit (`onSubmitEditing`), submit and leave the field, or a new line (multiline inputs) |
+| Shift+Return, Alt+Return | A new line in a multiline input whose return submits (Ctrl+Return submits) |
+| Ctrl+Tab | A tab character in a multiline input |
+| Tab, Shift+Tab | The next / previous field in the order the app declares them, within the newest modal; the field reached has its text selected, as in Windows dialogs |
+| Escape | Leaves the focused field; else clears a text selection, then goes back or asks the newest modal to close |
+| Alt+Left, Browser Back key, mouse back button | Go back (also from a field) |
+| Ctrl+Left / Right, Home / End, Ctrl+Home / End, Ctrl+Up / Down, with Shift; Ctrl+Backspace / Delete | Move, select and delete by word, line, paragraph (multiline) and to the start / end in a field |
+| Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z, Ctrl+X / C / V / A; Shift+Delete, Ctrl+Insert, Shift+Insert | Undo, redo, cut, copy, paste, select all (a secure field refuses cut and copy); Ctrl+A / Ctrl+C select and copy `selectable` text |
+| Arrows; Page Up / Down, Space, Shift+Space; Home / End, Ctrl+Home / End | Scroll the scroll view under the mouse by a line, a page, to the start / end (not while a field has the focus) |
+| Alt+F4, Ctrl+W | Close the window (Ctrl+W in `nsh package` and `nsh run` apps) |
+| F11 | Full screen, and back (`nsh package` and `nsh run` apps) |
+| Ctrl+R, F5 | Reload the latest build (`nsh run`) |
+
+Letter shortcuts follow Windows' virtual keys, as in every Windows app: on a Latin layout (AZERTY, Dvorak, ...) Ctrl+A
+is the key that types A, on a Cyrillic or Greek one the key in A's place on a US layout. In a secure field Ctrl moves
+and deletes to the start or the end (a password is one word). A return that commits an input method's composition
+(Chinese, Japanese, ...) never submits. `onKeyPress` reports what React Native reports: the inserted text (`"Enter"`
+for a line break), `"Backspace"` (in an empty input too) and `"Escape"`; Tab and navigation keys are not reported.
+
 Different, or not supported:
 
 - **`WebView`** is a WebView2 child window: nsh content drawn over it (a dialog, a sheet) is hidden under it.
@@ -123,7 +146,8 @@ Different, or not supported:
   `borderCurve: "continuous"` draws circular corners.
 - **Text**: head and middle ellipses on a single line only (more lines get a tail ellipsis); color emoji from COLR
   fonts only; small caps only where the font has them.
-- **Text inputs**: no context menu; keyboard types and autofill do not apply; Tab moves between text fields.
+- **Text inputs**: no context menu; keyboard types and autofill do not apply; Tab moves between text fields only
+  (pressables do not take the keyboard focus).
 - **Accessibility** (UI Automation): headers' titles and buttons, dialogs and toasts are not exposed; headings report
   level 1.
 - **Input accessory views** and the **status bar** (no desktop equivalent).
