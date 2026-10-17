@@ -9,7 +9,7 @@ group: platforms
 
 nsh runs on phones and desktops: iOS, Android, macOS, Windows and Linux. Each has a backend of its own that draws with the platform's native UI, so a module is UIKit views on an iPhone, AppKit views on a Mac and GTK 4 widgets on Linux, with the platform's text, input, accessibility and dark mode. Everything above the backend is shared: QuickJS, the reactive graph, the renderer, Taffy layout and the components are the same Rust code everywhere, so one bundle runs on all of them.
 
-On every platform you can do the same three things: develop an app with hot reload (`nsh run`), package it as an installable app (`nsh package`), and embed modules in a native app of your own.
+On every platform, nsh's main use is the same: modules embedded in a native app of your own, which loads them at run time. You develop them with hot reload (`nsh run`), and the same modules can also be packaged as an installable app (`nsh package`), a supported second use.
 
 ## At a glance
 
@@ -21,10 +21,11 @@ On every platform you can do the same three things: develop an app with hot relo
 | [Windows](./windows.md) | Win32 windows drawn with Direct2D; DirectWrite | Windows 10 1809+, Windows 11 | `nsh run` (the default on Windows) | a directory and a `.zip` |
 | [Linux](./linux.md) | GTK 4 widgets; Pango | GTK 4.14+ | `nsh run` (the default on Linux) | a directory and a `.tar.gz` |
 
-Two more targets exist for development and for this site, not for shipping:
+Two more targets exist for development and for this site, not for shipping, and one is planned:
 
 - **Mac Catalyst** runs the iOS backend in an iPhone-sized window (390×844) on a Mac. It is `nsh run`'s default target on macOS, because it is the quickest way to see how a module looks on a phone, without booting a simulator.
 - **Web** ([WebAssembly](./web.md)) runs the same engine in a browser and draws with the DOM. It powers the live demos and the [playground](/playground) on this site; it is not a target to ship apps to.
+- **GPUI** is a planned desktop backend drawn with [GPUI](https://gpui-kit.com), the framework of the sibling project GPUI Kit. It is in development and not part of nsh yet; the native macOS, Windows and Linux backends above are what desktops run today.
 
 ## Develop and package
 

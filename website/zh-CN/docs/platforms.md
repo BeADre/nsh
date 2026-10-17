@@ -9,7 +9,7 @@ group: platforms
 
 nsh 同时运行在手机和桌面上：iOS、Android、macOS、Windows 和 Linux。每个平台都有自己的后端，用平台的原生界面绘制：同一个模块在 iPhone 上是 UIKit 视图，在 Mac 上是 AppKit 视图，在 Linux 上是 GTK 4 控件，文本、输入、无障碍和深色模式都是平台自己的。后端之上的部分全部共享：QuickJS、响应式图、渲染器、Taffy 布局和组件在每个平台上都是同一份 Rust 代码，所以一个 bundle 可以在所有平台上运行。
 
-在每个平台上都能做同样的三件事：用热更新开发应用（`nsh run`），打包成可安装的应用（`nsh package`），以及把模块嵌入你自己的原生应用。
+在每个平台上，nsh 的主要用途都一样：把模块嵌入你自己的原生应用，由它在运行时加载。开发时借助热更新（`nsh run`）；同样的模块也可以打包成可安装的应用（`nsh package`），这是受支持的第二种用法。
 
 ## 一览
 
@@ -21,10 +21,11 @@ nsh 同时运行在手机和桌面上：iOS、Android、macOS、Windows 和 Linu
 | [Windows](./windows.md) | 用 Direct2D 绘制的 Win32 窗口；DirectWrite | Windows 10 1809+、Windows 11 | `nsh run`（Windows 上的默认目标） | 一个目录和一个 `.zip` |
 | [Linux](./linux.md) | GTK 4 控件；Pango | GTK 4.14+ | `nsh run`（Linux 上的默认目标） | 一个目录和一个 `.tar.gz` |
 
-另外还有两个目标，用于开发和本站，不用于发布：
+另外还有两个目标用于开发和本站、不用于发布，还有一个在规划中：
 
 - **Mac Catalyst** 在 Mac 上用 iPhone 尺寸的窗口（390×844）运行 iOS 后端。它是 macOS 上 `nsh run` 的默认目标，因为不用启动模拟器，就能最快看到模块在手机上的样子。
 - **Web**（[WebAssembly](./web.md)）在浏览器里运行同一个引擎，用 DOM 绘制。本站的在线示例和 [Playground](/playground) 都由它驱动；它不是用来发布应用的目标。
+- **GPUI** 是规划中的桌面后端，用姊妹项目 GPUI Kit 所基于的 [GPUI](https://gpui-kit.com) 绘制。它正在开发，还不是 nsh 的一部分；目前桌面上运行的是上面 macOS、Windows 和 Linux 的原生后端。
 
 ## 开发与打包
 

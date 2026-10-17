@@ -7,12 +7,12 @@ group: start
 
 # 简介
 
-Native Shell（简称 nsh）是为**由 AI 生成、动态下发的原生界面**而设计的。模型用 TSX 写出一个小模块，原生应用在运行时加载它，用平台自己的原生界面显示，并运行在应用掌控的沙箱里。同一套机制也让原生应用整体具备扩展能力——插件、功能、整个页面都可以在发布之后下发——也可以直接组成一个完整的应用。
+Native Shell（简称 nsh）是为**由 AI 生成、动态下发的原生界面**而设计的。模型用 TSX 写出一个小模块，原生应用在运行时加载它，用平台自己的原生界面显示，并运行在应用掌控的沙箱里。同一套机制也让原生应用整体具备扩展能力——插件、功能、整个页面都可以在发布之后下发。
 
 nsh 同时运行在手机和桌面上：iOS（UIKit）、Android（Android 视图）、macOS（AppKit）、Windows（用 Direct2D 绘制的 Win32 窗口）和 Linux（GTK 4）。每个平台都有自己的原生后端，同一个模块可以在所有这些平台上运行（[平台](./platforms.md)）。
 
 > [!IMPORTANT]
-> nsh 的设计是嵌在原生应用里，而不是取代它们。无论在手机还是桌面上，应用仍然是原生应用，照原来的方式构建和发布；nsh 是嵌在其中的一层，负责那些在发布之后才生成、修改或新增的界面。用它组成完整的应用同样受支持（见下文）。
+> nsh 不是用 TypeScript 编写整个应用的框架。无论在手机还是桌面上，应用仍然是原生应用，照原来的方式构建和发布；nsh 是嵌在其中的一层，负责那些在发布之后才生成、修改或新增的界面。
 
 ## 为什么做 nsh
 
@@ -35,7 +35,7 @@ nsh 同时运行在手机和桌面上：iOS（UIKit）、Android（Android 视�
 - **宿主始终掌控。** 每个模块运行在独立的沙箱虚拟机中，受内存、时间和节点数限制，只能访问宿主授予的能力：网络主机、网页、状态栏（[沙箱与能力](./sandbox-and-capabilities.md)）。多个模块可以同时运行，没有全局单例。
 - **与应用其余部分浑然一体。** 模块用平台自己的界面渲染，文本、输入、无障碍和滚动都是系统自己的。宿主还可以注册自己的原生视图——地图、播放器、设计系统组件——供模块使用（[原生组件](./native-components.md)）。
 
-**再次：独立应用。** 同样的模块也可以组成一个完整的应用。`nsh package` 用预编译的运行时把它们打成可安装的 iOS、Android、macOS、Windows 或 Linux 应用，这也是试用 nsh 最快的方式：[快速上手](./getting-started.md)就是这样做的。
+**再次：独立应用。** 同样的模块也可以组成一个完整的应用。`nsh package` 用预编译的运行时把它们打成可安装的 iOS、Android、macOS、Windows 或 Linux 应用，这也是试用 nsh 最快的方式：[快速上手](./getting-started.md)就是这样做的。这是受支持的用法，但不是 nsh 设计的出发点。
 
 ## 为什么在 GPUI Shell 之外还要做 Native Shell
 
@@ -122,6 +122,7 @@ let info = try await app.loadPackage(at: downloadedFile, trust: trust)   // 先�
 | Linux | 已支持（GTK 4.14+） | GTK 4 | 独立应用；通过 `AppView` 嵌入（[Linux](./linux.md)） |
 | Mac Catalyst | 仅用于开发 | UIKit | `nsh run` 在 Mac 上打开的 iPhone 尺寸窗口 |
 | Web（WebAssembly） | 仅用于演示 | DOM | 运行本站的示例，用 DOM 而不是原生视图绘制（[Web](./web.md)）；不是可发布的目标平台 |
+| GPUI（桌面） | 规划中 | GPUI | 用 [GPUI](https://gpui-kit.com) 绘制的桌面后端，正在开发，尚不可用 |
 
 <div class="diagram-scroll">
 <img class="diagram diagram-light" src="/diagrams/platforms-light.svg" alt="一个模块，多种宿主：同一个 bundle 和 Rust 运行时，运行在 iOS、Android、Linux、macOS AppKit 和 Windows Win32 / Direct2D（已支持）和 Web（WebAssembly 渲染到 DOM，仅用于本站演示）。">

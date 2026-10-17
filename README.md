@@ -3,8 +3,8 @@
 **AI-generated UI, native in your app — on every platform.** native-shell is designed for UI that a model writes and
 a native app loads after it ships: the app embeds an nsh view, and nsh runs TSX modules in it — signed packages the app
 verifies, each in a sandboxed QuickJS VM with host-set limits and capabilities — drawn with the platform's own UI. The
-same mechanism makes native apps extensible in general (plugins, features delivered after release), and the same
-modules can also be packaged as standalone apps.
+same mechanism makes native apps extensible in general (plugins, features delivered after release); standalone apps
+are a second use.
 
 nsh runs on phones and desktops, each with a native backend of its own:
 
@@ -17,8 +17,8 @@ nsh runs on phones and desktops, each with a native backend of its own:
 | Linux | GTK 4 widgets, Pango | `AppView` (Rust, `nsh-platform-linux`) | GTK 4.14+ |
 
 Every platform runs apps with hot reload (`nsh run`) and packages them (`nsh package`). Mac Catalyst (an iPhone-sized
-window on a Mac) is a development target, and a WebAssembly build runs the website's live demos. The host stays a
-native app; nsh is the layer inside it.
+window on a Mac) is a development target, and a WebAssembly build runs the website's live demos. A GPUI desktop
+backend is in development and not available yet. The host stays a native app; nsh is the layer inside it.
 
 Inside, only a module's code is JavaScript: signals, the renderer and every module it imports are Rust, layout is
 Taffy, and the toolchain is a single `nsh` binary (no Node.js, and no Rust toolchain for module authors).

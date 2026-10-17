@@ -7,12 +7,12 @@ group: start
 
 # Introduction
 
-Native Shell (nsh for short) is designed for **AI-generated, dynamically delivered native UI**. A model writes a small module in TSX, and a native app loads it at run time and shows it with the platform's own UI, inside a sandbox the app controls. The same mechanism makes native apps extensible in general — plugins, features, whole screens delivered after release — and can also make a whole app.
+Native Shell (nsh for short) is designed for **AI-generated, dynamically delivered native UI**. A model writes a small module in TSX, and a native app loads it at run time and shows it with the platform's own UI, inside a sandbox the app controls. The same mechanism makes native apps extensible in general — plugins, features, whole screens delivered after release.
 
 nsh runs on phones and desktops alike: iOS (UIKit), Android (Android views), macOS (AppKit), Windows (Win32 windows drawn with Direct2D) and Linux (GTK 4). Each platform has a native backend of its own, and the same module runs on all of them ([Platforms](./platforms.md)).
 
 > [!IMPORTANT]
-> nsh is designed to live inside native apps rather than to replace them. On a phone or a desktop, the app stays a native app, built and released the way it always was; nsh is the layer inside it for UI that is generated, changed or added after it ships. Whole apps are a supported use too (see below).
+> nsh is not a framework for writing your whole app in TypeScript. On a phone or a desktop, the app stays a native app, built and released the way it always was; nsh is the layer inside it for UI that is generated, changed or added after it ships.
 
 ## Why it exists
 
@@ -35,7 +35,7 @@ nsh runs on phones and desktops alike: iOS (UIKit), Android (Android views), mac
 - **The host stays in control.** Each module runs in its own sandboxed VM, with memory, time and node limits, and reaches only what the host grants: network hosts, web pages, the status bar ([Sandbox and capabilities](./sandbox-and-capabilities.md)). Several modules can run side by side; there are no global singletons.
 - **It looks like the rest of the app.** Modules render with the platform's own UI, so text, input, accessibility and scrolling are the system's. The host can register its own native views — a map, a player, a design-system component — for modules to use ([Native components](./native-components.md)).
 
-**Third: standalone apps.** The same modules can also be a whole app. `nsh package` turns them into an installable iOS, Android, macOS, Windows or Linux app with the prebuilt runtime, which is also the quickest way to try nsh: the [getting started](./getting-started.md) guide does exactly that.
+**Third: standalone apps.** The same modules can also be a whole app. `nsh package` turns them into an installable iOS, Android, macOS, Windows or Linux app with the prebuilt runtime, which is also the quickest way to try nsh: the [getting started](./getting-started.md) guide does exactly that. It is a supported use, but not the one nsh is designed around.
 
 ## Why Native Shell, next to GPUI Shell
 
@@ -122,6 +122,7 @@ Because JavaScript only describes the UI and handles events, the work done in th
 | Linux | Supported (GTK 4.14+) | GTK 4 | Standalone apps; embedded with `AppView` ([Linux](./linux.md)) |
 | Mac Catalyst | Development only | UIKit | The iPhone-sized window `nsh run` opens on a Mac |
 | Web (WebAssembly) | Demos only | DOM | Runs the examples on this site, drawn with the DOM rather than native views ([Web](./web.md)); not a target to ship to |
+| GPUI (desktops) | Planned | GPUI | A desktop backend drawn with [GPUI](https://gpui-kit.com), in development; not available yet |
 
 <div class="diagram-scroll">
 <img class="diagram diagram-light" src="/diagrams/platforms-light.svg" alt="One module, many hosts: the same bundle and Rust runtime on iOS, Android, Linux, macOS with AppKit and Windows with Win32 / Direct2D (supported), and the web (WebAssembly to the DOM, for this site's demos only).">

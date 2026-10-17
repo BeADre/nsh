@@ -247,7 +247,7 @@ nsh package my-app --target linux
 nsh package my-app --target windows
 ```
 
-This is a supported use on every platform, and the quickest way to put a module on a device or a desktop. Options, signing and icons: [Packaging](./packaging.md).
+This is a supported use on every platform, and the quickest way to put a module on a device or a desktop, but nsh is designed around hosting modules in native apps. Options, signing and icons: [Packaging](./packaging.md).
 
 ## Try it in the terminal
 

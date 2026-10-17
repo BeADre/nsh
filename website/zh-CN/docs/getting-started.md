@@ -247,7 +247,7 @@ nsh package my-app --target linux
 nsh package my-app --target windows
 ```
 
-这在每个平台上都是受支持的用法，也是把模块装到设备或桌面上最快的方式。选项、签名和图标见[打包](./packaging.md)。
+这在每个平台上都是受支持的用法，也是把模块装到设备或桌面上最快的方式，但 nsh 的设计出发点是在原生应用中承载模块。选项、签名和图标见[打包](./packaging.md)。
 
 ## 在终端中试运行
 
