@@ -144,6 +144,72 @@ pub fn parse_url(url: &str) -> Option<UrlParts<'_>> {
     })
 }
 
+/// Redirects followed at most (as browsers), by `fetch` and by media loads.
+pub const MAX_REDIRECTS: usize = 20;
+
+/// `location` (a `Location` header) against the absolute URL `base`:
+/// absolute, scheme-relative, absolute-path and relative references, with
+/// `.` and `..` segments removed (so a path grant cannot be left by
+/// `/v1/../v2/`).
+pub fn resolve_location(base: &str, location: &str) -> String {
+    let location = location.trim();
+    let joined = if location.contains("://") {
+        location.to_owned()
+    } else if let Some((scheme, rest)) = base.split_once("://") {
+        let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+        let origin = format!("{scheme}://{}", &rest[..authority_end]);
+        if let Some(net) = location.strip_prefix("//") {
+            format!("{scheme}://{net}")
+        } else if location.starts_with('/') {
+            format!("{origin}{location}")
+        } else {
+            let path = rest[authority_end..]
+                .split(['?', '#'])
+                .next()
+                .unwrap_or_default();
+            let dir = path.rsplit_once('/').map_or("", |(d, _)| d);
+            format!("{origin}{dir}/{location}")
+        }
+    } else {
+        return location.to_owned();
+    };
+    remove_dot_segments(joined)
+}
+
+/// Resolves `.` and `..` in the path of an absolute URL.
+fn remove_dot_segments(url: String) -> String {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return url;
+    };
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let (authority, tail) = rest.split_at(authority_end);
+    let path_end = tail.find(['?', '#']).unwrap_or(tail.len());
+    let (path, suffix) = tail.split_at(path_end);
+    if !path.split('/').any(|s| s == "." || s == "..") {
+        return url;
+    }
+    let mut out: Vec<&str> = Vec::new();
+    let segments: Vec<&str> = path.split('/').skip(1).collect();
+    for (i, segment) in segments.iter().enumerate() {
+        let last = i + 1 == segments.len();
+        match *segment {
+            "." => {
+                if last {
+                    out.push("");
+                }
+            }
+            ".." => {
+                out.pop();
+                if last {
+                    out.push("");
+                }
+            }
+            s => out.push(s),
+        }
+    }
+    format!("{scheme}://{authority}/{}{suffix}", out.join("/"))
+}
+
 impl Capabilities {
     /// Everything: apps without a declaration, development tools.
     pub fn all() -> Self {
@@ -395,6 +461,30 @@ impl Access {
         self.allows_http("GET", uri)
     }
 
+    /// The URL a media load may follow after a redirect response from
+    /// `base` with this `Location` (`hops` redirects followed before).
+    /// Platforms load media with redirects off and ask here for every hop,
+    /// so an unauthorized target never receives a request.
+    pub fn media_redirect(
+        &self,
+        base: &str,
+        location: &str,
+        hops: usize,
+    ) -> Result<String, String> {
+        if hops >= MAX_REDIRECTS {
+            return Err("too many redirects".to_owned());
+        }
+        let url = resolve_location(base, location);
+        let http = parse_url(&url).is_some_and(|u| matches!(u.scheme.as_str(), "http" | "https"));
+        if !http || !self.allows_http("GET", &url) {
+            let host = parse_url(&url).map_or_else(|| url.clone(), |u| u.host);
+            return Err(format!(
+                "redirect to {url} is not granted: add `{host}` to capabilities.network in nsh.json"
+            ));
+        }
+        Ok(url)
+    }
+
     /// Whether web views are granted at all (inline HTML needs only this).
     pub fn allows_webviews(&self) -> bool {
         self.each(|c| c.webview.is_some())
@@ -429,6 +519,46 @@ mod tests {
 
     fn caps(json: &str) -> Capabilities {
         Capabilities::from_json(&serde_json::from_str(json).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn resolves_locations() {
+        let r = resolve_location;
+        assert_eq!(r("https://a.com/x/y?q", "https://b.com/"), "https://b.com/");
+        assert_eq!(r("https://a.com/x/y", "//c.com/z"), "https://c.com/z");
+        assert_eq!(r("http://a.com/x/y", "//c.com/z"), "http://c.com/z");
+        assert_eq!(r("https://a.com:8443/x/y", "/z"), "https://a.com:8443/z");
+        assert_eq!(r("https://a.com/x/y?q", "z"), "https://a.com/x/z");
+        assert_eq!(r("https://a.com/x/y", "../z?a=1"), "https://a.com/z?a=1");
+        assert_eq!(r("https://a.com/v1/x", "/v1/../v2/"), "https://a.com/v2/");
+        assert_eq!(r("https://a.com", "z"), "https://a.com/z");
+    }
+
+    #[test]
+    fn media_redirects_are_checked_per_hop() {
+        let a = Access {
+            declared: caps(r#"{ "network": { "hosts": ["a.com"] } }"#),
+            granted: None,
+        };
+        let base = "https://a.com/img.png";
+        assert_eq!(
+            a.media_redirect(base, "/b.png", 0).unwrap(),
+            "https://a.com/b.png"
+        );
+        assert_eq!(
+            a.media_redirect(base, "//a.com/c.png", 3).unwrap(),
+            "https://a.com/c.png"
+        );
+        assert!(a.media_redirect(base, "https://b.com/x.png", 0).is_err());
+        assert!(a.media_redirect(base, "//b.com/x.png", 0).is_err());
+        assert!(a.media_redirect(base, "file://a.com/x.png", 0).is_err());
+        assert!(a.media_redirect(base, "ftp://a.com/x.png", 0).is_err());
+        assert!(a.media_redirect(base, "/b.png", MAX_REDIRECTS).is_err());
+        assert!(
+            Access::all()
+                .media_redirect(base, "https://b.com/", 0)
+                .is_ok()
+        );
     }
 
     #[test]

@@ -72,6 +72,9 @@ final class Native {
     /** Whether the running app's web views may navigate to {@code url}. */
     static native boolean allowsWebview(long handle, String url);
 
+    /** The URL a media load may follow from {@code base} to {@code location} (hop {@code hops}), or null if the app may not reach it. */
+    static native String mediaRedirect(long handle, String base, String location, int hops);
+
     /** {@code capabilities}: the app's declaration (JSON), or null for none. */
     static native void load(long handle, byte[] code, boolean bytecode, String sourceMap, String capabilities);
 

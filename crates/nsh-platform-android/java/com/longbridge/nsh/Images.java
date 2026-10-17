@@ -55,6 +55,14 @@ final class Images {
         byte[] read(String uri);
     }
 
+    /** Checks a redirect against the app's capabilities: the URL to follow, or null if it is not granted. */
+    interface RedirectPolicy {
+        String follow(String base, String location, int hops);
+    }
+
+    /** The largest download. */
+    private static final int MAX_DOWNLOAD = 64 << 20;
+
     private static final ExecutorService POOL = Executors.newFixedThreadPool(4, r -> {
         Thread t = new Thread(r, "nsh-images");
         t.setDaemon(true);
@@ -81,6 +89,7 @@ final class Images {
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final AssetReader assets;
+    private final RedirectPolicy redirects;
     /** Decodes waiting for their bytes, or decoding, by cache key. */
     private final HashMap<String, Inflight> inflight = new HashMap<>();
     /** Downloads (or reads), one per URI. */
@@ -104,8 +113,9 @@ final class Images {
         Future<?> task;
     }
 
-    Images(AssetReader assets) {
+    Images(AssetReader assets, RedirectPolicy redirects) {
         this.assets = assets;
+        this.redirects = redirects;
     }
 
     static String key(String uri, int maxPx, int blurPx) {
@@ -300,10 +310,25 @@ final class Images {
             return bytes;
         }
         if (uri.startsWith("http://") || uri.startsWith("https://")) {
-            HttpURLConnection c = (HttpURLConnection) new URL(uri).openConnection();
-            try {
+            // Redirects are followed here, one checked hop at a time: an
+            // unauthorized target must not receive a request.
+            HttpURLConnection c = null;
+            String url = uri;
+            for (int hops = 0; ; hops++) {
+                c = (HttpURLConnection) new URL(url).openConnection();
+                c.setInstanceFollowRedirects(false);
                 c.setConnectTimeout(30_000);
                 c.setReadTimeout(60_000);
+                int status = c.getResponseCode();
+                if (status != 301 && status != 302 && status != 303 && status != 307 && status != 308) break;
+                String location = c.getHeaderField("Location");
+                c.disconnect();
+                if (location == null) throw new java.io.IOException("HTTP " + status);
+                String next = redirects.follow(url, location, hops);
+                if (next == null) throw new java.io.IOException("redirect to " + location + " is not granted");
+                url = next;
+            }
+            try {
                 int status = c.getResponseCode();
                 if (status >= 400) throw new java.io.IOException("HTTP " + status);
                 long total = Math.max(0, c.getContentLengthLong());
@@ -313,6 +338,7 @@ final class Images {
                 long last = 0;
                 for (int n; (n = in.read(buffer)) > 0; ) {
                     out.write(buffer, 0, n);
+                    if (out.size() > MAX_DOWNLOAD) throw new java.io.IOException("image over " + MAX_DOWNLOAD + " bytes");
                     long now = android.os.SystemClock.uptimeMillis();
                     long loaded = out.size();
                     if (now - last >= PROGRESS_INTERVAL || loaded == total) {

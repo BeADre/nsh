@@ -41,6 +41,7 @@ use std::{
 use gtk4::{self as gtk, gdk, glib, graphene, gsk, prelude::*};
 use nsh_core::{
     Command, EventKind, EventPayload, ImageOptions, ImageSource, NodeId, PayloadValue, ResizeMode,
+    access::Access,
 };
 use rustc_hash::FxHashMap;
 
@@ -79,7 +80,7 @@ impl nsh_engine::Assets for AssetReader {
             return Err(format!("not an asset URI: {uri}"));
         }
         match resolve(uri, self.0.as_ref()) {
-            Some(location) => read(&location, &mut |_, _| {}),
+            Some(location) => read(&location, &Access::all(), &mut |_, _| {}),
             None => Err(format!("{uri}: no asset location configured")),
         }
     }
@@ -88,6 +89,12 @@ impl nsh_engine::Assets for AssetReader {
 /// Where this surface's images resolve `asset:/` URIs.
 pub(crate) fn set_asset_base(surface: &Rc<Surface>, base: Option<AssetBase>) {
     *surface.asset_base.borrow_mut() = base;
+}
+
+/// What this surface's app may reach: the redirects of its image
+/// downloads are checked against it.
+pub(crate) fn set_access(surface: &Rc<Surface>, access: Arc<Access>) {
+    *surface.access.borrow_mut() = access;
 }
 
 /// Where an image's bytes come from.
@@ -176,6 +183,10 @@ fn agent() -> &'static ureq::Agent {
     static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
     AGENT.get_or_init(|| {
         ureq::Agent::config_builder()
+            // Redirects are followed by `read`, one checked hop at a time.
+            .max_redirects(0)
+            .max_redirects_will_error(false)
+            .http_status_as_error(false)
             .timeout_global(Some(Duration::from_secs(60)))
             .build()
             .into()
@@ -183,13 +194,41 @@ fn agent() -> &'static ureq::Agent {
 }
 
 /// Reads the bytes at `location` (blocking), calling `progress(loaded,
-/// total)` (total 0: unknown) as a download goes.
-fn read(location: &Location, progress: &mut dyn FnMut(u64, u64)) -> Result<Vec<u8>, String> {
+/// total)` (total 0: unknown) as a download goes. Every redirect of a
+/// download is checked against `access` before it is requested, so an
+/// unauthorized target never receives a request.
+fn read(
+    location: &Location,
+    access: &Access,
+    progress: &mut dyn FnMut(u64, u64),
+) -> Result<Vec<u8>, String> {
     match location {
         Location::File(path) => std::fs::read(path).map_err(|e| format!("{}: {e}", path.display())),
         Location::Data(uri) => data_uri(uri),
-        Location::Url(url) => {
-            let mut response = agent().get(url).call().map_err(|e| format!("{url}: {e}"))?;
+        Location::Url(first) => {
+            let mut url = first.clone();
+            let mut hops = 0;
+            let mut response = loop {
+                let response = agent().get(&url).call().map_err(|e| format!("{url}: {e}"))?;
+                let status = response.status().as_u16();
+                if !matches!(status, 301 | 302 | 303 | 307 | 308) {
+                    break response;
+                }
+                let location = response
+                    .headers()
+                    .get("location")
+                    .and_then(|v| v.to_str().ok())
+                    .ok_or_else(|| format!("{url}: HTTP {status} without a location"))?;
+                url = access
+                    .media_redirect(&url, location, hops)
+                    .map_err(|e| format!("{first}: {e}"))?;
+                hops += 1;
+            };
+            let status = response.status().as_u16();
+            if status >= 400 {
+                return Err(format!("{url}: HTTP {status}"));
+            }
+            let url = &url;
             let total = response.body().content_length().unwrap_or(0);
             let mut reader = response.body_mut().with_config().limit(MAX_BYTES).reader();
             let mut bytes = Vec::with_capacity(total.min(MAX_BYTES) as usize);
@@ -376,6 +415,8 @@ fn decode(bytes: Vec<u8>) -> Result<Picture, String> {
 struct Job {
     key: String,
     location: Location,
+    /// What the app may reach (redirects are checked against it).
+    access: Arc<Access>,
     /// Someone listens to `onProgress`.
     progress: bool,
 }
@@ -408,6 +449,7 @@ fn work(job: Job) {
     let Job {
         key,
         location,
+        access,
         progress,
     } = job;
     let mut last: Option<Instant> = None;
@@ -423,7 +465,7 @@ fn work(job: Job) {
             LOADER.with(|l| l.progress(&key, loaded, total));
         });
     };
-    let result = read(&location, &mut report).and_then(decode);
+    let result = read(&location, &access, &mut report).and_then(decode);
     glib::MainContext::default().invoke(move || finish(key, result));
 }
 
@@ -551,6 +593,7 @@ fn fetch(surface: &Surface, uri: &str, progress: Option<Progress>, done: Done) -
         spawn(Job {
             key,
             location,
+            access: surface.access.borrow().clone(),
             progress: listens,
         });
     }

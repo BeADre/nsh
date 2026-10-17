@@ -4,12 +4,9 @@
 //! Hops are issued on the engine thread, like the first request.
 
 use nsh_core::{
-    access::Access,
+    access::{Access, MAX_REDIRECTS, resolve_location as resolve},
     platform::{HttpBody, HttpHead, HttpRequest},
 };
-
-/// Redirects followed at most (as browsers).
-const MAX_REDIRECTS: usize = 20;
 
 /// The message of a refused request.
 pub(crate) fn refused(method: &str, url: &str) -> String {
@@ -92,29 +89,6 @@ pub(crate) fn hop(request: &HttpRequest) -> HttpRequest {
 
 fn is_redirect(status: u16) -> bool {
     matches!(status, 301 | 302 | 303 | 307 | 308)
-}
-
-/// `location` against `base` (absolute, scheme-relative, absolute-path or
-/// relative references).
-fn resolve(base: &str, location: &str) -> String {
-    if location.contains("://") {
-        return location.to_owned();
-    }
-    let Some((scheme, rest)) = base.split_once("://") else {
-        return location.to_owned();
-    };
-    if let Some(net) = location.strip_prefix("//") {
-        return format!("{scheme}://{net}");
-    }
-    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-    let origin = format!("{scheme}://{}", &rest[..authority_end]);
-    if location.starts_with('/') {
-        return format!("{origin}{location}");
-    }
-    let path = &rest[authority_end..];
-    let path = path.split(['?', '#']).next().unwrap_or_default();
-    let dir = path.rsplit_once('/').map_or("", |(d, _)| d);
-    format!("{origin}{dir}/{location}")
 }
 
 #[cfg(test)]

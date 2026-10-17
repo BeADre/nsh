@@ -114,6 +114,8 @@ pub(crate) struct Surface {
     on_hot_update_failed: RefCell<Option<Box<dyn Fn()>>>,
     /// Where `asset:/` image URIs resolve ([`crate::image::set_asset_base`]).
     pub(crate) asset_base: RefCell<Option<crate::image::AssetBase>>,
+    /// What the app may reach ([`crate::image::set_access`]).
+    pub(crate) access: RefCell<std::sync::Arc<nsh_core::access::Access>>,
     /// Videos, web views and registered native components.
     pub(crate) native: crate::native::NativeState,
 }
@@ -143,6 +145,7 @@ impl Surface {
             on_error: RefCell::new(None),
             on_hot_update_failed: RefCell::new(None),
             asset_base: RefCell::new(None),
+            access: RefCell::default(),
             native: Default::default(),
         });
         SURFACES.with(|s| s.borrow_mut().insert(key, Rc::downgrade(&surface)));

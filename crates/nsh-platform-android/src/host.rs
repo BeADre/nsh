@@ -420,6 +420,33 @@ extern "system" fn Java_com_longbridge_nsh_Native_allowsWebview(
     access.allows_webview(&String::from(url)).into()
 }
 
+/// The URL a media load may follow after a redirect (null: refused), so
+/// that an unauthorized target never receives a request.
+#[unsafe(no_mangle)]
+extern "system" fn Java_com_longbridge_nsh_Native_mediaRedirect<'a>(
+    mut env: JNIEnv<'a>,
+    _: JClass<'a>,
+    handle: jlong,
+    base: JString<'a>,
+    location: JString<'a>,
+    hops: jint,
+) -> JString<'a> {
+    if handle == 0 {
+        return JString::from(JObject::null());
+    }
+    // SAFETY: Java passes its live handle.
+    let host = unsafe { host(handle) };
+    let (Ok(base), Ok(location)) = (env.get_string(&base), env.get_string(&location)) else {
+        return JString::from(JObject::null());
+    };
+    let access = host.access.lock().expect("access").clone();
+    match access.media_redirect(&String::from(base), &String::from(location), hops.max(0) as usize)
+    {
+        Ok(url) => env.new_string(url).unwrap_or_else(|_| JString::from(JObject::null())),
+        Err(_) => JString::from(JObject::null()),
+    }
+}
+
 #[unsafe(no_mangle)]
 extern "system" fn Java_com_longbridge_nsh_Native_destroy(
     _: JNIEnv<'_>,

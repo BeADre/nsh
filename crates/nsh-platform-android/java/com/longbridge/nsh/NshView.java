@@ -86,7 +86,7 @@ public class NshView extends FrameLayout {
         super(context);
         density = getResources().getDisplayMetrics().density;
         TextLayouts.cacheDir = context.getCacheDir();
-        mounter = new Mounter(this, new Images(this::readAsset));
+        mounter = new Mounter(this, new Images(this::readAsset, (base, location, hops) -> handle == 0 ? null : Native.mediaRedirect(handle, base, location, hops)));
         root = mounter.root;
         addView(root, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
         touches = new TouchTracker(mounter, this);

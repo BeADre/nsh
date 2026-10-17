@@ -157,6 +157,12 @@ impl AppView {
     /// Runs `app`, replacing what ran.
     pub fn load(&self, app: App) {
         let options = self.options.borrow();
+        let access = Arc::new(match &app {
+            App::Js(bundle) => bundle.policy.access(),
+            // Native code reaches what the platform allows.
+            App::Rust(_) => nsh_engine::Policy::default().access(),
+        });
+        crate::image::set_access(&self.surface, access);
         let config = EngineConfig {
             app,
             viewport: nsh_core::Size::new(0.0, 0.0),

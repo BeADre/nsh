@@ -417,7 +417,7 @@ impl Mounter {
                         m.load_event(event);
                     }
                 })
-            }),
+            }, access.clone()),
             control,
             access,
             shared,
