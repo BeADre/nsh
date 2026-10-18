@@ -1,10 +1,11 @@
-# Classes from Rust (design proposal)
+# Classes and functions from Rust (design proposal)
 
 Status: proposed.
 
 An app's Rust crate (`nsh.json` `"rust"`) exports components and modules (`#[module]`: functions). This proposes
 classes: a Rust type that TypeScript uses as a class, with a constructor, methods, getters and setters, statics and
-instances that keep their state in Rust.
+instances that keep their state in Rust; synchronous functions on the same footing; and how NSH's own standard
+library shares the machinery.
 
 ```rust
 /// A tally kept in Rust.
@@ -114,6 +115,55 @@ so a class's methods can run directly inside the JS call, as the web classes nsh
 - **Errors.** `Result<T, E: Display>` throws (`Error` with the message) or rejects; a wrong argument throws a
   `TypeError` naming the parameter; a panic in Rust is caught and thrown as an `Error` (the engine stays up).
 
+## Functions
+
+Rust exports functions today through `#[module]` (an object, `Alert.alert(..)`, or `#[module(flat)]`, top-level
+functions): every call is an op ordered with the UI's, so every result is a promise. The class's split applies to
+functions too, decided by the signature:
+
+- **`fn` without a context:** synchronous, called directly in the JS call like a class's method (`parse(text)`,
+  `checksum(bytes)`): TS gets the value, not a promise.
+- **`fn` taking `cx: &mut ModuleCx`:** as now: an op, run in order with what JS set before it (a dialog, the status
+  bar, focus), a promise when it returns a value.
+- **`async fn`:** as now: a task of the core, a promise.
+
+A plain `fn` that returns a value (today a promise in TS) becomes synchronous: no runtime module has one (theirs
+take `ModuleCx` or are `async`), and an app crate's are rebuilt with the app, whose types change with them.
+
+## The standard library
+
+What TSX imports from NSH is made two ways today:
+
+- **Runtime modules in Rust** (`crates/nsh-core/src/runtime/`: `nsh/accessibility`, `nsh/android`,
+  `nsh/clipboard`, `nsh/desktop`, `nsh/image`'s functions) already use `#[module]` and `Registry`, the app crates'
+  mechanism; they take the synchronous functions and classes as they come.
+- **Hand-written in `nsh-js`:** the reactive graph and the renderer (`nsh`), `nsh/animated`'s `NativeValue` and
+  `NativeNode`, `nsh/canvas`'s `Path2D`, `CanvasGradient` and `CanvasRenderingContext2D`, the keymap, lists, and the
+  web globals (`URL`, `Headers`, `Blob`, `fetch`, streams, events). Their classes already sit on one piece of
+  machinery: a QuickJS class whose opaque is the Rust value in a `RefCell` (`nsh-js` `web/mod.rs`).
+
+So the classes of this proposal are built on that same machinery: one implementation of "a JS class backed by a
+Rust value", with `#[class]` its declarative front. Which standard classes move to `#[class]` depends on what they
+need beyond the first version:
+
+| Class | Needs | Moves |
+|---|---|---|
+| `Path2D`, `CanvasGradient` | plain values, called often | when calls convert QuickJS values directly (below) |
+| `CanvasRenderingContext2D` | 17 500 calls in ~1 ms (`docs/dev/performance.md`) | stays recorded natively: a class front adds nothing |
+| `NativeValue`, `NativeNode` | values the renderer reads from style props, ops ordered with the UI | stays: it is part of the renderer |
+| `URL`, `TextEncoder` | WebIDL coercion, `new.target`, iterators | after subclassing and iterators |
+| `Headers`, `Blob`, streams, `EventTarget` | callbacks, events, promises interleaved with JS | after callbacks and events |
+| `nsh` itself (signals, `View`, `mount`) | the reactive graph and the JSX compiler's calls | stays: it is the runtime |
+
+For that, two choices of the first version change:
+
+- **Values convert directly**, QuickJS value to Rust type and back, not through `JsonValue`: a synchronous call is
+  what makes these classes worth using, and a JSON round trip per call would cost more than the call (the canvas'
+  recording is a native list for that reason). `JsValue` gains the direct conversions; modules' ops keep JSON,
+  since they cross to the core as data.
+- **The machinery is shared from the start**: `#[class]` instances are the web classes' slots, so `instanceof`,
+  re-entrancy, finalization and (later) `new.target` behave the same for NSH's classes and an app's.
+
 ## What crosses
 
 - **Arguments and results** are the module functions' types (`JsValue`: numbers, `bool`, strings, `Option`, `Vec`,
@@ -146,14 +196,19 @@ so a class's methods can run directly inside the JS call, as the web classes nsh
 
 ## Costs
 
-A synchronous call converts its arguments from QuickJS values to `JsonValue` and decodes them, as a module call
-does, but without the op, the commit and the promise: a few microseconds for small arguments. If a class turns out
-to be called in hot loops, direct converters between QuickJS values and the Rust types are the next step; the
-benchmark comes with the implementation (`docs/dev/performance.md`).
+A synchronous call converts its arguments from QuickJS values to the Rust types directly (no `JsonValue`, no op, no
+commit, no promise), as the web classes' methods do. The benchmark comes with the implementation
+(`docs/dev/performance.md`): a method call against a module call, and `Path2D` built through `#[class]` against the
+hand-written one.
 
 ## Decisions to make
 
 1. Synchronous members run in the JS call and cannot use the UI's free functions; `async` members can. (The
    alternative, every member a promise, keeps one model but does not look like a class.)
 2. `dispose()` besides collection, for values that hold resources.
-3. The first version's types: the module functions' plus instances by reference; callbacks and events later.
+3. The first version's types: the module functions' plus instances by reference, converted directly; callbacks and
+   events later.
+4. Functions follow the same rule (synchronous unless they take `ModuleCx` or are `async`), which makes a plain
+   `fn` returning a value synchronous in TS.
+5. The standard library's classes move to `#[class]` as the mechanism gains what each needs (the table above), not
+   all at once; the renderer's own classes stay hand-written.
