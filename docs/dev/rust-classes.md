@@ -1,6 +1,6 @@
 # Classes and functions from Rust (design proposal)
 
-Status: proposed.
+Status: proposed; the decisions below are taken.
 
 An app's Rust crate (`nsh.json` `"rust"`) exports components and modules (`#[module]`: functions). This proposes
 classes: a Rust type that TypeScript uses as a class, with a constructor, methods, getters and setters, statics and
@@ -76,6 +76,7 @@ export declare class Tally {
   save(path: string): Promise<void>;
   /** Frees the Rust value now (else when the object is collected); the object throws after. */
   dispose(): void;
+  [Symbol.dispose](): void;
 }
 ```
 
@@ -99,7 +100,8 @@ so a class's methods can run directly inside the JS call, as the web classes nsh
 
 - **Instances live in Rust, owned by their JS object.** A JS object of the class holds the Rust value as its opaque
   (`Rc<RefCell<T>>`, the web classes' slot, `nsh-js` `web/mod.rs`); the object being collected drops it.
-  `dispose()` drops it now (a value holding a file or a large buffer); any use after throws. `T: 'static`, not
+  `dispose()` (and `[Symbol.dispose]`, for `using`) drops it now (a value holding a file or a large buffer); any use
+  after throws. `T: 'static`, not
   `Send`: it never leaves the engine thread.
 - **Synchronous members run in the JS call.** `&self` / `&mut self` methods, getters and setters, statics and the
   constructor run inside the JS turn, outside the core: they compute and keep state, and cannot use the UI's free
@@ -173,9 +175,54 @@ For that, two choices of the first version change:
   (TS: `other: Other`), `Instance<Other>` keeps a handle (to store one instance in another), and a result `Other`
   or `Instance<Other>` is a new JS object (`Self` from `new` and statics). An instance of another app's or set's
   class is refused with a `TypeError`.
-- **Not in the first version:** JS functions as arguments (callbacks: they need JS handles kept from Rust), events
-  emitted by an instance (`EventTarget`), iterators, and subclassing in TS (the web classes support `new.target`;
-  app classes can follow once something needs it).
+- **JS functions** (callbacks), below.
+- **Not in the first version:** events emitted by an instance (`EventTarget`), iterators, and subclassing in TS (the
+  web classes support `new.target`; app classes can follow once something needs it).
+
+## Callbacks
+
+A parameter `Callback<A, R = ()>` takes a JS function: `A` is its argument (a `JsValue` type, or a tuple for
+several), `R` what it returns. TS: `Callback<(String, f64), bool>` is `(a: string, b: number) => boolean`.
+
+```rust
+#[class]
+impl Downloader {
+    /// Calls `progress` with each fraction done; resolves with the bytes' count.
+    pub async fn fetch(this: Instance<Downloader>, url: String, progress: Callback<f64>) -> Result<u64, String> {
+        // ...
+        progress.post(0.5);                       // runs in JS after this step, in order
+        let keep = progress.call_async(1.0).await?; // runs in JS, its result back here
+        Ok(bytes)
+    }
+
+    /// Sorts with the app's comparison, at once.
+    pub fn sort_by(&mut self, compare: Callback<(String, String), f64>) -> Result<(), String> {
+        self.items.sort_by(|a, b| {
+            let order = compare.call((a.clone(), b.clone())).unwrap_or(0.0);
+            order.partial_cmp(&0.0).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        Ok(())
+    }
+}
+```
+
+- **Calling it now** (`call(args) -> Result<R, String>`): inside a synchronous call from JS (a method, a function,
+  the constructor), the JS function runs on the spot and its result comes back, as a JS callback passed to
+  `Array.prototype.sort` does. Its exception is the `Err` (its message). The instance stays borrowed meanwhile:
+  the callback reaching the same instance again throws, as any re-entrant call does. `call` outside a call from
+  JS (in a task) panics with a message saying to use `post` or `call_async` there.
+- **Calling it later** (`post(args)`, `call_async(args).await -> Result<R, String>`): from anywhere on the engine
+  thread (an async member's task, a timer, a stored callback), the call is queued for JS and runs in the engine's
+  next JS turn, in order with the other posts: `post` forgets the result, `call_async` waits for it. The core hands
+  the calls to the script as it hands it events (`Action::CallJs`), so they cost one turn, not a thread hop.
+- **Keeping it:** a `Callback` can be stored (in an instance's field, a `Vec`, a global) and called any number of
+  times; dropping the last clone releases the JS function. A callback an instance keeps is reported to QuickJS's
+  collector through the class's mark hook, as the web classes report the JS values they hold. `#[class]` finds
+  the fields of type `Callback` (also in `Option`, `Vec` and `HashMap` values), so a callback that captures the
+  object owning the instance does not keep both alive forever. Callbacks held elsewhere are roots until dropped.
+- **Functions take them too:** `fn watch(path: String, on_change: Callback<String>)` (`on_change` kept and posted
+  later), and `async` functions and members can `call_async`.
+
 
 ## The pieces
 
@@ -201,14 +248,16 @@ commit, no promise), as the web classes' methods do. The benchmark comes with th
 (`docs/dev/performance.md`): a method call against a module call, and `Path2D` built through `#[class]` against the
 hand-written one.
 
-## Decisions to make
+## Decisions
 
-1. Synchronous members run in the JS call and cannot use the UI's free functions; `async` members can. (The
-   alternative, every member a promise, keeps one model but does not look like a class.)
-2. `dispose()` besides collection, for values that hold resources.
-3. The first version's types: the module functions' plus instances by reference, converted directly; callbacks and
-   events later.
-4. Functions follow the same rule (synchronous unless they take `ModuleCx` or are `async`), which makes a plain
-   `fn` returning a value synchronous in TS.
-5. The standard library's classes move to `#[class]` as the mechanism gains what each needs (the table above), not
-   all at once; the renderer's own classes stay hand-written.
+1. **Synchronous or a promise is the Rust signature's `async`**: a member or function that is not `async` runs in
+   the JS call and returns its value (it computes and keeps state, without the UI's free functions); an `async`
+   one returns a promise and runs as a core task, with them. The one exception, for functions only: one taking
+   `cx: &mut ModuleCx` stays an op ordered with the UI (a toast, the status bar, focus), as now.
+2. **`dispose()` and `[Symbol.dispose]`** besides collection.
+3. **Callbacks in the first version** (above); events and iterators later.
+4. **Functions follow the same rule**, so a plain `fn` returning a value becomes synchronous in TS.
+5. **The standard library's classes move to `#[class]`** as the mechanism gains what each needs (the table above);
+   the renderer's own classes stay hand-written. Their TS interfaces stay as they are: names, members and
+   signatures are generated alike; arguments are checked by type rather than coerced (`moveTo("10", 0)` throws
+   instead of reading 10), and errors read as the generated ones do.
