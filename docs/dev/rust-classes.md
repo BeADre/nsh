@@ -191,7 +191,7 @@ impl Downloader {
     pub async fn fetch(this: Instance<Downloader>, url: String, progress: Callback<f64>) -> Result<u64, String> {
         // ...
         progress.post(0.5);                       // runs in JS after this step, in order
-        let keep = progress.call_async(1.0).await?; // runs in JS, its result back here
+        progress.call_async(1.0).await?;          // runs in JS, its result back here
         Ok(bytes)
     }
 
