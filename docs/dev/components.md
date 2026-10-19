@@ -12,14 +12,19 @@ back. One implementation draws the same on iOS and Android, is laid out in the s
 | `crates/nsh-macros` | `#[component]`, `#[derive(Props)]`, `#[derive(PropEnum)]`, `#[derive(Event)]`, `#[derive(JsObject)]`; `#[methods]`, `#[module]`, `#[class]`; `#[native_module("…")]` (an app crate's set: `docs/dev/tooling.md`); `style_helpers!` (the spacing methods of `Styled`) |
 | `crates/nsh-core/src/core/components.rs` | The core side: instances, children and slots, events; `core/views.rs`: views, their bindings' patches and regions |
 | `crates/nsh-ui-mobile` | The mobile set's components, one file each (`README.md`: how to write one) |
+| `crates/nsh-ui-desktop` | The desktop set's components, one file each, and its density (`metrics.rs`: `ControlSize`) |
 | `crates/nsh-js/src/components.rs` | The JS face of components and modules, made from their specs when a bundle imports the set; `classes.rs`: classes' (on the web classes' machinery), synchronous functions', callbacks |
 | `crates/nsh-js/src/declarations.rs` | `nsh/ui/mobile.d.ts`: the declarations generated from `nsh_ui_mobile::registry()` (`nsh_core::ui::declarations`) with the re-exports and the navigation |
-| `nsh_engine::EngineConfig::ui_sets` | The registries a surface serves (the platforms' `set_ui_sets`, by default `nsh_ui_mobile::registry()`; an app's own set: `docs/dev/tooling.md`) |
+| `nsh_engine::EngineConfig::ui_sets` | The registries a surface serves (the platforms' `set_ui_sets`: by default `nsh_ui_mobile::registry()` on iOS and Android, both sets on the desktops and the web; an app's own set: `docs/dev/tooling.md`) |
 
-A desktop set is planned as a crate of its own (`nsh-ui-desktop`), not an abstraction over both; like every UI set it runs
-on every backend (macOS, Windows, Linux, and GPUI, a separate platform backend in development, `gpui.md`). It does not exist
-yet: on macOS, Windows and Linux apps use `nsh/ui/mobile`, whose components render there as on phones, or their own
-layouts from the primitives.
+The desktop set (`nsh/ui/desktop`, `crates/nsh-ui-desktop`) is a crate of its own, not an abstraction over both; like
+every UI set it runs on every backend (macOS, Windows, Linux, GPUI, the web). It is in its first components (`Button`);
+until it has what the desktop apps and the gallery use, the desktops' runtimes serve both sets and their apps use
+`nsh/ui/mobile` too. Its controls are shorter than the mobile set's (`ControlSize`: 24, 32 and 40 points for a pointer;
+the mobile set's are 44 for a finger), with corners scaled from the theme's radius by height, so both draw one shape;
+they highlight under the pointer (`hover`) and ring when the keyboard focuses them (`focus`: pressables take focus
+from Tab only, never from a click, so their `FOCUSED` state is keyboard focus; macOS and the web tab to pressables,
+Windows, Linux and GPUI to fields only so far).
 
 The sets share one design language and the behavior under it, never components: each set draws its own controls for its
 form factor (sizes, density, how they are pressed, hovered and focused, which controls exist), and all of them take

@@ -28,6 +28,7 @@ nsh-core.workspace = true
 nsh-animation.workspace = true
 nsh-engine.workspace = true
 nsh-ui-mobile.workspace = true
+nsh-ui-desktop.workspace = true
 block2.workspace = true
 crossbeam-channel.workspace = true
 dispatch2.workspace = true

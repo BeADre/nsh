@@ -2211,6 +2211,7 @@ dependencies = [
  "nsh-engine",
  "nsh-js",
  "nsh-package",
+ "nsh-ui-desktop",
  "nsh-ui-mobile",
  "plist",
  "semver",
@@ -2263,6 +2264,7 @@ dependencies = [
  "nsh-core",
  "nsh-js",
  "nsh-package",
+ "nsh-ui-desktop",
  "nsh-ui-mobile",
  "oxc_sourcemap",
  "rustc-hash",
@@ -2296,6 +2298,7 @@ dependencies = [
  "log",
  "nsh-animation",
  "nsh-core",
+ "nsh-ui-desktop",
  "nsh-ui-mobile",
  "percent-encoding",
  "rquickjs",
@@ -2422,6 +2425,7 @@ dependencies = [
  "nsh-core",
  "nsh-dev",
  "nsh-engine",
+ "nsh-ui-desktop",
  "nsh-ui-mobile",
  "pango",
  "pangocairo",
@@ -2445,6 +2449,7 @@ dependencies = [
  "nsh-core",
  "nsh-dev",
  "nsh-engine",
+ "nsh-ui-desktop",
  "nsh-ui-mobile",
  "objc2",
  "objc2-app-kit",
@@ -2469,6 +2474,7 @@ dependencies = [
  "nsh-core",
  "nsh-engine",
  "nsh-js",
+ "nsh-ui-desktop",
  "nsh-ui-mobile",
  "rquickjs",
  "rustc-hash",
@@ -2488,6 +2494,7 @@ dependencies = [
  "nsh-core",
  "nsh-dev",
  "nsh-engine",
+ "nsh-ui-desktop",
  "nsh-ui-mobile",
  "rustc-hash",
  "serde_json",
@@ -2498,6 +2505,13 @@ dependencies = [
  "windows",
  "windows-core",
  "windows-numerics",
+]
+
+[[package]]
+name = "nsh-ui-desktop"
+version = "0.1.1"
+dependencies = [
+ "nsh-core",
 ]
 
 [[package]]

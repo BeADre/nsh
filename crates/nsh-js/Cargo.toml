@@ -36,3 +36,4 @@ libc.workspace = true
 
 [dev-dependencies]
 nsh-ui-mobile.workspace = true
+nsh-ui-desktop.workspace = true

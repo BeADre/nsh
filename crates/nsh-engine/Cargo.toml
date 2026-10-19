@@ -38,6 +38,7 @@ libc.workspace = true
 
 [dev-dependencies]
 nsh-ui-mobile.workspace = true
+nsh-ui-desktop.workspace = true
 nsh-bundler = { workspace = true, features = ["bundle"] }
 nsh-js.workspace = true
 crossbeam-channel.workspace = true

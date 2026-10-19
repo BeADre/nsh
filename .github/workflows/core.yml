@@ -2,8 +2,9 @@ name: Core
 
 # Lints and tests the crates every platform shares: the core, the animation
 # graph, the macros, the JS runtime, the engine, the bundler, signed packages
-# and `nsh/ui/mobile`. The platform workflows test their backends and the
-# tooling only, so these ran nowhere but on developers' machines.
+# and the UI sets (`nsh/ui/mobile`, `nsh/ui/desktop`). The platform workflows
+# test their backends and the tooling only, so these ran nowhere but on
+# developers' machines.
 
 on:
   push:
@@ -37,7 +38,7 @@ env:
   # whole pipeline), so its tests all run.
   PACKAGES: >-
     -p nsh-core -p nsh-animation -p nsh-macros -p nsh-js -p nsh-engine
-    -p nsh-bundler -p nsh-package -p nsh-ui-mobile --features nsh-bundler/bundle
+    -p nsh-bundler -p nsh-package -p nsh-ui-mobile -p nsh-ui-desktop --features nsh-bundler/bundle
 
 jobs:
   check:

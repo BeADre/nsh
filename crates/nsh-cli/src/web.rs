@@ -633,7 +633,10 @@ mod tests {
             "{page}"
         );
         assert!(!page.contains("{{"), "{page}");
-        assert!(page.contains("const UI_SETS = [\"nsh/ui/mobile\"];"));
+        assert!(
+            page.contains("const UI_SETS = [\"nsh/ui/mobile\",\"nsh/ui/desktop\"];"),
+            "{page}"
+        );
         fs::write(&runtime.wasm, "two").unwrap();
         assert_ne!(version(&dev_host(&runtime, false).unwrap().1), first);
         assert!(

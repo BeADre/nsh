@@ -244,9 +244,9 @@ toolchain cannot know the sets, so `nsh` builds the app its own (`crates/nsh-cli
   components or modules of the same name when an engine starts. Crates may depend on each other, or on crates not
   listed (a shared crate of components), through plain Cargo path dependencies; only listed ones export to TS.
 - A Cargo workspace in `<app>/.nsh/rust`, written on every command (files only when they change), each member depending
-  on every listed crate and passing their sets in `"rust"`'s order after the mobile UI's
-  (`vec![nsh_ui_mobile::registry(), set_app_charts(), set_app_storage()]`): `cli` (the command line,
-  `nsh_cli::main_with` of the mobile UI and the app's sets), `ios-host` / `ios-app` (the development host and the
+  on every listed crate and passing their sets in `"rust"`'s order after nsh's (the mobile UI's, then, except on iOS and
+  Android, the desktop UI's: `vec![nsh_ui_mobile::registry(), nsh_ui_desktop::registry(), set_app_charts(),
+  set_app_storage()]`): `cli` (the command line, `nsh_cli::main_with` of nsh's and the app's sets), `ios-host` / `ios-app` (the development host and the
   release runner: `nsh_platform_ios::set_ui_sets`, then `nsh_ios_host::main` / `nsh_ios_app::main`), `linux-host` /
   `linux-app`, `macos-host` / `macos-app` and `windows-host` / `windows-app` (the same on Linux, macOS and Windows,
   `nsh_platform_linux` / `nsh_platform_macos` / `nsh_platform_windows::set_ui_sets`; `windows-app` is a windowed

@@ -32,6 +32,7 @@ nsh-core = { version = "0.1.1", path = "../nsh-core" }
 nsh-dev = { version = "0.1.1", path = "../nsh-dev" }
 nsh-engine = { version = "0.1.1", path = "../nsh-engine", default-features = false }
 nsh-ui-mobile = { version = "0.1.1", path = "../nsh-ui-mobile" }
+nsh-ui-desktop = { version = "0.1.1", path = "../nsh-ui-desktop" }
 nsh-platform-gpui = { version = "0.1.1", path = "nsh-platform-gpui", default-features = false }
 
 # The same versions as the main workspace's.

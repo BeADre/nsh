@@ -17,6 +17,7 @@ mod compiled;
 mod component_bench;
 mod components;
 mod counter;
+mod desktop_ui;
 mod errors;
 mod fetch;
 mod hot;

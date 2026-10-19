@@ -1,0 +1,75 @@
+---
+title: Desktop UI
+description: nsh/ui/desktop UI 集：NSH 的设计语言在指针和键盘下的密度，以及它的 Button。
+order: 20
+---
+
+# Desktop UI
+
+`nsh/ui/desktop` 是 NSH 面向 macOS、Windows、Linux 和 Web 窗口的 UI 集。它和 [Mobile UI](./index.md) 使用同一套设计语言、同一个主题，
+只是密度适合桌面：控件更矮，指针悬停时高亮，键盘把焦点移到控件上时显示焦点环。第一个组件是 `Button`，后续组件陆续加入。
+
+```tsx
+import { Button } from "nsh/ui/desktop";
+```
+
+这些组件的工作方式和移动端组件一样：用 Rust 编写，由原生核心用宿主元素渲染，类型从源码生成（`.nsh/types/nsh/ui/desktop.d.ts`），
+主题来自 `nsh.json` 的 `"theme"`。一个应用可以同时使用两套组件，用不同的名字导入：
+
+```tsx
+import { Button } from "nsh/ui/desktop";
+import { Button as MobileButton } from "nsh/ui/mobile";
+```
+
+## 尺寸
+
+每个控件都有 `size`：`sm`（高 24 pt，用于工具栏和紧凑表格）、`md`（32 pt，默认）和 `lg`（40 pt，用于窗口的主要操作）。
+`lg` 的文字使用主题字号，较紧凑的尺寸略小。圆角跟随主题的 `radius`，并按控件高度等比缩放，所以桌面控件和移动端控件形状一致。
+
+## 指针和键盘
+
+- **悬停**：有底色的控件在指针下稍微变淡；`plain` 控件显示主题的 `accent.background`。
+- **按下**：点击会按下控件；按下期间显示主题的 `*.active.background`。
+- **焦点**：在 macOS 和 Web 上，Tab 在控件之间移动键盘焦点，按 Return 或空格会按下获得焦点的控件，它显示主题 `ring` 颜色的焦点环，
+  宽 2 pt，间距 2 pt。点击会按下控件但不让它获得焦点，所以焦点环只在键盘聚焦时显示。
+
+## Button
+
+```tsx
+import { mount, signal, Text, View } from "nsh";
+import { Button } from "nsh/ui/desktop";
+
+function App() {
+  const saved = signal(0);
+  return (
+    <View class="flex-row items-center gap-3 p-6">
+      <Button title="Save" onPress={() => saved.update((n) => n + 1)} />
+      <Button title="Cancel" variant="secondary" />
+      <Button title="Delete" variant="danger" size="sm" />
+      <Text>{`Saved ${saved()} times`}</Text>
+    </View>
+  );
+}
+
+mount(App);
+```
+
+| 变体 | 背景 | 悬停 | 按下 | 文字 |
+|---|---|---|---|---|
+| `primary`（默认） | `primary.background` | `primary.background`，变淡 | `primary.active.background` | `primary.foreground` |
+| `secondary` | `secondary.background` | `secondary.background`，变淡 | `secondary.active.background` | `secondary.foreground` |
+| `danger` | `danger.background` | `danger.background`，变淡 | `danger.active.background` | `danger.foreground` |
+| `plain` | 透明 | `accent.background` | `secondary.active.background` | `foreground` |
+
+| 属性 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `title` | `string` | 必填 | 文字标签。 |
+| `variant` | `"primary" \| "secondary" \| "danger" \| "plain"` | `"primary"` | 外观。 |
+| `size` | `"sm" \| "md" \| "lg"` | `"md"` | 高度、内边距和字号。 |
+| `disabled` | `boolean` | `false` | 不响应按压，没有反馈，50% 不透明度。 |
+| `accessibilityLabel` | `string \| null` | `title` | 当 `title` 不够时，屏幕阅读器读出的内容。 |
+| `class`、`classList`、`style`、`testID`、`onLayout`、`ref` | | | 作用于按钮的根视图。`class` 和 `style` 会覆盖按钮自身的样式。 |
+
+| 事件 | 参数 | 触发时机 |
+|---|---|---|
+| `onPress` | 无 | 点击，或按钮获得键盘焦点时按 Return 或空格（macOS、Web）。 |

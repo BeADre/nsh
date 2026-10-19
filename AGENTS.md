@@ -12,7 +12,8 @@ Android views (`nsh-platform-android`), macOS with AppKit views (`nsh-platform-m
 with Direct2D (`nsh-platform-windows`), Linux with GTK 4 widgets (`nsh-platform-linux`). The GPUI backend
 (`nsh-platform-gpui`) draws on macOS, Windows and Linux and embeds in GPUI / GPUI Kit apps; the web platform
 (`nsh-platform-web`) renders apps as HTML in a browser page, and `nsh package --target web` publishes them as static
-sites. The only UI set is `nsh/ui/mobile` (it renders on every platform); a desktop set is planned.
+sites. The UI sets are `nsh/ui/mobile` and `nsh/ui/desktop` (both render on every platform; the desktop set is in
+its first components), one design language at two densities.
 
 This file is the short version. The details are in `docs/dev/` (read the page of the area you change first) and in
 the module docs of the code (`//!`, Javadoc), which are the reference for how a module works inside.
@@ -34,6 +35,8 @@ crates/
                        `HostProps` (the host elements' props: decoding, defaults and TS), `JsOps` (recorded operations: canvas)
   nsh-ui-mobile/       The components and modules of `nsh/ui/mobile` (Button, SafeAreaView, StatusBar, Alert, ...), written in Rust; their JS
                        face is made from their specs (nsh-js `components.rs`), their TypeScript declarations generated
+  nsh-ui-desktop/      The components of `nsh/ui/desktop` (Button, ...): the same design language at a pointer's and a keyboard's density
+                       (`metrics.rs`), written in Rust like the mobile set's
   nsh-animation/       Native animation graph (pure Rust): value / interpolate / math nodes, timing / spring / decay drivers
   nsh-js/              QuickJS host and NSH's runtime: console / timers, bytecode compilation and loading, limits (`sandbox.rs`);
                        the native modules apps import (`modules.rs`: module table and loader; docs/dev/js-modules.md), the
@@ -116,8 +119,8 @@ examples/             Example apps (gallery: a demo index, one module per demo; 
 ```
 
 Dependency direction: `nsh-core` ← `nsh-js` ← `nsh-engine` (also ← `nsh-package`) ← `nsh-platform-*` ←
-`nsh-ios-host` / `nsh-ios-app` / `nsh-linux-host` / `nsh-linux-app` / `nsh-macos-host` / `nsh-macos-app` / `nsh-windows-host` / `nsh-windows-app` / `nsh-gpui-host` / `nsh-gpui-app`; `nsh-cli` depends on `nsh-bundler`, `nsh-js` and `nsh-engine`; `nsh-ui-mobile` depends
-on `nsh-core` only and is used by the bundler (declarations), the platforms and the CLI (registry). `nsh-core` must not depend
+`nsh-ios-host` / `nsh-ios-app` / `nsh-linux-host` / `nsh-linux-app` / `nsh-macos-host` / `nsh-macos-app` / `nsh-windows-host` / `nsh-windows-app` / `nsh-gpui-host` / `nsh-gpui-app`; `nsh-cli` depends on `nsh-bundler`, `nsh-js` and `nsh-engine`; `nsh-ui-mobile` and
+`nsh-ui-desktop` depend on `nsh-core` only and are used by the bundler (declarations), the platforms and the CLI (registry). `nsh-core` must not depend
 on any platform or JS crate.
 
 ## Documentation
@@ -141,7 +144,7 @@ on any platform or JS crate.
 | the GPUI backend (`nsh-platform-gpui`, macOS / Windows / Linux) | `docs/dev/gpui.md` |
 | a hot path | `docs/dev/performance.md` (baselines) |
 | anything platform-specific | `docs/dev/pitfalls.md` (verified constraints, by area) |
-| components (`nsh/ui/mobile`) | `docs/dev/components.md`, `crates/nsh-ui-mobile/README.md` |
+| components (`nsh/ui/mobile`, `nsh/ui/desktop`) | `docs/dev/components.md`, `crates/nsh-ui-mobile/README.md`, `crates/nsh-ui-desktop/README.md` |
 | Rust classes TS uses (`#[class]`), module functions' kinds, callbacks, how calls and Rust components' props cross (typed) | `docs/dev/rust-classes.md`, `docs/dev/components.md` |
 
 Keep them current: a change that alters documented behavior updates its page (or the module doc) in the same commit,
@@ -225,8 +228,8 @@ repository's `target/`; dependencies only it uses are declared in `crates/gpui/C
 ## Rules
 
 - **Two module layers.** `nsh` / `nsh/<module>` (native, `crates/nsh-js`) are the primitives and the environment
-  every UI set builds on; `nsh/ui/<set>` is a whole UI for one form factor (`nsh/ui/mobile`; a desktop set will be
-  separate, never an abstraction over both). Shared vs one form factor decides the layer, not JS vs native. Platform-only APIs go to
+  every UI set builds on; `nsh/ui/<set>` is a whole UI for one form factor (`nsh/ui/mobile`, `nsh/ui/desktop`:
+  separate sets, never an abstraction over both; what they share is in the core). Shared vs one form factor decides the layer, not JS vs native. Platform-only APIs go to
   `nsh/ios` / `nsh/android`, platform-only props into `ios={{…}}` / `android={{…}}` / `desktop={{…}}`. `nsh` has no
   catch-all re-exports; moved APIs get no compatibility re-exports.
 - **Primitives only.** The runtime adds capabilities, not widgets: components are drawn with the primitives in a UI
