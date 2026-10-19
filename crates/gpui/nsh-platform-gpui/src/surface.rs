@@ -250,6 +250,10 @@ impl Surface {
     }
 
     /// Its key ([`Surface::by_key`]).
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation.get()
+    }
+
     pub(crate) fn key(&self) -> u64 {
         self.key
     }
@@ -568,6 +572,20 @@ pub(crate) fn flush_all(cx: &mut gpui::App) {
             })
             .collect()
     });
+    if !ids.is_empty() {
+        // A live NSH node may currently be painted in Root's dialog/sheet,
+        // a retained delegate or another GPUI overlay, outside AppView's
+        // cached subtree. Refresh those placements on reactive mount updates.
+        let composed = SURFACES.with(|s| {
+            s.borrow()
+                .values()
+                .filter_map(Weak::upgrade)
+                .any(|surface| surface.native.composition_used.get())
+        });
+        if composed {
+            cx.refresh_windows();
+        }
+    }
     for id in ids {
         cx.notify(id);
     }

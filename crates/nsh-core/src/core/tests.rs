@@ -7680,3 +7680,149 @@ fn file_drop_callbacks_keep_urls_and_disabled_targets_unmount_their_events() {
         assert!(!events.contains(event));
     }
 }
+
+#[test]
+fn native_components_mount_live_child_views() {
+    let mut c = core();
+    apply(
+        &mut c,
+        vec![
+            Op::Create {
+                id: 2,
+                tag: Tag::Native,
+            },
+            Op::SetProp {
+                id: 2,
+                prop: Prop::Component("test.container".into()),
+            },
+            Op::Create {
+                id: 3,
+                tag: Tag::View,
+            },
+            Op::Create {
+                id: 4,
+                tag: Tag::Native,
+            },
+            Op::SetProp {
+                id: 4,
+                prop: Prop::Component("test.child".into()),
+            },
+            Op::Insert {
+                parent: 3,
+                child: 4,
+                before: None,
+            },
+            Op::Insert {
+                parent: 2,
+                child: 3,
+                before: None,
+            },
+            Op::Insert {
+                parent: ROOT_ID,
+                child: 2,
+                before: None,
+            },
+        ],
+    );
+    let batch = c.commit().unwrap();
+    for id in [2, 3, 4] {
+        assert!(
+            batch.items.iter().any(
+                |item| matches!(item, MountItem::Create { id: mounted, .. } if *mounted == id)
+            ),
+            "missing native subtree node {id}"
+        );
+    }
+    for (parent, child) in [(2, 3), (3, 4)] {
+        assert!(batch.items.iter().any(|item| matches!(item, MountItem::Insert { parent: mounted_parent, child: mounted_child, .. } if (*mounted_parent, *mounted_child) == (parent, child))));
+    }
+}
+
+#[test]
+fn native_text_inheritance_updates_without_layout_and_emits_only_when_changed() {
+    let mut c = core();
+    apply(
+        &mut c,
+        vec![
+            Op::Create {
+                id: 2,
+                tag: Tag::View,
+            },
+            style_op(
+                2,
+                &[
+                    ("fontSize", StyleValue::Number(19.0)),
+                    ("fontFamily", StyleValue::Str("Menlo")),
+                    ("color", StyleValue::Str("#123456")),
+                ],
+            ),
+            Op::Create {
+                id: 3,
+                tag: Tag::Native,
+            },
+            style_op(
+                3,
+                &[
+                    ("paddingHorizontal", StyleValue::Number(12.0)),
+                    ("borderWidth", StyleValue::Number(2.0)),
+                ],
+            ),
+            Op::SetProp {
+                id: 3,
+                prop: Prop::Component("test.input".into()),
+            },
+            Op::Insert {
+                parent: 2,
+                child: 3,
+                before: None,
+            },
+            Op::Insert {
+                parent: ROOT_ID,
+                child: 2,
+                before: None,
+            },
+        ],
+    );
+    let text = |batch: &MountBatch| {
+        batch
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                MountItem::ComponentProps { id: 3, props } => props
+                    .iter()
+                    .find(|(name, _)| name.as_ref() == "__nshText")
+                    .and_then(|(_, value)| value.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let initial = c.commit().unwrap();
+    let insets = initial
+        .items
+        .iter()
+        .find_map(|item| match item {
+            MountItem::ComponentProps { id: 3, props } => props
+                .iter()
+                .find(|(name, _)| name.as_ref() == "__nshLayout")
+                .and_then(|(_, value)| value.as_ref())
+                .and_then(|value| value.get("insets")),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(insets, &serde_json::json!([2.0, 14.0, 2.0, 14.0]));
+    let first = text(&initial);
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0]["fontSize"], 19.0);
+    assert_eq!(first[0]["fontFamily"], "Menlo");
+    assert_eq!(first[0]["color"], 0x123456ffu32);
+    assert!(
+        c.commit().is_none(),
+        "unchanged inheritance emits no metadata"
+    );
+    c.apply(style_op(2, &[("color", StyleValue::Str("#abcdef"))]))
+        .unwrap();
+    let changed = text(&c.commit().unwrap());
+    assert_eq!(changed.len(), 1);
+    assert_eq!(changed[0]["color"], 0xabcdefffu32);
+    assert!(c.commit().is_none());
+}

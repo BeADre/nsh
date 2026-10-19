@@ -362,7 +362,7 @@ pub(crate) fn module(ctx: *mut JsContext, module: &ModuleSpec) -> JsValue {
     obj
 }
 
-fn add_functions(ctx: *mut JsContext, obj: JsValue, module: &ModuleSpec) {
+pub(crate) fn add_functions(ctx: *mut JsContext, obj: JsValue, module: &ModuleSpec) {
     for f in &module.functions {
         let func = module_function(ctx, module, f.name);
         let name = CString::new(f.name).unwrap_or_default();

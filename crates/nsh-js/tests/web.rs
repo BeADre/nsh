@@ -1009,3 +1009,6 @@ fn bench_first_web_global() {
     }
     println!("first web global: {:?}", total / n);
 }
+
+#[path = "web/typed_native.rs"]
+mod typed_native;

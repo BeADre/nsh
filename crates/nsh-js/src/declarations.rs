@@ -104,7 +104,7 @@ export interface IOSInputProps extends IOSProps, IOSInputHostProps {}
 /** What JS sets on a Rust component's host itself: the app's classes
  * (appended to the component's own), its inline style, its test id, layout
  * events and the ref (`ref.command(name, args)`). */
-export type ComponentHostProps = Pick<ViewProps, "class" | "classList" | "style" | "testID" | "onLayout" | "ref">;
+export type ComponentHostProps = Pick<ViewProps, "class" | "classList" | "testID" | "onLayout" | "ref"> & { style?: StyleProp<TextStyle> };
 
 export interface Insets {
   top: number;
@@ -118,8 +118,9 @@ export type OS = "ios" | "android" | "macos" | "windows" | "linux" | "web";
 
 export declare namespace JSX {
   /** What components return and children accept. */
-  type Element = YNode | ArrayElement | (() => Element) | string | number | boolean | null | undefined;
+  type Element = YNode | ArrayElement | ReadonlyArrayElement | (() => Element) | string | number | boolean | null | undefined;
   interface ArrayElement extends Array<Element> {}
+  interface ReadonlyArrayElement extends ReadonlyArray<Element> {}
   interface ElementChildrenAttribute {
     children: {};
   }

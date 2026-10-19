@@ -348,6 +348,11 @@ enum Made {
     Own(Export),
     /// A Rust component, with the functions of a module of the same name.
     Component(Arc<ComponentSpec>, Option<Arc<ModuleSpec>>),
+    NativeComponent(
+        Arc<ComponentSpec>,
+        Vec<(&'static str, Vec<&'static str>)>,
+        Option<Arc<ModuleSpec>>,
+    ),
     /// A module object.
     Module(Arc<ModuleSpec>),
     /// One function of a flat module.
@@ -426,7 +431,16 @@ impl ModuleTable {
             let specs = registry.specs();
             for spec in &specs {
                 let module = modules.iter().find(|m| m.name == spec.export).cloned();
-                out.push((spec.export.clone(), Made::Component(spec.clone(), module)));
+                let made = if registry.is_native(spec.name) {
+                    Made::NativeComponent(
+                        spec.clone(),
+                        registry.native_controlled_fields(spec.name).to_vec(),
+                        module,
+                    )
+                } else {
+                    Made::Component(spec.clone(), module)
+                };
+                out.push((spec.export.clone(), made));
             }
             for m in &modules {
                 if specs.iter().any(|s| s.export == m.name) {
@@ -596,6 +610,13 @@ unsafe extern "C" fn init(ctx: *mut JsContext, m: *mut qjs::JSModuleDef) -> c_in
                 }
                 Made::Own(Export::Value(make)) => make(ctx),
                 Made::Component(spec, module) => components::component(ctx, spec, module),
+                Made::NativeComponent(spec, controlled, module) => {
+                    let function = crate::native::component(ctx, &spec, &controlled);
+                    if let Some(module) = module {
+                        components::add_functions(ctx, function, &module);
+                    }
+                    function
+                }
                 Made::Module(spec) => components::module(ctx, &spec),
                 Made::Function(spec, f) => components::module_function(ctx, &spec, f),
                 Made::Class(def) => match crate::classes::constructor(ctx, def) {

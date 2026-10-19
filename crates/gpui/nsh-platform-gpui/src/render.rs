@@ -629,7 +629,7 @@ pub(crate) fn draw_content(cx: &mut DrawCx<'_>, view: &NshView, world: Mat4) {
     let natives = state.natives.clone();
     let culled = clip && cx.culled();
     drop(state);
-    if !culled {
+    if !culled && !crate::native::owns_children(view) {
         view.with_children(|children| {
             for child in children {
                 let origin = {
@@ -733,6 +733,8 @@ impl Element for SurfaceElement {
         crate::access::prepaint(surface, &self.focus, window, cx);
         window.set_focus_handle(&self.focus, cx);
         let hitbox = window.insert_hitbox(bounds, HitboxBehavior::BlockMouse);
+        surface.native.composed_placed.borrow_mut().clear();
+        *surface.native.subtree_events.borrow_mut() = Some((self.focus.clone(), self.view.clone()));
         // Native components and web views take the input over their boxes.
         crate::native::prepaint(surface, window, cx);
         hitbox
@@ -761,7 +763,7 @@ impl Element for SurfaceElement {
         if background.0 & 0xff != 0 {
             window.paint_quad(gpui::fill(bounds, hsla(background)));
         }
-        let drawn = {
+        let mut drawn = {
             crate::canvas::begin_pass(surface.key());
             let mut dcx = DrawCx::new(window, cx, bounds, dark);
             if surface.stats.borrow().is_some() {
@@ -776,6 +778,7 @@ impl Element for SurfaceElement {
             }
             std::mem::take(&mut dcx.drawn)
         };
+        drawn.extend(surface.native.composed_placed.borrow().iter().cloned());
         surface.items_placed(drawn);
         crate::events::install(
             &surface,

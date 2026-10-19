@@ -134,6 +134,8 @@ struct PropAttr {
     aliases: Vec<String>,
     /// `Children` made only while the view places them.
     lazy: bool,
+    /// Another JS value prop that cannot be supplied with this field.
+    exclusive: Option<String>,
 }
 
 fn prop_attr(attrs: &[Attribute]) -> syn::Result<PropAttr> {
@@ -156,6 +158,9 @@ fn prop_attr(attrs: &[Attribute]) -> syn::Result<PropAttr> {
             } else if meta.path.is_ident("alias") {
                 out.aliases.push(meta.value()?.parse::<LitStr>()?.value());
                 Ok(())
+            } else if meta.path.is_ident("exclusive") {
+                out.exclusive = Some(meta.value()?.parse::<LitStr>()?.value());
+                Ok(())
             } else if meta.path.is_ident("lazy") {
                 out.lazy = true;
                 Ok(())
@@ -177,6 +182,11 @@ fn kind_is_not_children(children: Option<&Ident>, ident: &Ident) -> bool {
 /// The last segment of a type path (`Slot`, `Option`) and its first
 /// generic argument.
 fn last_segment(ty: &Type) -> Option<(&Ident, Option<&Type>)> {
+    match ty {
+        Type::Group(group) => return last_segment(&group.elem),
+        Type::Paren(paren) => return last_segment(&paren.elem),
+        _ => {}
+    }
     let Type::Path(p) = ty else { return None };
     let seg = p.path.segments.last()?;
     let arg = match &seg.arguments {
@@ -241,6 +251,7 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
     let mut slot_arms = Vec::new();
     let mut children = None;
     let mut lazy_children = false;
+    let mut exclusive = Vec::new();
     let mut items: Option<Ident> = None;
     let mut items_js: Option<String> = None;
     // Fields of type `Prop<T>`: held in signals by an instance.
@@ -272,6 +283,9 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
             .rename
             .clone()
             .unwrap_or_else(|| camel(&ident.to_string()));
+        if let Some(other) = &attr.exclusive {
+            exclusive.push(quote!(&[#js, #other]));
+        }
         let field_doc = decl(&docs(&field.attrs));
         let kind = match last_segment(ty) {
             Some((id, Some(inner))) if id == "Option" => match last_segment(inner) {
@@ -443,6 +457,8 @@ fn props(input: DeriveInput) -> syn::Result<TokenStream2> {
         impl #impl_generics #ui::Props for #name #ty_generics #where_clause {
             const ITEMS: ::core::option::Option<&'static str> = #items_const;
             const LAZY_CHILDREN: bool = #lazy_children;
+            const HAS_REACTIVE_FIELDS: bool = #any_held;
+            const EXCLUSIVE: &'static [&'static [&'static str]] = &[#(#exclusive),*];
 
             fn doc() -> &'static str {
                 #doc

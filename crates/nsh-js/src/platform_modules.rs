@@ -7,7 +7,7 @@
 
 use std::{
     cell::RefCell,
-    ffi::{CStr, CString, c_int},
+    ffi::{CStr, c_int},
     ptr,
 };
 
@@ -339,8 +339,12 @@ unsafe extern "C" fn native_component(
     native(ctx, render_native, 1, &mut data)
 }
 
+pub(crate) fn native_factory(ctx: *mut JsContext, name: JsValue, spec: JsValue) -> JsValue {
+    native(ctx, render_native, 1, &mut [name, spec])
+}
+
 /// The strings of array `spec[key]`.
-fn names(ctx: *mut JsContext, spec: JsValue, key: &CStr) -> Vec<String> {
+pub(crate) fn names(ctx: *mut JsContext, spec: JsValue, key: &CStr) -> Vec<String> {
     let mut out = Vec::new();
     // SAFETY: reads of live values; every value got is freed.
     unsafe {
@@ -393,6 +397,16 @@ unsafe extern "C" fn render_native(
         let mut skip: Vec<String> = own.clone();
         skip.extend(events.iter().map(|e| handler_name(e)));
         skip.push("children".into());
+        let typed = unsafe {
+            let flag = qjs::JS_GetPropertyStr(ctx, spec, c"typed".as_ptr());
+            let typed = qjs::JS_ToBool(ctx, flag) > 0;
+            qjs::JS_FreeValue(ctx, flag);
+            typed
+        };
+        if typed {
+            skip.push("slots".into());
+            skip.extend(names(ctx, spec, c"slots"));
+        }
         let skip_refs: Vec<&str> = skip.iter().map(String::as_str).collect();
         dom::spread_except(ctx, node, props, &skip_refs)?;
         // Its own props, as the component's (`$name`), followed.
@@ -405,7 +419,7 @@ unsafe extern "C" fn render_native(
             r?;
         }
         if !events.is_empty() {
-            let on = native(ctx, native_event, 1, &mut [props]);
+            let on = native(ctx, native_event, 1, &mut [props, node, spec]);
             let r = dom::set_handler(
                 ctx,
                 dom::node_id(ctx, node).unwrap_or(0),
@@ -415,6 +429,9 @@ unsafe extern "C" fn render_native(
             // SAFETY: ours.
             unsafe { qjs::JS_FreeValue(ctx, on) };
             r?;
+        }
+        if typed {
+            crate::native::attach(ctx, node, props, spec)?;
         }
         Ok(())
     })();
@@ -437,42 +454,51 @@ unsafe extern "C" fn native_event(
     _magic: c_int,
     data: *mut JsValue,
 ) -> JsValue {
-    // SAFETY: one data value (the props); values got are freed.
-    unsafe {
-        let props = *data;
-        let e = arg(argc, argv, 0);
-        let name = qjs::JS_GetPropertyStr(ctx, e, c"name".as_ptr());
-        let handler = dom::string_arg(ctx, name).map(|n| {
-            let k = CString::new(handler_name(&n)).unwrap_or_default();
-            qjs::JS_GetPropertyStr(ctx, props, k.as_ptr())
-        });
-        qjs::JS_FreeValue(ctx, name);
-        let Some(handler) = handler else {
-            return qjs::JS_EXCEPTION;
-        };
-        if !qjs::JS_IsFunction(ctx, handler) {
-            qjs::JS_FreeValue(ctx, handler);
-            return UNDEFINED;
-        }
-        let mut args = [qjs::JS_GetPropertyStr(ctx, e, c"data".as_ptr())];
-        let r = qjs::JS_Call(ctx, handler, UNDEFINED, 1, args.as_mut_ptr());
-        qjs::JS_FreeValue(ctx, args[0]);
-        qjs::JS_FreeValue(ctx, handler);
-        r
-    }
+    // SAFETY: props, node and schema retained by render_native's callback.
+    unsafe { crate::native::event(ctx, *data, *data.add(1), *data.add(2), arg(argc, argv, 0)) }
 }
 
 /// `nsh/native`.
-pub(crate) const NATIVE_EXPORTS: &[Item] = &[(
-    "nativeComponent",
-    Export::Function(native_component, 2),
-    Ts::function(
-        "A component for the native component the embedding app registered as\n`name` (Swift `NshAppView.register(component:)`, Java\n`NshView.registerComponent`). It is laid out like a view, at the size its\nstyle gives it, else at the size the component reports. Its `ref` calls\ncommands: `ref.command(\"zoomTo\", { level: 3 })`. Where nothing is\nregistered under `name`, it renders an empty view.",
-        &[
-            "<P extends object = {}, E extends object = {}>(name: string, spec: NativeComponentSpec<P, E>): (props: NativeComponentProps<P, E>) => YNode",
-        ],
+pub(crate) const NATIVE_EXPORTS: &[Item] = &[
+    (
+        "nativeComponent",
+        Export::Function(native_component, 2),
+        Ts::function(
+            "A component for the native component the embedding app registered as\n`name` (Swift `NshAppView.register(component:)`, Java\n`NshView.registerComponent`). It is laid out like a view, at the size its\nstyle gives it, else at the size the component reports. Its `ref` calls\ncommands: `ref.command(\"zoomTo\", { level: 3 })`. Where nothing is\nregistered under `name`, it renders an empty view.",
+            &[
+                "<P extends object = {}, E extends object = {}>(name: string, spec: NativeComponentSpec<P, E>): (props: NativeComponentProps<P, E>) => YNode",
+            ],
+        ),
     ),
-)];
+    (
+        "componentWithChildren",
+        Export::Function(crate::native::with_children, 2),
+        Ts::function(
+            "A native component with live NSH children, named slots and controlled event acknowledgements.",
+            &[
+                "<P extends object = {}, E extends object = {}>(name: string, spec: CompositionSpec<P, E>): (props: NativeComponentProps<P, E> & CompositionProps) => YNode",
+            ],
+        ),
+    ),
+    (
+        "componentWithoutChildren",
+        Export::Function(crate::native::without_children, 2),
+        Ts::function(
+            "A native leaf using the shared controlled event protocol.",
+            &[
+                "<P extends object = {}, E extends object = {}>(name: string, spec: CompositionSpec<P, E>): (props: NativeComponentProps<P, E>) => YNode",
+            ],
+        ),
+    ),
+    (
+        "Slot",
+        Export::Function(crate::native::slot, 1),
+        Ts::function(
+            "A measured live subtree placed by the surrounding native component.",
+            &["(props: { name?: string; children?: JSX.Element }): YNode"],
+        ),
+    ),
+];
 
 /// `nsh/native`'s types.
 pub(crate) const NATIVE_TYPES: &str = r#"/** Handlers of a native component's events: `regionChange` -> `onRegionChange`. */
@@ -480,9 +506,22 @@ export type NativeEventHandlers<E> = { [K in keyof E & string as `on${Capitalize
 
 /** The props of a native component: a view's (style, classes, layout,
  * accessibility, `ref`), its own `P` and handlers of its events `E`. */
-export type NativeComponentProps<P, E> = Omit<ViewProps, "children"> & P & NativeEventHandlers<E>;
+export type NativeComponentProps<P, E> = Omit<ViewProps, "children" | "style"> & { style?: StyleProp<TextStyle> } & P & NativeEventHandlers<E>;
 
 /** What a native component takes and emits. */
+export interface CompositionProps {
+  children?: JSX.Element;
+  slots?: Readonly<Record<string, JSX.Element>>;
+}
+
+/** Native registration with per-event controlled state acknowledgements.
+ * Undefined getter values remain uncontrolled. Errors and requests never acknowledge. */
+export type CompositionSpec<P, E> = Omit<NativeComponentSpec<P, E>, "props"> & {
+  props?: readonly (keyof P & string)[];
+  commands?: readonly string[];
+  controlled?: readonly (keyof P & string)[] | Partial<Record<keyof E & string, readonly (keyof P & string)[]>>;
+};
+
 export interface NativeComponentSpec<P, E> {
   /** Its own props: sent to the component (any JSON value), each when it
    * changes. */

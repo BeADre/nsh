@@ -1,4 +1,4 @@
-//! A JS host over JSON values, for the core's tests: it reads and makes
+//! A JSON-value host shared by native widget props and the core tests. It reads and makes
 //! values as `nsh-js` does with QuickJS's, in an arena of JSON values
 //! (`undefined` apart), so props, events and results convert as they do
 //! for an app.
@@ -6,15 +6,15 @@
 use std::{cell::RefCell, rc::Rc};
 
 use super::{
-    AnyValue, CallbackHandle, ClassInstance, JsHost, JsIn, JsKind, JsOwned, JsRaw, JsResult,
-    PropDecode, PropError,
+    AnyValue, CallbackHandle, ClassInstance, JsHost, JsIn, JsKind, JsOwned, JsRaw, PropDecode,
+    PropError,
 };
 use crate::{JsonValue, NodeId};
 
 #[derive(Clone)]
 enum Val {
     Undefined,
-    Json(JsonValue),
+    Json(Rc<JsonValue>),
 }
 
 /// The host: its values live as long as it does.
@@ -22,14 +22,18 @@ enum Val {
 pub(crate) struct JsonHost {
     values: RefCell<Vec<Val>>,
     args: Vec<JsonValue>,
+    #[cfg(test)]
+    copied_nodes: std::cell::Cell<usize>,
 }
 
 impl JsonHost {
     /// A host whose call has `args`.
+    #[cfg(test)]
     pub(crate) fn with_args(args: Vec<JsonValue>) -> Self {
         Self {
             values: RefCell::default(),
             args,
+            copied_nodes: std::cell::Cell::new(0),
         }
     }
 
@@ -43,21 +47,39 @@ impl JsonHost {
         self.values.borrow()[v.0[0] as usize].clone()
     }
 
-    fn json_of(&self, v: JsRaw) -> Option<JsonValue> {
+    fn json_of(&self, v: JsRaw) -> Option<Rc<JsonValue>> {
         match self.val(v) {
             Val::Undefined => None,
             Val::Json(json) => Some(json),
         }
     }
 
+    // Reads clone only the selected child, never its containing array/object.
+    fn copy_json(&self, value: &JsonValue) -> JsonValue {
+        #[cfg(test)]
+        {
+            fn nodes(value: &JsonValue) -> usize {
+                1 + match value {
+                    JsonValue::Array(values) => values.iter().map(nodes).sum(),
+                    JsonValue::Object(values) => values.values().map(nodes).sum(),
+                    _ => 0,
+                }
+            }
+            self.copied_nodes
+                .set(self.copied_nodes.get() + nodes(value));
+        }
+        value.clone()
+    }
+
     /// `json` as a value of the host.
     pub(crate) fn value(&self, json: JsonValue) -> JsRaw {
-        self.put(Val::Json(json))
+        self.put(Val::Json(Rc::new(json)))
     }
 
     /// What `v` is (`None`: `undefined`).
     pub(crate) fn read(&self, v: JsOwned<'_>) -> Option<JsonValue> {
         self.json_of(v.into_raw())
+            .map(|value| self.copy_json(&value))
     }
 }
 
@@ -69,6 +91,7 @@ pub(crate) fn decode(decode: PropDecode, json: JsonValue) -> Result<AnyValue, Pr
 }
 
 /// The data JS hears with `event` (`None`: none).
+#[cfg(test)]
 pub(crate) fn event_data(event: &dyn super::EventToJs) -> Option<JsonValue> {
     let host = JsonHost::default();
     let data = event.data_js(&host).expect("the event's data converts");
@@ -77,7 +100,8 @@ pub(crate) fn event_data(event: &dyn super::EventToJs) -> Option<JsonValue> {
 
 /// The value a call's result settles its promise with (`None`:
 /// `undefined`), or the rejection's message.
-pub(crate) fn result(result: JsResult) -> Result<Option<JsonValue>, String> {
+#[cfg(test)]
+pub(crate) fn result(result: super::JsResult) -> Result<Option<JsonValue>, String> {
     let host = JsonHost::default();
     let value = result?.to_js_value(&host).map_err(|e| e.0)?;
     Ok(host.read(value))
@@ -87,12 +111,14 @@ impl JsHost for JsonHost {
     fn kind(&self, v: JsRaw) -> JsKind {
         match self.val(v) {
             Val::Undefined => JsKind::Undefined,
-            Val::Json(JsonValue::Null) => JsKind::Null,
-            Val::Json(JsonValue::Bool(_)) => JsKind::Bool,
-            Val::Json(JsonValue::Number(_)) => JsKind::Number,
-            Val::Json(JsonValue::String(_)) => JsKind::String,
-            Val::Json(JsonValue::Array(_)) => JsKind::Array,
-            Val::Json(JsonValue::Object(_)) => JsKind::Object,
+            Val::Json(value) => match value.as_ref() {
+                JsonValue::Null => JsKind::Null,
+                JsonValue::Bool(_) => JsKind::Bool,
+                JsonValue::Number(_) => JsKind::Number,
+                JsonValue::String(_) => JsKind::String,
+                JsonValue::Array(_) => JsKind::Array,
+                JsonValue::Object(_) => JsKind::Object,
+            },
         }
     }
 
@@ -113,17 +139,23 @@ impl JsHost for JsonHost {
     }
 
     fn index(&self, v: JsRaw, i: usize) -> Result<JsRaw, PropError> {
-        let item = self.json_of(v).and_then(|j| j.get(i).cloned());
+        let item = self
+            .json_of(v)
+            .and_then(|j| j.get(i).map(|value| Rc::new(self.copy_json(value))));
         Ok(self.put(item.map_or(Val::Undefined, Val::Json)))
     }
 
     fn field(&self, v: JsRaw, key: &str) -> Result<JsRaw, PropError> {
-        let field = self.json_of(v).and_then(|j| j.get(key).cloned());
+        let field = self
+            .json_of(v)
+            .and_then(|j| j.get(key).map(|value| Rc::new(self.copy_json(value))));
         Ok(self.put(field.map_or(Val::Undefined, Val::Json)))
     }
 
     fn to_json(&self, v: JsRaw) -> Result<JsonValue, PropError> {
-        Ok(self.json_of(v).unwrap_or(JsonValue::Null))
+        Ok(self
+            .json_of(v)
+            .map_or(JsonValue::Null, |value| self.copy_json(&value)))
     }
 
     fn describe(&self, v: JsRaw) -> String {
@@ -211,7 +243,10 @@ impl JsHost for JsonHost {
     fn new_array(&self, items: Vec<JsRaw>) -> Result<JsRaw, PropError> {
         let items = items
             .into_iter()
-            .map(|i| self.json_of(i).unwrap_or(JsonValue::Null))
+            .map(|i| {
+                self.json_of(i)
+                    .map_or(JsonValue::Null, |value| self.copy_json(&value))
+            })
             .collect();
         Ok(self.value(JsonValue::Array(items)))
     }
@@ -225,9 +260,10 @@ impl JsHost for JsonHost {
         let Some(value) = self.json_of(value) else {
             return Ok(());
         };
-        if let Val::Json(JsonValue::Object(map)) = &mut self.values.borrow_mut()[obj.0[0] as usize]
-        {
-            map.insert(key.to_owned(), value);
+        if let Val::Json(object) = &mut self.values.borrow_mut()[obj.0[0] as usize] {
+            if let JsonValue::Object(map) = Rc::make_mut(object) {
+                map.insert(key.to_owned(), self.copy_json(&value));
+            }
         }
         Ok(())
     }
@@ -253,5 +289,31 @@ impl JsHost for JsonHost {
 
     fn construct(&self, _instance: Rc<dyn ClassInstance>) -> Result<JsRaw, PropError> {
         Err(PropError("the JSON host has no classes".to_owned()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::JsValue;
+    #[test]
+    fn large_array_decode_copies_only_selected_values() {
+        let host = JsonHost::default();
+        let count = 8192;
+        let value = host.value(serde_json::json!((0..count).collect::<Vec<_>>()));
+        let first = host.json_of(value).unwrap();
+        for _ in 0..32 {
+            assert_eq!(host.len(value).unwrap(), Some(count));
+            assert_eq!(host.kind(value), JsKind::Array);
+            assert!(Rc::ptr_eq(&first, &host.json_of(value).unwrap()));
+        }
+        assert_eq!(host.copied_nodes.get(), 0);
+        let decoded = Vec::<f64>::from_js(JsIn::new(&host, value)).unwrap();
+        assert_eq!(decoded.len(), count);
+        assert_eq!(
+            host.copied_nodes.get(),
+            count,
+            "one scalar copy per element, not one entire array per element"
+        );
     }
 }

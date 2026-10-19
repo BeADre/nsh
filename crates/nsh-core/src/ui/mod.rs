@@ -45,10 +45,10 @@ mod events;
 pub(crate) mod flow;
 pub(crate) mod host;
 mod js;
-#[cfg(test)]
 pub(crate) mod json_host;
 pub(crate) mod keys;
 pub(crate) mod module;
+mod native;
 mod once;
 pub mod palette;
 mod prop;
@@ -150,7 +150,10 @@ pub use self::{
     },
     task::{Answer, DialogAnswer, ImageSize, Task},
     theme::{Theme, ThemeColors, ThemeError},
-    value::{JsValue, NodeRef, PropEnum, PropError, SharedString, TsType, TsTypes, ts_of},
+    value::{
+        Either, JsValue, NodeRef, PropEnum, PropError, Readonly, SharedString, TsType, TsTypes,
+        ts_of,
+    },
     virtual_list::{ListLayout, ViewableItems, VirtualList, virtual_list},
 };
 pub(crate) use self::{
@@ -386,3 +389,17 @@ pub mod __private {
         unreachable!("never compiles")
     }
 }
+
+/// Converts a JSON platform-native prop with its existing typed JS decoder.
+pub fn decode_json(decode: PropDecode, value: crate::JsonValue) -> Result<AnyValue, PropError> {
+    json_host::decode(decode, value)
+}
+
+/// Encodes typed native event data using the same codec as Rust UI events.
+pub fn event_json<E: Event>(event: &E) -> Result<Option<crate::JsonValue>, PropError> {
+    let host = json_host::JsonHost::default();
+    let data = event.data_js(&host)?;
+    Ok(host.read(data))
+}
+
+pub use native::NativeProps;

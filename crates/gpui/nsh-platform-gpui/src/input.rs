@@ -916,6 +916,44 @@ fn context_menu(surface: &Rc<Surface>, x: f32, y: f32) {
 
 // --- Events from the window ---------------------------------------------------------
 
+/// Whether a composed NSH subtree actually owns this pointer interaction.
+/// Plain content lets its GPUI parent handle activation; interactive NSH
+/// descendants keep their original press/selection/gesture behavior.
+pub(crate) fn composed_interactive(surface: &Surface, root: NodeId, x: f32, y: f32) -> bool {
+    let Some(scope) = surface.view(root) else {
+        return false;
+    };
+    let (lx, ly) = local(&scope, x, y);
+    let Some(hit) = pick(&scope, lx, ly, false) else {
+        return false;
+    };
+    for view in chain(&hit.view) {
+        let state = view.state();
+        if state.kind == ViewKind::Native {
+            return false;
+        }
+        let values = gesture_values(surface, &view, state.id);
+        if state.kind == ViewKind::Input
+            || crate::text::selectable(&state)
+            || has_press(state.events)
+            || state.events.contains(EventKind::Touch)
+            || state.events.contains(EventKind::PanStart)
+            || state.events.contains(EventKind::PanEnd)
+            || state.scroll.is_some()
+            || state.props.pan_activation.is_some()
+            || values.pan_x.is_some()
+            || values.pan_y.is_some()
+            || transforms(&values, state.events) != (false, false)
+        {
+            return true;
+        }
+        if view.id() == root {
+            break;
+        }
+    }
+    false
+}
+
 /// A pointer event from the window.
 pub(crate) fn pointer(surface: &Rc<Surface>, event: PointerEvent) {
     let key = if event.touch || event.pen {
@@ -1053,13 +1091,21 @@ fn tab(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
         &crate::navigation::focus_scope(surface),
         &mut stops,
     );
+    order_stops(&mut stops, |view| {
+        crate::native::tab_index(surface, view.id())
+    });
     if stops.is_empty() {
         return false;
     }
     let n = stops.len();
     let focused = crate::text_input::focused(surface)
         .or_else(|| crate::native::focused_component(surface).and_then(|id| surface.view(id)));
-    let current = focused.and_then(|f| stops.iter().position(|v| *v == f));
+    let current = focused.and_then(|f| {
+        let index = crate::native::focused_index(surface, f.id());
+        stops
+            .iter()
+            .position(|(view, stop)| *view == f && *stop == index)
+    });
     let next = match (current, m.shift) {
         (Some(i), false) if i + 1 == n => return false,
         (Some(0), true) => return false,
@@ -1068,7 +1114,7 @@ fn tab(surface: &Rc<Surface>, event: &KeyEvent) -> bool {
         (None, false) => 0,
         (None, true) => n - 1,
     };
-    focus_stop(surface, &stops[next]);
+    focus_stop(surface, &stops[next].0, stops[next].1);
     true
 }
 
@@ -1083,10 +1129,13 @@ pub(crate) fn tab_to_edge(surface: &Rc<Surface>, shift: bool) -> bool {
         &crate::navigation::focus_scope(surface),
         &mut stops,
     );
+    order_stops(&mut stops, |view| {
+        crate::native::tab_index(surface, view.id())
+    });
     let next = if shift { stops.last() } else { stops.first() };
     match next {
-        Some(view) => {
-            focus_stop(surface, view);
+        Some((view, index)) => {
+            focus_stop(surface, view, *index);
             true
         }
         None => false,
@@ -1095,17 +1144,27 @@ pub(crate) fn tab_to_edge(surface: &Rc<Surface>, shift: bool) -> bool {
 
 /// Moves the keyboard focus to `view`: a text field, or a native component
 /// (focused by [`crate::native::apply_focus`], which has the window).
-fn focus_stop(surface: &Rc<Surface>, view: &NshView) {
+fn focus_stop(surface: &Rc<Surface>, view: &NshView, index: usize) {
     if view.kind() == ViewKind::Native {
-        crate::native::tab_to(surface, view.id());
+        crate::native::tab_to(surface, view.id(), index);
     } else {
         crate::text_input::tab_to(view);
     }
 }
 
+fn order_stops<T>(stops: &mut Vec<(T, usize)>, tab_index: impl Fn(&T) -> isize) {
+    stops.retain(|(view, _)| tab_index(view) >= 0);
+    // Stable sorting keeps DOM order within equal priorities and within each
+    // compound widget's own ordered entries.
+    stops.sort_by_key(|(view, _)| {
+        let index = tab_index(view);
+        if index > 0 { (0, index) } else { (1, 0) }
+    });
+}
+
 /// The Tab stops shown under `view`, in tree order: enabled text fields and
 /// the native components that take the keyboard.
-fn collect_stops(surface: &Surface, view: &NshView, out: &mut Vec<NshView>) {
+fn collect_stops(surface: &Surface, view: &NshView, out: &mut Vec<(NshView, usize)>) {
     {
         let s = view.state();
         if s.style.hidden || s.concealed || s.props.pointer_events == PointerEvents::None {
@@ -1117,7 +1176,12 @@ fn collect_stops(surface: &Surface, view: &NshView, out: &mut Vec<NshView>) {
             _ => false,
         };
         if stop {
-            out.push(view.clone());
+            let count = if s.kind == ViewKind::Native {
+                crate::native::focus_count(surface, s.id)
+            } else {
+                1
+            };
+            out.extend((0..count).map(|index| (view.clone(), index)));
         }
     }
     view.with_children(|children| {
@@ -2175,7 +2239,10 @@ fn hover(surface: &Rc<Surface>, x: f32, y: f32, modifiers: Modifiers) {
     let hit = pick(&surface.root, x, y, true);
     // The scroll views under the mouse show their indicators.
     if let Some(hit) = &hit {
-        for v in chain(&hit.view).iter().filter(|v| v.kind() == ViewKind::Scroll) {
+        for v in chain(&hit.view)
+            .iter()
+            .filter(|v| v.kind() == ViewKind::Scroll)
+        {
             crate::scroll::hovered(surface, v);
         }
     }
@@ -2658,6 +2725,34 @@ mod tests {
     }
 
     use crate::geom::rect;
+
+    #[test]
+    fn tab_priority_preserves_equal_priority_and_compound_entry_order() {
+        let mut stops = vec![
+            (("zero-first", 0), 0),
+            (("third", 3), 0),
+            (("second-group", 2), 0),
+            (("second-group", 2), 1),
+            (("excluded", -1), 0),
+            (("zero-last", 0), 0),
+            (("second-sibling", 2), 0),
+        ];
+        order_stops(&mut stops, |(_, priority)| *priority);
+        assert_eq!(
+            stops
+                .into_iter()
+                .map(|((name, _), entry)| (name, entry))
+                .collect::<Vec<_>>(),
+            vec![
+                ("second-group", 0),
+                ("second-group", 1),
+                ("second-sibling", 0),
+                ("third", 0),
+                ("zero-first", 0),
+                ("zero-last", 0)
+            ]
+        );
+    }
 
     #[test]
     fn picks_the_innermost_topmost_view() {

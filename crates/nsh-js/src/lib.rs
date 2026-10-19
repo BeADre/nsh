@@ -26,6 +26,7 @@ mod hot;
 mod keymap;
 mod list;
 mod modules;
+mod native;
 mod navigation;
 mod net;
 mod platform_modules;

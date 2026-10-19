@@ -294,7 +294,7 @@ macro_rules! number {
 }
 
 number!(any: f32, f64);
-number!(whole: i32, i64, u32, u64, usize);
+number!(whole: i32, i64, u8, u32, u64, usize);
 
 impl JsValue for SharedString {
     fn ts_type(_types: &mut TsTypes) -> String {
@@ -391,6 +391,56 @@ impl JsValue for JsonValue {
     }
 }
 
+/// A JSON object with dynamic keys, preserving its record type in declarations.
+impl JsValue for serde_json::Map<String, JsonValue> {
+    fn ts_type(_types: &mut TsTypes) -> String {
+        "Record<string, unknown>".into()
+    }
+
+    fn from_js(value: JsIn<'_>) -> Result<Self, PropError> {
+        match value.to_json()? {
+            JsonValue::Object(fields) => Ok(fields),
+            _ => Err(value.expected("a JSON object")),
+        }
+    }
+
+    fn to_js<'a>(&self, host: &'a dyn JsHost) -> Result<JsOwned<'a>, PropError> {
+        Ok(JsOwned::new(
+            host,
+            host.json(&JsonValue::Object(self.clone()))?,
+        ))
+    }
+}
+
+/// A typed JSON record. Keys are enumerated from one JSON object snapshot;
+/// each value still uses `T`'s normal JS codec and generated declaration.
+impl<T: JsValue> JsValue for std::collections::BTreeMap<String, T> {
+    fn ts_type(types: &mut TsTypes) -> String {
+        format!("Record<string, {}>", T::ts_type(types))
+    }
+    fn from_js(value: JsIn<'_>) -> Result<Self, PropError> {
+        let JsonValue::Object(fields) = value.to_json()? else {
+            return Err(value.expected("a JSON object"));
+        };
+        fields
+            .into_iter()
+            .map(|(key, _)| {
+                let field = value.field(&key)?;
+                let decoded = T::from_js(field.get())
+                    .map_err(|error| PropError(format!("{key}: {error}")))?;
+                Ok((key, decoded))
+            })
+            .collect()
+    }
+    fn to_js<'a>(&self, host: &'a dyn JsHost) -> Result<JsOwned<'a>, PropError> {
+        let object = JsOwned::new(host, host.new_object()?);
+        for (key, value) in self {
+            host.set_field(object.get().raw(), key, value.to_js(host)?.into_raw())?;
+        }
+        Ok(object)
+    }
+}
+
 /// `null` (and `undefined`) is `None`.
 impl<T: JsValue> JsValue for Option<T> {
     fn ts_type(types: &mut TsTypes) -> String {
@@ -410,6 +460,19 @@ impl<T: JsValue> JsValue for Option<T> {
             Some(v) => v.to_js(host),
             None => Ok(JsOwned::new(host, host.null())),
         }
+    }
+}
+
+// Rust allocation indirection does not change the JavaScript value or type.
+impl<T: JsValue> JsValue for Box<T> {
+    fn ts_type(types: &mut TsTypes) -> String {
+        T::ts_type(types)
+    }
+    fn from_js(value: JsIn<'_>) -> Result<Self, PropError> {
+        T::from_js(value).map(Box::new)
+    }
+    fn to_js<'a>(&self, host: &'a dyn JsHost) -> Result<JsOwned<'a>, PropError> {
+        self.as_ref().to_js(host)
     }
 }
 
@@ -441,5 +504,102 @@ impl<T: JsValue> JsValue for Vec<T> {
         }
         let raws = items.into_iter().map(JsOwned::into_raw).collect();
         Ok(JsOwned::new(host, host.new_array(raws)?))
+    }
+}
+
+impl<T: JsValue, const N: usize> JsValue for [T; N] {
+    fn ts_type(types: &mut TsTypes) -> String {
+        let item = T::ts_type(types);
+        format!("[{}]", vec![item; N].join(", "))
+    }
+
+    fn from_js(value: JsIn<'_>) -> Result<Self, PropError> {
+        if value.array_len()? != Some(N) {
+            return Err(value.expected(&format!("an array of exactly {N} items")));
+        }
+        let items = Vec::<T>::from_js(value)?;
+        items
+            .try_into()
+            .map_err(|_| value.expected("a fixed-length array"))
+    }
+
+    fn to_js<'a>(&self, host: &'a dyn JsHost) -> Result<JsOwned<'a>, PropError> {
+        let items = self
+            .iter()
+            .map(|item| item.to_js(host))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(JsOwned::new(
+            host,
+            host.new_array(items.into_iter().map(JsOwned::into_raw).collect())?,
+        ))
+    }
+}
+
+/// A read-only TypeScript input with the same Rust value and JS codec as `T`.
+/// Use it where an API accepts immutable arrays or objects, without changing
+/// the existing mutable declarations of `Vec<T>` and other shared types.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct Readonly<T>(T);
+
+impl<T> Readonly<T> {
+    /// Wraps a value without copying it.
+    pub fn new(value: T) -> Self {
+        Self(value)
+    }
+    /// Returns the underlying Rust value.
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+}
+impl<T> From<T> for Readonly<T> {
+    fn from(value: T) -> Self {
+        Self::new(value)
+    }
+}
+impl<T> Deref for Readonly<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
+impl<T: JsValue> JsValue for Readonly<T> {
+    fn ts_type(types: &mut TsTypes) -> String {
+        format!("Readonly<{}>", T::ts_type(types))
+    }
+    fn from_js(value: JsIn<'_>) -> Result<Self, PropError> {
+        T::from_js(value).map(Self::new)
+    }
+    fn to_js<'a>(&self, host: &'a dyn JsHost) -> Result<JsOwned<'a>, PropError> {
+        self.0.to_js(host)
+    }
+}
+
+/// A typed JS union. The first matching decoder wins; no untyped JSON escape
+/// hatch is introduced into generated declarations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Either<A, B> {
+    /// The first alternative.
+    Left(A),
+    /// The second alternative.
+    Right(B),
+}
+impl<A: JsValue, B: JsValue> JsValue for Either<A, B> {
+    fn ts_type(types: &mut TsTypes) -> String {
+        format!("({} | {})", A::ts_type(types), B::ts_type(types))
+    }
+    fn from_js(value: JsIn<'_>) -> Result<Self, PropError> {
+        match A::from_js(value) {
+            Ok(value) => Ok(Self::Left(value)),
+            Err(first) => B::from_js(value)
+                .map(Self::Right)
+                .map_err(|second| PropError(format!("{first}; or {second}"))),
+        }
+    }
+    fn to_js<'a>(&self, host: &'a dyn JsHost) -> Result<JsOwned<'a>, PropError> {
+        match self {
+            Self::Left(value) => value.to_js(host),
+            Self::Right(value) => value.to_js(host),
+        }
     }
 }

@@ -44,6 +44,7 @@ mod navigation;
 mod net;
 mod render;
 mod rt;
+pub mod runner;
 mod script;
 mod scroll;
 mod stats;
@@ -64,5 +65,8 @@ pub use nsh_engine::{App, Bundle, Root};
 pub use crate::{
     app::{AppOptions, AppSource, AppView, open_app_window, run_app, set_ui_sets},
     image::AssetBase,
-    native::{ComponentContext, ComponentFactory, Components, NativeComponent},
+    native::{
+        ComponentContext, ComponentFactory, Components, NativeComponent, NativeRegistry,
+        NativeSubtree, TypedComponentContext, TypedNativeComponent, typed_component,
+    },
 };

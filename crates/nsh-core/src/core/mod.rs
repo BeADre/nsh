@@ -189,6 +189,7 @@ impl Kind {
         matches!(
             self,
             Kind::View
+                | Kind::Native
                 | Kind::Scroll
                 | Kind::List
                 | Kind::Cell
@@ -265,6 +266,8 @@ struct ComponentState {
     props: Vec<(Arc<str>, crate::JsonValue)>,
     /// Properties changed since the last commit.
     changed: Vec<Arc<str>>,
+    /// Last inherited native text style sent to the platform.
+    native_text_style: Option<ResolvedTextStyle>,
 }
 
 #[derive(Debug)]
@@ -1190,6 +1193,7 @@ impl<M: TextEngine> Core<M> {
         }
         self.update_lists(relayout);
         self.flush_text();
+        self.flush_native_text();
         // What this turn's status bar settings add up to, once.
         if let Some(config) = StatusBars::take_changed(&self.components.status_bars) {
             self.commands
@@ -3137,6 +3141,45 @@ impl<M: TextEngine> Core<M> {
         }
     }
 
+    /// Shares resolved inheritance with native controls without changing the
+    /// old native rendering contract. Hosts apply it only when they opt in.
+    fn flush_native_text(&mut self) {
+        let natives = self
+            .nodes
+            .iter()
+            .filter_map(|(key, node)| {
+                (node.kind == Kind::Native && node.created).then_some(key as Key)
+            })
+            .collect::<Vec<_>>();
+        for key in natives {
+            let text_style = scaled(
+                self.inherited_text_style(key)
+                    .inherit(&self.nodes[key as usize].text_style),
+                self.nodes[key as usize]
+                    .paragraph
+                    .font_multiplier(self.font_scale),
+            );
+            let component = self.nodes[key as usize]
+                .component
+                .as_mut()
+                .expect("native component");
+            if component.native_text_style != Some(text_style) {
+                component.native_text_style = Some(text_style);
+                self.mount.push(MountItem::ComponentProps {
+                    id: self.nodes[key as usize].id,
+                    props: vec![("__nshText".into(), Some(serde_json::json!({
+                        "color": text_style.color.0,
+                        "fontSize": text_style.font_size,
+                        "fontFamily": text_style.font_family.map(|family| family.name().to_string()),
+                        "fontWeight": text_style.font_weight,
+                        "italic": text_style.italic,
+                        "lineHeight": text_style.line_height,
+                    })))],
+                });
+            }
+        }
+    }
+
     /// The text style `key` inherits from the views around it, as CSS
     /// does: `color` / `text-white` on a container styles the text in it
     /// (React Native views ignore text styles).
@@ -3917,6 +3960,27 @@ impl<M: TextEngine> Core<M> {
         }
         self.set_frame(key, frame);
         let kind = self.nodes[key as usize].kind;
+        if kind == Kind::Native {
+            // GPUI owns the final placement of native children, but explicit
+            // NSH width/height declarations remain constraints of that child.
+            let style = self.layout.style(layout).expect("native layout style");
+            let width = (!style.size.width.is_auto()).then_some(frame.width);
+            let height = (!style.size.height.is_auto()).then_some(frame.height);
+            let measured = self.layout.layout(layout).expect("native layout");
+            let insets = [
+                measured.padding.top + measured.border.top,
+                measured.padding.right + measured.border.right,
+                measured.padding.bottom + measured.border.bottom,
+                measured.padding.left + measured.border.left,
+            ];
+            self.mount.push(MountItem::ComponentProps {
+                id: self.nodes[key as usize].id,
+                props: vec![(
+                    "__nshLayout".into(),
+                    Some(serde_json::json!({ "width": width, "height": height, "insets": insets })),
+                )],
+            });
+        }
         if kind == Kind::Input {
             let content = content_box(self.layout.layout(layout).expect("taffy layout"));
             let node = &mut self.nodes[key as usize];

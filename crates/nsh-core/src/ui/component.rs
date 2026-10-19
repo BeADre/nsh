@@ -245,6 +245,15 @@ pub trait Props: Clone + PartialEq + 'static {
     #[doc(hidden)]
     const LAZY_CHILDREN: bool = false;
 
+    /// Whether derived fields include `Prop<T>` handles into NSH's owner graph.
+    /// Platform-native snapshots must use plain values on the widget thread.
+    const HAS_REACTIVE_FIELDS: bool = false;
+
+    /// Value props that may not be provided together. Derive this with
+    /// `#[prop(exclusive = "otherJsName")]`; native updates are checked at
+    /// the complete batch boundary, so changing ownership stays atomic.
+    const EXCLUSIVE: &'static [&'static [&'static str]] = &[];
+
     /// The component's documentation (the struct's doc comment).
     fn doc() -> &'static str;
 
@@ -568,6 +577,9 @@ struct ClassType {
 #[derive(Clone, Default)]
 pub struct Registry {
     types: Arc<FxHashMap<&'static str, ComponentType>>,
+    native: Arc<FxHashMap<&'static str, Arc<ComponentSpec>>>,
+    native_controls: Arc<FxHashMap<&'static str, Vec<(&'static str, Vec<&'static str>)>>>,
+    native_exclusive: Arc<FxHashMap<&'static str, Vec<Vec<&'static str>>>>,
     modules: Arc<FxHashMap<&'static str, ModuleType>>,
     /// By the specifier of their set and their name: the sets merged for
     /// the core may have classes of the same name.
@@ -609,6 +621,12 @@ impl Registry {
     #[track_caller]
     pub fn register<C: Component>(&mut self) -> &mut Self {
         let spec = ComponentSpec::of::<C>();
+        assert!(
+            !self.native.contains_key(spec.name)
+                && !self.native.values().any(|s| s.export == spec.export),
+            "native component conflicts with `{}`",
+            spec.export
+        );
         let types = Arc::make_mut(&mut self.types);
         if let Some(old) = types.get(spec.name) {
             let set = self.ui_set.or(self.namespace);
@@ -642,6 +660,127 @@ impl Registry {
         let mut refs = Vec::new();
         (C::METHODS.refs)(&mut refs);
         self.classes_named(refs)
+    }
+
+    /// Exports an existing platform-native component using the same typed
+    /// props, events and declarations as Rust UI components. No Rust view or
+    /// component instance is created: the platform retains its real widget.
+    pub fn register_native<P: Props, E: Event>(
+        &mut self,
+        name: &'static str,
+        export: &'static str,
+    ) -> &mut Self {
+        assert!(
+            !self.types.contains_key(name) && !self.native.contains_key(name),
+            "component `{name}` is registered twice"
+        );
+        assert!(
+            !self.specs().iter().any(|s| s.export == export),
+            "component export `{export}` is registered twice"
+        );
+        assert!(
+            !self.classes.keys().any(|(_, n)| *n == export),
+            "component export `{export}` conflicts with a class"
+        );
+        assert!(
+            !P::HAS_REACTIVE_FIELDS,
+            "native props must use plain value fields, not owner-bound Prop<T>"
+        );
+        let mut types = TsTypes::default();
+        let props = P::spec(&mut types);
+        assert!(
+            !P::LAZY_CHILDREN,
+            "native lazy children require a platform visibility contract"
+        );
+        assert!(
+            !props.iter().any(|p| p.kind == PropKind::Items),
+            "native Items require an explicit delegate contract, not automatic row serialization"
+        );
+        for group in P::EXCLUSIVE {
+            assert!(
+                group.len() > 1
+                    && group.iter().all(|field| props
+                        .iter()
+                        .any(|p| p.name == *field && p.kind == PropKind::Value)),
+                "invalid exclusive value props in native component `{name}`"
+            );
+        }
+        Arc::make_mut(&mut self.native_exclusive).insert(
+            name,
+            P::EXCLUSIVE.iter().map(|group| group.to_vec()).collect(),
+        );
+        Arc::make_mut(&mut self.native).insert(
+            name,
+            Arc::new(ComponentSpec {
+                name,
+                export: export.to_owned(),
+                doc: P::doc(),
+                props,
+                events: E::spec(&mut types),
+                methods: Vec::new(),
+                types,
+                lazy_children: false,
+            }),
+        );
+        self
+    }
+
+    /// Associates mutation events with their accepted controlled value props.
+    /// After each handler JS acknowledges the current getter values, including
+    /// unchanged values (a veto). Names are checked against the typed schema.
+    pub fn native_controlled(
+        &mut self,
+        name: &'static str,
+        mapping: &[(&'static str, &[&'static str])],
+    ) -> &mut Self {
+        let spec = self
+            .native
+            .get(name)
+            .unwrap_or_else(|| panic!("unknown native component `{name}`"));
+        for (event, fields) in mapping {
+            let lower = event.to_ascii_lowercase();
+            assert!(
+                !["error", "request", "snapshot"]
+                    .iter()
+                    .any(|word| lower.contains(word)),
+                "non-mutation native event `{event}` cannot acknowledge props"
+            );
+            assert!(
+                spec.events.iter().any(|e| e.name == *event),
+                "unknown native event `{event}`"
+            );
+            for field in *fields {
+                assert!(
+                    spec.props
+                        .iter()
+                        .any(|p| p.name == *field && p.kind == PropKind::Value),
+                    "unknown native value prop `{field}`"
+                );
+            }
+        }
+        Arc::make_mut(&mut self.native_controls).insert(
+            name,
+            mapping
+                .iter()
+                .map(|(event, fields)| (*event, fields.to_vec()))
+                .collect(),
+        );
+        self
+    }
+
+    /// The mutually exclusive native value props, from `Props::EXCLUSIVE`.
+    pub fn native_exclusive_fields(&self, name: &str) -> &[Vec<&'static str>] {
+        self.native_exclusive.get(name).map_or(&[], Vec::as_slice)
+    }
+
+    /// Whether `name` is rendered by the platform, without a Rust UI view.
+    pub fn is_native(&self, name: &str) -> bool {
+        self.native.contains_key(name)
+    }
+
+    /// The controlled fields acknowledged after each native mutation event.
+    pub fn native_controlled_fields(&self, name: &str) -> &[(&'static str, Vec<&'static str>)] {
+        self.native_controls.get(name).map_or(&[], Vec::as_slice)
     }
 
     /// Registers module `M`: its functions on a JS object named
@@ -726,6 +865,7 @@ impl Registry {
         }
         if self.modules.contains_key(def.name)
             || self.types.values().any(|t| t.spec.export == def.name)
+            || self.native.values().any(|spec| spec.export == def.name)
         {
             panic!(
                 "class `{type_name}` is named `{}` like a module or a component{}: rename one",
@@ -773,10 +913,36 @@ impl Registry {
         for set in sets {
             let types = Arc::make_mut(&mut out.types);
             for (name, ty) in set.types.iter() {
+                assert!(
+                    !out.native.contains_key(name),
+                    "component `{name}` is registered by two UI sets"
+                );
                 if let Some(old) = types.insert(name, ty.clone()) {
                     panic!("{}, by two UI sets", same_name(name, old.id, ty.id, None));
                 }
             }
+            for (name, spec) in set.native.iter() {
+                assert!(
+                    !out.types.contains_key(name),
+                    "component `{name}` is registered by two UI sets"
+                );
+                assert!(
+                    Arc::make_mut(&mut out.native)
+                        .insert(name, spec.clone())
+                        .is_none(),
+                    "native component `{name}` is registered by two UI sets"
+                );
+            }
+            Arc::make_mut(&mut out.native_controls).extend(
+                set.native_controls
+                    .iter()
+                    .map(|(name, fields)| (*name, fields.clone())),
+            );
+            Arc::make_mut(&mut out.native_exclusive).extend(
+                set.native_exclusive
+                    .iter()
+                    .map(|(name, fields)| (*name, fields.clone())),
+            );
         }
         out
     }
@@ -859,7 +1025,12 @@ impl Registry {
 
     /// The registered components, by export.
     pub fn specs(&self) -> Vec<Arc<ComponentSpec>> {
-        let mut specs: Vec<_> = self.types.values().map(|t| t.spec.clone()).collect();
+        let mut specs: Vec<_> = self
+            .types
+            .values()
+            .map(|t| t.spec.clone())
+            .chain(self.native.values().cloned())
+            .collect();
         specs.sort_by(|a, b| a.export.cmp(&b.export).then(a.name.cmp(b.name)));
         specs
     }
@@ -1001,10 +1172,15 @@ pub fn declarations(registry: &Registry, omit: &[&str]) -> String {
             out.push_str("}\n\n");
             "Omit<ComponentHostProps, \"ref\">"
         };
+        let exclusive = registry.native_exclusive_fields(spec.name);
+        let base = if exclusive.is_empty() {
+            spec.export.clone()
+        } else {
+            format!("{}Base", spec.export)
+        };
         let _ = writeln!(
             out,
-            "export interface {}Props{generic} extends {host}{extends} {{",
-            spec.export
+            "export interface {base}Props{generic} extends {host}{extends} {{"
         );
         if !spec.methods.is_empty() {
             let _ = writeln!(
@@ -1012,6 +1188,9 @@ pub fn declarations(registry: &Registry, omit: &[&str]) -> String {
                 "  ref?: {0}Ref | ((ref: {0}Ref) => void);",
                 spec.export
             );
+        }
+        if registry.is_native(spec.name) {
+            out.push_str("  /** Arbitrary live named subtrees, including names supplied by delegates. */\n  slots?: Readonly<Record<string, JSX.Element>>;\n");
         }
         for p in spec.props.iter().filter(|p| p.kind != PropKind::Items) {
             doc(&mut out, "  ", p.doc);
@@ -1029,6 +1208,28 @@ pub fn declarations(registry: &Registry, omit: &[&str]) -> String {
             let _ = writeln!(out, "  {handler}?: ({arg}) => void;");
         }
         out.push_str("}\n\n");
+        if !exclusive.is_empty() {
+            let _ = write!(out, "export type {}Props = {base}Props", spec.export);
+            for group in exclusive {
+                out.push_str(" & (");
+                for (index, selected) in group.iter().enumerate() {
+                    if index > 0 {
+                        out.push_str(" | ");
+                    }
+                    out.push_str("{ ");
+                    for field in group {
+                        if field == selected {
+                            let _ = write!(out, "{field}?: {base}Props[\"{field}\"]; ");
+                        } else {
+                            let _ = write!(out, "{field}?: never; ");
+                        }
+                    }
+                    out.push('}');
+                }
+                out.push(')');
+            }
+            out.push_str(";\n\n");
+        }
         if omit.contains(&spec.export.as_str()) {
             continue;
         }

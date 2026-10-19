@@ -340,6 +340,45 @@ impl AppView {
         self.surface.set_error_handler(Box::new(f));
     }
 
+    /// Connects an embedded view to NSH's development server, retaining its
+    /// normal hot updates, reload shortcut, assets and error overlay.
+    #[cfg(feature = "dev")]
+    pub fn connect_dev_server(view: &Entity<Self>, url: String, cx: &mut GpuiApp) {
+        crate::dev::start(view, url, cx);
+    }
+
+    /// Installs NSH's standalone window commands and chrome for a view whose
+    /// window was created by an embedding framework's root helper.
+    pub fn own_window(&self) {
+        crate::chrome::set_standalone(&self.surface, &self.options.borrow().title);
+        crate::system::own_window(&self.surface);
+    }
+
+    /// Whether this view's effective appearance is dark, after NSH's app,
+    /// embedding host and system appearance preferences have been resolved.
+    pub fn is_dark(&self) -> bool {
+        crate::system::dark(&self.surface)
+    }
+
+    /// Window options matching NSH's standalone chrome and platform commands,
+    /// for a window opened through an embedding framework's root helper.
+    pub fn window_options(options: &AppOptions, cx: &GpuiApp) -> gpui::WindowOptions {
+        let size = gpui::size(
+            gpui::px(options.size.0 as f32),
+            gpui::px(options.size.1 as f32),
+        );
+        gpui::WindowOptions {
+            window_bounds: Some(gpui::WindowBounds::Windowed(gpui::Bounds::centered(
+                None, size, cx,
+            ))),
+            titlebar: Some(crate::chrome::titlebar_options(&options.title)),
+            app_id: Some(options.app_id.clone()),
+            window_decorations: Some(gpui::WindowDecorations::Server),
+            inactive_frame_interval: None,
+            ..Default::default()
+        }
+    }
+
     pub(crate) fn surface(&self) -> &Rc<Surface> {
         &self.surface
     }
@@ -374,7 +413,7 @@ impl AppView {
         // does not follow the surface's tree) on one of its components.
         let on_view =
             self.focus.is_focused(window) && crate::text_input::focused(&self.surface).is_none();
-        if !on_view && !crate::native::focused(&self.surface, window) {
+        if !on_view && !crate::native::focused(&self.surface, window, cx) {
             return;
         }
         crate::input::tab_to_edge(&self.surface, m.shift);
@@ -425,7 +464,7 @@ impl AppView {
                 window.focus_next(cx);
             }
             let inside =
-                self.focus.is_focused(window) || crate::native::focused(&self.surface, window);
+                self.focus.is_focused(window) || crate::native::focused(&self.surface, window, cx);
             if !inside {
                 return true;
             }
@@ -608,24 +647,7 @@ pub fn open_app_window(
     options: AppOptions,
     cx: &mut GpuiApp,
 ) -> anyhow::Result<gpui::WindowHandle<AppView>> {
-    let size = gpui::size(
-        gpui::px(options.size.0 as f32),
-        gpui::px(options.size.1 as f32),
-    );
-    let bounds = gpui::Bounds::centered(None, size, cx);
-    let window_options = gpui::WindowOptions {
-        window_bounds: Some(gpui::WindowBounds::Windowed(bounds)),
-        titlebar: Some(crate::chrome::titlebar_options(&options.title)),
-        app_id: Some(options.app_id.clone()),
-        // Linux: the window manager's decorations until the app hides the
-        // title bar (`crate::chrome`).
-        window_decorations: Some(gpui::WindowDecorations::Server),
-        // GPUI draws unfocused windows at 30 fps by default: animations
-        // run at the display's rate wherever the keyboard is, as in the
-        // other backends.
-        inactive_frame_interval: None,
-        ..Default::default()
-    };
+    let window_options = AppView::window_options(&options, cx);
     let script = options.script.clone();
     let handle = cx.open_window(window_options, move |window, cx| {
         let title = options.title.clone();

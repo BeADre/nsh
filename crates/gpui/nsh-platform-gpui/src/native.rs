@@ -36,6 +36,10 @@
 //!
 //! [`MountItem::Component`]: nsh_core::MountItem::Component
 
+mod subtree;
+mod typed;
+pub use subtree::NativeSubtree;
+pub use typed::{NativeRegistry, TypedComponentContext, TypedNativeComponent, typed_component};
 mod video;
 mod web;
 
@@ -47,7 +51,7 @@ use std::{
 
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, ContentMask, FocusHandle, HitboxBehavior, IntoElement,
-    ParentElement, Pixels, Styled, Window, px,
+    ParentElement, Pixels, Styled, Window, prelude::FluentBuilder, px,
 };
 use nsh_core::{
     Command, EventKind, EventPayload, NativeProps, NodeId, PayloadValue, Rect, Size, ViewKind,
@@ -128,11 +132,24 @@ pub trait NativeComponent {
         let _ = bounds;
     }
 
-    /// The focus handle Tab moves to (a clone of the widget's), if the
-    /// component takes the keyboard: it joins the surface's Tab order with
-    /// its text fields, at the container's place in the tree.
+    /// The widget's primary focus handle, including programmatic-only focus.
+    /// By default it is also a Tab stop; override `focus_handles` separately
+    /// when pointer or command focus must remain outside the Tab order.
     fn focus_handle(&self) -> Option<FocusHandle> {
         None
+    }
+
+    /// The component's Tab stops in visual order. Compound components may
+    /// expose more than one control; a roving group returns only its active
+    /// entry. Disabled controls must be omitted. Defaults to `focus_handle`.
+    fn focus_handles(&self) -> Vec<FocusHandle> {
+        self.focus_handle().into_iter().collect()
+    }
+
+    /// Sequential focus priority: positive values precede zero in ascending
+    /// order; negative values exclude the component from Tab traversal.
+    fn tab_index(&self) -> isize {
+        0
     }
 
     /// Prop `name` changed (`None`: removed). Every prop the app set comes
@@ -162,6 +179,7 @@ pub struct ComponentContext {
     control: EngineControl,
     /// The surface's key, to draw again from any thread.
     surface: u64,
+    generation: u64,
 }
 
 impl std::fmt::Debug for ComponentContext {
@@ -173,6 +191,105 @@ impl std::fmt::Debug for ComponentContext {
 }
 
 impl ComponentContext {
+    /// Applies the node's resolved NSH text inheritance to an unstyled native
+    /// element. This opt-in leaves existing styled native components unchanged
+    /// and adds no wrapper element or independent text-style parser.
+    pub fn inherit_text_style<T: Styled>(&self, mut element: T) -> T {
+        if let Some(surface) = Surface::by_key(self.surface)
+            && surface.generation() == self.generation
+            && let Some(style) = surface.native.text_styles.borrow().get(&self.id)
+        {
+            gpui::Refineable::refine(element.text_style(), style);
+        }
+        element
+    }
+
+    /// Uses NSH's already-resolved padding and border widths as the content
+    /// insets of an unstyled native element. The NSH painter owns its visual
+    /// border; do not add another native border around this content box.
+    pub fn inherit_content_insets<T: Styled>(&self, element: T) -> T {
+        let insets = Surface::by_key(self.surface)
+            .filter(|surface| surface.generation() == self.generation)
+            .and_then(|surface| {
+                surface
+                    .native
+                    .content_insets
+                    .borrow()
+                    .get(&self.id)
+                    .copied()
+            });
+        match insets {
+            Some([top, right, bottom, left]) => element
+                .pt(px(top))
+                .pr(px(right))
+                .pb(px(bottom))
+                .pl(px(left)),
+            None => element,
+        }
+    }
+
+    /// Live NSH children as GPUI elements. Their reactive owners, node IDs,
+    /// event handlers and native component entities stay in the NSH tree.
+    /// Call on the GPUI thread while constructing the current frame.
+    pub fn children(&self) -> Vec<NativeSubtree> {
+        let Some(surface) = Surface::by_key(self.surface) else {
+            return Vec::new();
+        };
+        if surface.generation() != self.generation {
+            return Vec::new();
+        }
+        let Some(view) = surface.view(self.id) else {
+            return Vec::new();
+        };
+        surface.native.composition_used.set(true);
+        view.child_views()
+            .into_iter()
+            .filter(|child| {
+                surface
+                    .native
+                    .slots
+                    .borrow()
+                    .get(&child.id())
+                    .is_none_or(String::is_empty)
+            })
+            .map(|child| NativeSubtree::new(self.surface, child.id()))
+            .collect()
+    }
+
+    /// A named live NSH slot. A slot is mounted by the JS bridge as a
+    /// native node with the reserved `__nshSlot` prop.
+    pub fn slot(&self, name: &str) -> Option<NativeSubtree> {
+        let surface = Surface::by_key(self.surface)?;
+        if surface.generation() != self.generation {
+            return None;
+        }
+        let view = surface.view(self.id)?;
+        surface.native.composition_used.set(true);
+        if std::env::var_os("NSH_BRIDGE_TRACE").is_some() {
+            eprintln!(
+                "NSH bridge slot owner={} name={name:?} children={:?} named={:?}",
+                self.id,
+                view.child_views()
+                    .iter()
+                    .map(NshView::id)
+                    .collect::<Vec<_>>(),
+                surface.native.slots.borrow()
+            );
+        }
+        view.child_views()
+            .into_iter()
+            .find(|child| {
+                surface
+                    .native
+                    .slots
+                    .borrow()
+                    .get(&child.id())
+                    .is_some_and(|slot| slot == name)
+                    && !child.child_views().is_empty()
+            })
+            .map(|child| NativeSubtree::new(self.surface, child.id()))
+    }
+
     /// Emits event `name` with `data`: the handler `on<Name>` gets it.
     pub fn emit(&self, name: &str, data: JsonValue) {
         self.control.dispatch_event(
@@ -251,6 +368,9 @@ impl Components {
     }
 }
 
+type LayoutHint = (Option<f32>, Option<f32>);
+type ComposedPlacement = (Rc<dyn Hosted>, Bounds<Pixels>);
+
 /// The native controls of one surface.
 #[derive(Default)]
 pub(crate) struct NativeState {
@@ -262,11 +382,22 @@ pub(crate) struct NativeState {
     access: RefCell<Option<Arc<Access>>>,
     /// The controls, by node.
     hosts: RefCell<FxHashMap<NodeId, Host>>,
+    pub(crate) slots: RefCell<FxHashMap<NodeId, String>>,
+    pub(crate) composition_used: std::cell::Cell<bool>,
+    pub(crate) pointer_down_dispatched: std::cell::Cell<bool>,
+    pub(crate) pointer_move_dispatched: std::cell::Cell<bool>,
+    slot_widths: RefCell<FxHashMap<NodeId, f32>>,
+    layout_hints: RefCell<FxHashMap<NodeId, LayoutHint>>,
+    text_styles: RefCell<FxHashMap<NodeId, gpui::TextStyleRefinement>>,
+    content_insets: RefCell<FxHashMap<NodeId, [f32; 4]>>,
+    pub(crate) composed_placed: RefCell<Vec<ComposedPlacement>>,
+    pub(crate) subtree_events:
+        RefCell<Option<(FocusHandle, gpui::WeakEntity<crate::app::AppView>)>>,
     /// The focus handles inside components that the last prepaint found
     /// focused, with their nodes: keys go to them, not to nsh.
     focused: RefCell<Vec<(NodeId, FocusHandle)>>,
     /// The component Tab moved to, focused by [`apply_focus`].
-    tab_to: std::cell::Cell<Option<NodeId>>,
+    tab_to: std::cell::Cell<Option<(NodeId, usize)>>,
 }
 
 impl NativeState {
@@ -296,6 +427,14 @@ impl NativeState {
         let hosts = std::mem::take(&mut *self.hosts.borrow_mut());
         drop(hosts);
         self.focused.borrow_mut().clear();
+        self.slots.borrow_mut().clear();
+        self.slot_widths.borrow_mut().clear();
+        self.layout_hints.borrow_mut().clear();
+        self.text_styles.borrow_mut().clear();
+        self.content_insets.borrow_mut().clear();
+        self.composed_placed.borrow_mut().clear();
+        self.composition_used.set(false);
+        self.subtree_events.borrow_mut().take();
         self.tab_to.set(None);
     }
 }
@@ -359,6 +498,7 @@ pub(crate) fn create(surface: &Rc<Surface>, view: &NshView) {
             component: RefCell::new(None),
             element: RefCell::new(None),
             pending: RefCell::default(),
+            reported_size: std::cell::Cell::new(None),
         })),
     };
     fill(view, &host.item());
@@ -368,6 +508,15 @@ pub(crate) fn create(surface: &Rc<Surface>, view: &NshView) {
 /// A view was deleted: its control stops (a removal animation may keep
 /// the view on screen a little longer).
 pub(crate) fn deleted(surface: &Rc<Surface>, view: &NshView) {
+    surface.native.slots.borrow_mut().remove(&view.id());
+    surface.native.slot_widths.borrow_mut().remove(&view.id());
+    surface.native.layout_hints.borrow_mut().remove(&view.id());
+    surface.native.text_styles.borrow_mut().remove(&view.id());
+    surface
+        .native
+        .content_insets
+        .borrow_mut()
+        .remove(&view.id());
     let host = surface.native.hosts.borrow_mut().remove(&view.id());
     drop(host);
 }
@@ -401,7 +550,14 @@ pub(crate) fn props(surface: &Rc<Surface>, view: &NshView, props: &NativeProps) 
 
 /// `Component`.
 pub(crate) fn component(surface: &Rc<Surface>, view: &NshView, name: &Arc<str>) {
-    let factory = surface.native.components.borrow().factory(name);
+    let factory = if name.as_ref() == "__nsh.Slot" {
+        Some(
+            Rc::new(|context| Box::new(subtree::Slot { context }) as Box<dyn NativeComponent>)
+                as ComponentFactory,
+        )
+    } else {
+        surface.native.components.borrow().factory(name)
+    };
     let Some(factory) = factory else { return };
     let mut control = None;
     surface.control(|c| control = Some(c.clone()));
@@ -414,6 +570,7 @@ pub(crate) fn component(surface: &Rc<Surface>, view: &NshView, name: &Arc<str>) 
         id: view.id(),
         control,
         surface: surface.key(),
+        generation: surface.generation(),
     });
     *item.component.borrow_mut() = Some(made);
     view.changed();
@@ -425,6 +582,103 @@ pub(crate) fn component_props(
     view: &NshView,
     props: &[(Arc<str>, Option<JsonValue>)],
 ) {
+    for (name, value) in props {
+        if name.as_ref() == "__nshText" {
+            if let Some(value) = value {
+                let style = gpui::TextStyleRefinement {
+                    color: value
+                        .get("color")
+                        .and_then(JsonValue::as_u64)
+                        .map(|color| crate::render::hsla(nsh_core::Color(color as u32))),
+                    font_size: value
+                        .get("fontSize")
+                        .and_then(JsonValue::as_f64)
+                        .map(|size| px(size as f32).into()),
+                    font_family: Some(
+                        value
+                            .get("fontFamily")
+                            .and_then(JsonValue::as_str)
+                            .map(|family| gpui::SharedString::from(family.to_owned()))
+                            .unwrap_or_else(|| {
+                                gpui::SharedString::from(crate::text::ui_family().to_string())
+                            }),
+                    ),
+                    font_weight: value
+                        .get("fontWeight")
+                        .and_then(JsonValue::as_f64)
+                        .map(|weight| gpui::FontWeight(weight as f32)),
+                    font_style: Some(
+                        if value
+                            .get("italic")
+                            .and_then(JsonValue::as_bool)
+                            .unwrap_or(false)
+                        {
+                            gpui::FontStyle::Italic
+                        } else {
+                            gpui::FontStyle::Normal
+                        },
+                    ),
+                    line_height: value
+                        .get("lineHeight")
+                        .and_then(JsonValue::as_f64)
+                        .filter(|height| *height > 0.0)
+                        .map(|height| px(height as f32).into()),
+                    ..Default::default()
+                };
+                surface
+                    .native
+                    .text_styles
+                    .borrow_mut()
+                    .insert(view.id(), style);
+            } else {
+                surface.native.text_styles.borrow_mut().remove(&view.id());
+            }
+        }
+        if name.as_ref() == "__nshLayout" {
+            if let Some(insets) = value
+                .as_ref()
+                .and_then(|value| value.get("insets"))
+                .and_then(JsonValue::as_array)
+                && let [top, right, bottom, left] = insets.as_slice()
+                && let [Some(top), Some(right), Some(bottom), Some(left)] =
+                    [top.as_f64(), right.as_f64(), bottom.as_f64(), left.as_f64()]
+            {
+                surface.native.content_insets.borrow_mut().insert(
+                    view.id(),
+                    [top as f32, right as f32, bottom as f32, left as f32],
+                );
+            }
+            let dimension = |key| {
+                value
+                    .as_ref()
+                    .and_then(|value| value.get(key))
+                    .and_then(JsonValue::as_f64)
+                    .filter(|value| value.is_finite())
+                    .map(|value| value as f32)
+            };
+            surface
+                .native
+                .layout_hints
+                .borrow_mut()
+                .insert(view.id(), (dimension("width"), dimension("height")));
+        }
+        if name.as_ref() == "__nshSlot" {
+            match value.as_ref().and_then(JsonValue::as_str) {
+                Some(name) => {
+                    surface
+                        .native
+                        .slots
+                        .borrow_mut()
+                        .insert(view.id(), name.to_owned());
+                }
+                None => {
+                    surface.native.slots.borrow_mut().remove(&view.id());
+                    surface.native.slot_widths.borrow_mut().remove(&view.id());
+                    surface.native.layout_hints.borrow_mut().remove(&view.id());
+                }
+            }
+        }
+    }
     let Some(item) = component_item(surface, view.id()) else {
         return;
     };
@@ -433,7 +687,9 @@ pub(crate) fn component_props(
     }
     let mut pending = item.pending.borrow_mut();
     for (name, value) in props {
-        pending.push(Pending::Prop(name.clone(), value.clone()));
+        if !matches!(name.as_ref(), "__nshLayout" | "__nshText") {
+            pending.push(Pending::Prop(name.clone(), value.clone()));
+        }
     }
     drop(pending);
     view.changed();
@@ -481,41 +737,105 @@ pub(crate) fn prepaint(surface: &Rc<Surface>, window: &mut Window, cx: &mut App)
     };
     // Video frames (and images) dropped where nothing draws images.
     crate::image::release_dropped(window, cx);
-    let mut focused = Vec::new();
+    surface.native.focused.borrow_mut().clear();
     for (id, host) in hosts {
         let Some(view) = surface.view(id) else {
             continue;
         };
+        // A nested component is laid out and painted by its parent's
+        // NativeSubtree element, never independently at its old NSH box.
+        if has_component_ancestor(surface, &view) {
+            continue;
+        }
         let geometry = geometry(surface, &view);
         match host {
             HostRef::Component(item) => {
                 item.deliver(window, cx);
                 if let Some(focus) = item.prepaint(geometry, window, cx) {
-                    focused.push((id, focus));
+                    surface.native.focused.borrow_mut().push((id, focus));
                 }
             }
             HostRef::Web(web) => web.prepaint(surface, &view, geometry, window, cx),
             HostRef::Video(_) => {}
         }
     }
-    *surface.native.focused.borrow_mut() = focused;
+    // A parent native element may encompass another native component.
+    // Attribute ordinary control focus to its actual owner, including when
+    // an earlier element had already assigned the frame's focus path.
+    let mut actual = surface
+        .native
+        .hosts
+        .borrow()
+        .iter()
+        .filter_map(|(id, host)| {
+            let Host::Component(item) = host else {
+                return None;
+            };
+            let component = item.component.try_borrow().ok()?;
+            focus_tracking_handles(component.as_ref()?.as_ref())
+                .into_iter()
+                .find(|handle| handle.contains_focused(window, cx))
+                .map(|handle| (*id, handle))
+        })
+        .collect::<Vec<_>>();
+    actual.sort_by_key(|(id, _)| {
+        let mut depth = 0usize;
+        let mut parent = surface.view(*id).and_then(|view| view.parent_view());
+        while let Some(view) = parent {
+            depth += 1;
+            parent = view.parent_view();
+        }
+        std::cmp::Reverse(depth)
+    });
+    if !actual.is_empty() {
+        *surface.native.focused.borrow_mut() = actual;
+    }
+}
+
+/// Whether a component owns this view's GPUI placement.
+fn has_component_ancestor(surface: &Surface, view: &NshView) -> bool {
+    let mut parent = view.parent_view();
+    while let Some(view) = parent {
+        if component_item(surface, view.id()).is_some() {
+            return true;
+        }
+        parent = view.parent_view();
+    }
+    false
+}
+
+/// NSH drawing delegates a registered component's children to its GPUI renderer.
+pub(crate) fn owns_children(view: &NshView) -> bool {
+    matches!(view.kind(), ViewKind::Native)
+}
+
+fn focus_tracking_handles(component: &dyn NativeComponent) -> Vec<FocusHandle> {
+    let mut handles = component.focus_handles();
+    if let Some(primary) = component.focus_handle()
+        && !handles.contains(&primary)
+    {
+        handles.push(primary);
+    }
+    handles
 }
 
 /// True when focus is inside one of the surface's components: keys go
 /// there, not to nsh.
-pub(crate) fn focused(surface: &Surface, window: &Window) -> bool {
+pub(crate) fn focused(surface: &Surface, window: &Window, cx: &App) -> bool {
     let in_frame = surface
         .native
         .focused
         .borrow()
         .iter()
-        .any(|(_, f)| f.is_focused(window));
+        .any(|(_, f)| f.contains_focused(window, cx));
     in_frame
         || surface.native.hosts.borrow().values().any(|h| match h {
             Host::Component(item) => item.component.try_borrow().is_ok_and(|c| {
-                c.as_ref()
-                    .and_then(|c| c.focus_handle())
-                    .is_some_and(|f| f.is_focused(window))
+                c.as_ref().is_some_and(|c| {
+                    focus_tracking_handles(c.as_ref())
+                        .iter()
+                        .any(|f| f.contains_focused(window, cx))
+                })
             }),
             _ => false,
         })
@@ -534,11 +854,70 @@ pub(crate) fn component_count(surface: &Surface) -> usize {
 
 /// True when the component in node `id` takes the keyboard (a Tab stop).
 pub(crate) fn focusable(surface: &Surface, id: NodeId) -> bool {
-    component_item(surface, id).is_some_and(|item| {
-        item.component
+    focus_count(surface, id) > 0
+}
+
+/// Number of Tab stops this native component currently exposes.
+pub(crate) fn focus_count(surface: &Surface, id: NodeId) -> usize {
+    component_item(surface, id)
+        .and_then(|item| {
+            // Mounted nodes inside compound widgets can remain alive while their
+            // slot is inactive. Only their actual GPUI placement is a Tab stop.
+            if surface
+                .view(id)
+                .is_some_and(|view| has_component_ancestor(surface, &view))
+            {
+                let hosted: Rc<dyn Hosted> = item.clone();
+                if !surface
+                    .native
+                    .composed_placed
+                    .borrow()
+                    .iter()
+                    .any(|(placed, bounds)| Rc::ptr_eq(placed, &hosted) && !empty(bounds))
+                {
+                    return Some(0);
+                }
+            }
+            let c = item.component.try_borrow().ok()?;
+            Some(c.as_ref()?.focus_handles().len())
+        })
+        .unwrap_or(0)
+}
+
+/// The registered widget's sequential focus priority.
+pub(crate) fn tab_index(surface: &Surface, id: NodeId) -> isize {
+    let hosts = surface.native.hosts.borrow();
+    match hosts.get(&id) {
+        Some(Host::Component(item)) => item
+            .component
             .try_borrow()
-            .is_ok_and(|c| c.as_ref().is_some_and(|c| c.focus_handle().is_some()))
-    })
+            .ok()
+            .and_then(|component| component.as_ref().map(|component| component.tab_index()))
+            .unwrap_or(0),
+        _ => 0,
+    }
+}
+
+/// Tab stop inside the component that owned focus at the last prepaint.
+pub(crate) fn focused_index(surface: &Surface, id: NodeId) -> usize {
+    let focused = surface
+        .native
+        .focused
+        .borrow()
+        .iter()
+        .find(|(node, _)| *node == id)
+        .map(|(_, handle)| handle.clone());
+    focused
+        .and_then(|focus| {
+            component_item(surface, id).and_then(|item| {
+                let c = item.component.try_borrow().ok()?;
+                c.as_ref()?
+                    .focus_handles()
+                    .iter()
+                    .position(|handle| handle == &focus)
+            })
+        })
+        .unwrap_or(0)
 }
 
 /// The node of the component focus was inside at the last frame.
@@ -547,8 +926,8 @@ pub(crate) fn focused_component(surface: &Surface) -> Option<NodeId> {
 }
 
 /// Tab moved to the component in node `id`: [`apply_focus`] focuses it.
-pub(crate) fn tab_to(surface: &Surface, id: NodeId) {
-    surface.native.tab_to.set(Some(id));
+pub(crate) fn tab_to(surface: &Surface, id: NodeId, index: usize) {
+    surface.native.tab_to.set(Some((id, index)));
 }
 
 /// After nsh handled Tab (with the window, which focusing needs): focuses
@@ -561,22 +940,18 @@ pub(crate) fn apply_focus(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let handle = surface
-        .native
-        .tab_to
-        .take()
-        .and_then(|id| component_item(surface, id))
-        .and_then(|item| {
-            let c = item.component.try_borrow().ok()?;
-            c.as_ref()?.focus_handle()
-        });
+    let handle = surface.native.tab_to.take().and_then(|(id, index)| {
+        let item = component_item(surface, id)?;
+        let c = item.component.try_borrow().ok()?;
+        c.as_ref()?.focus_handles().into_iter().nth(index)
+    });
     match handle {
         Some(handle) => {
             crate::text_input::blur_all(surface);
             window.focus(&handle, cx);
             surface.invalidate();
         }
-        None if focused(surface, window) && crate::text_input::focused(surface).is_some() => {
+        None if focused(surface, window, cx) && crate::text_input::focused(surface).is_some() => {
             window.focus(own, cx);
             surface.invalidate();
         }
@@ -679,6 +1054,7 @@ struct ComponentItem {
     element: RefCell<Option<AnyElement>>,
     /// Props and commands for the next prepaint, which has the window.
     pending: RefCell<Vec<Pending>>,
+    reported_size: std::cell::Cell<Option<Size>>,
 }
 
 /// A prop or command waiting for [`ComponentItem::deliver`].
@@ -688,6 +1064,23 @@ enum Pending {
 }
 
 impl ComponentItem {
+    /// Reconciles natural GPUI layout with NSH's native leaf measurement.
+    fn report_size(&self, measured: gpui::Size<Pixels>) {
+        let size = Size::new(f32::from(measured.width), f32::from(measured.height));
+        if !size.width.is_finite()
+            || !size.height.is_finite()
+            || size.width <= 0.0
+            || size.height <= 0.0
+        {
+            return;
+        }
+        if self.reported_size.replace(Some(size)) != Some(size)
+            && let Some(surface) = self.surface.upgrade()
+        {
+            surface.control(|control| control.set_component_size(self.id, size));
+        }
+    }
+
     /// Puts `component` back, unless the view was deleted meanwhile (then
     /// it drops).
     fn put(&self, component: Box<dyn NativeComponent>) {
@@ -716,6 +1109,13 @@ impl ComponentItem {
         for p in &pending {
             match p {
                 Pending::Prop(name, value) => component.set_prop(name, value.as_ref(), window, cx),
+                Pending::Command(name, args) if name.as_ref() == "__nsh.controlled_ack" => {
+                    if let Some(props) = args.as_object() {
+                        for (name, value) in props {
+                            component.set_prop(name, Some(value), window, cx);
+                        }
+                    }
+                }
                 Pending::Command(name, args) => component.command(name, args, window, cx),
             }
         }
@@ -756,23 +1156,44 @@ impl ComponentItem {
             if geometry.shows() {
                 window.insert_hitbox(geometry.visible, HitboxBehavior::BlockMouse);
             }
-            // Given exactly the container's size.
-            let mut root = gpui::div()
-                .w(size.width)
-                .h(size.height)
-                .child(element?)
-                .into_any_element();
+            let mut root = element?;
+            let hints = self
+                .surface
+                .upgrade()
+                .and_then(|surface| surface.native.layout_hints.borrow().get(&self.id).copied())
+                .unwrap_or_default();
+            if hints.0.is_some() || hints.1.is_some() {
+                root = gpui::div()
+                    .flex()
+                    .flex_col()
+                    .when_some(hints.0, |root, width| root.w(px(width)))
+                    .when_some(hints.1, |root, height| root.h(px(height)))
+                    .child(root)
+                    .into_any_element();
+            }
             let id = ("nsh-native", self.id as usize);
             let focus = window.with_element_namespace(id, |window| {
-                root.prepaint_as_root(
-                    geometry.document.origin,
+                // Definite space honors the NSH allocation. An unmeasured
+                // dimension gets intrinsic GPUI content size, then reports
+                // it to NSH rather than remaining an invisible zero-size leaf.
+                let measured = root.layout_as_root(
                     gpui::size(
-                        AvailableSpace::Definite(size.width),
-                        AvailableSpace::Definite(size.height),
+                        if size.width > px(0.0) {
+                            AvailableSpace::Definite(size.width)
+                        } else {
+                            AvailableSpace::MaxContent
+                        },
+                        if size.height > px(0.0) {
+                            AvailableSpace::Definite(size.height)
+                        } else {
+                            AvailableSpace::MaxContent
+                        },
                     ),
                     window,
                     cx,
-                )
+                );
+                self.report_size(measured);
+                root.prepaint_at(geometry.document.origin, window, cx)
             });
             Some((focus, root))
         })?;

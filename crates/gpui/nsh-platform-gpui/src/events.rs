@@ -127,6 +127,66 @@ pub(crate) fn install(
         window.handle_input(focus, gpui::ElementInputHandler::new(bounds, view), cx);
     }
 
+    install_pointer(surface, focus, hitbox, None, window, cx);
+
+    let s = surface.clone();
+    window.on_key_event(move |e: &KeyDownEvent, phase, window, cx| {
+        if phase != DispatchPhase::Bubble || crate::native::focused(&s, window, cx) {
+            return;
+        }
+        let Some(vk) = crate::keys::vk_of(&e.keystroke.key) else {
+            return;
+        };
+        let handled = crate::input::key(
+            &s,
+            KeyEvent {
+                vk,
+                down: true,
+                repeat: e.is_held,
+                modifiers: crate::keys::modifiers(&e.keystroke.modifiers),
+            },
+        );
+        if handled {
+            cx.stop_propagation();
+            window.prevent_default();
+        }
+        crate::rt::flush(cx);
+    });
+
+    let s = surface.clone();
+    window.on_key_event(move |e: &KeyUpEvent, phase, window, cx| {
+        if phase != DispatchPhase::Bubble || crate::native::focused(&s, window, cx) {
+            return;
+        }
+        let Some(vk) = crate::keys::vk_of(&e.keystroke.key) else {
+            return;
+        };
+        crate::input::key(
+            &s,
+            KeyEvent {
+                vk,
+                down: false,
+                repeat: false,
+                modifiers: crate::keys::modifiers(&e.keystroke.modifiers),
+            },
+        );
+        crate::rt::flush(cx);
+    });
+    // The keymap's held key (see `crate::keymap::forget_held`).
+    let s = surface.clone();
+    window.on_modifiers_changed(move |_, _, _| crate::keymap::forget_held(&s));
+}
+
+/// Pointer listeners shared by the surface and live NSH subtrees composed
+/// inside native GPUI elements. Keyboard and IME ownership remain on AppView.
+pub(crate) fn install_pointer(
+    surface: &Rc<Surface>,
+    focus: &FocusHandle,
+    hitbox: &Hitbox,
+    composed_root: Option<nsh_core::NodeId>,
+    window: &mut Window,
+    _cx: &mut App,
+) {
     if hitbox.is_hovered(window) {
         let (x, y) = root_point(surface, window.mouse_position());
         let c = crate::input::cursor(surface, x, y);
@@ -138,16 +198,31 @@ pub(crate) fn install(
     let h = hitbox.clone();
     let f = focus.clone();
     window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
+        if phase == DispatchPhase::Capture && composed_root.is_none() {
+            s.native.pointer_down_dispatched.set(false);
+        }
         // Hit tested at the event's own position against the frame on
         // screen: a press is the surface's whatever the window last saw
         // (no move since it opened, keyboard input since).
         if phase != DispatchPhase::Bubble || !h.is_hovered_at(e.position, window) {
             return;
         }
+        if s.native.pointer_down_dispatched.replace(true) {
+            return;
+        }
+        let (x, y) = root_point(&s, e.position);
+        if let Some(root) = composed_root
+            && !crate::input::composed_interactive(&s, root, x, y)
+        {
+            return;
+        }
         let Some(button) = button(e.button) else {
             return;
         };
-        if !f.is_focused(window) {
+        // A composed View is inside its GPUI parent's focus scope (for
+        // example a dialog). Preserve that scope on a plain pointer press;
+        // the standalone surface still takes focus as before.
+        if composed_root.is_none() && !f.is_focused(window) {
             window.focus(&f, cx);
         }
         let (x, y) = root_point(&s, e.position);
@@ -213,10 +288,22 @@ pub(crate) fn install(
     let s = surface.clone();
     let h = hitbox.clone();
     window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, cx| {
+        if phase == DispatchPhase::Capture && composed_root.is_none() {
+            s.native.pointer_move_dispatched.set(false);
+        }
         if phase != DispatchPhase::Bubble {
             return;
         }
         let hovered = h.is_hovered_at(e.position, window);
+        if !hovered
+            && s.input_pressed.get() == 0
+            && (composed_root.is_some() || !s.input_hovered.get())
+        {
+            return;
+        }
+        if s.native.pointer_move_dispatched.replace(true) {
+            return;
+        }
         if s.input_pressed.get() & 1 != 0 && e.pressed_button.is_none() {
             cancel_press(&s, &e.modifiers);
         }
@@ -248,6 +335,13 @@ pub(crate) fn install(
                 clicks: 0,
             },
         );
+        // Dispatch once, but keep ordinary content transparent to its GPUI
+        // parent's hover and click recognizers.
+        if composed_root.is_none()
+            || composed_root.is_some_and(|root| crate::input::composed_interactive(&s, root, x, y))
+        {
+            cx.stop_propagation();
+        }
         crate::rt::flush(cx);
     });
 
@@ -327,51 +421,4 @@ pub(crate) fn install(
         cx.stop_propagation();
         crate::rt::flush(cx);
     });
-
-    let s = surface.clone();
-    window.on_key_event(move |e: &KeyDownEvent, phase, window, cx| {
-        if phase != DispatchPhase::Bubble || crate::native::focused(&s, window) {
-            return;
-        }
-        let Some(vk) = crate::keys::vk_of(&e.keystroke.key) else {
-            return;
-        };
-        let handled = crate::input::key(
-            &s,
-            KeyEvent {
-                vk,
-                down: true,
-                repeat: e.is_held,
-                modifiers: crate::keys::modifiers(&e.keystroke.modifiers),
-            },
-        );
-        if handled {
-            cx.stop_propagation();
-            window.prevent_default();
-        }
-        crate::rt::flush(cx);
-    });
-
-    let s = surface.clone();
-    window.on_key_event(move |e: &KeyUpEvent, phase, window, cx| {
-        if phase != DispatchPhase::Bubble || crate::native::focused(&s, window) {
-            return;
-        }
-        let Some(vk) = crate::keys::vk_of(&e.keystroke.key) else {
-            return;
-        };
-        crate::input::key(
-            &s,
-            KeyEvent {
-                vk,
-                down: false,
-                repeat: false,
-                modifiers: crate::keys::modifiers(&e.keystroke.modifiers),
-            },
-        );
-        crate::rt::flush(cx);
-    });
-    // The keymap's held key (see `crate::keymap::forget_held`).
-    let s = surface.clone();
-    window.on_modifiers_changed(move |_, _, _| crate::keymap::forget_held(&s));
 }
