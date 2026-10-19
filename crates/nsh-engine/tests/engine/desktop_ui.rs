@@ -849,3 +849,57 @@ fn badges_and_shortcuts_are_small_and_shortcuts_read_as_the_platform_writes_them
     assert!(text_id(&first, "Ctrl+K").is_some());
     assert!(text_id(&first, "Ctrl+Shift+P").is_some());
 }
+
+const MENU: &str = r#"import { mount, signal, Text, View } from "nsh";
+import { Button, DropdownMenu } from "nsh/ui/desktop";
+
+const open = signal(false);
+const did = signal(-1);
+const closes = signal(0);
+mount(() => (
+  <View>
+    <DropdownMenu
+      open={open()}
+      onClose={() => { closes.update((c) => c + 1); open.set(false); }}
+      onSelect={(i: number) => did.set(i)}
+      items={[{ label: "Rename", shortcut: "mod+r" }, { type: "separator" }, { label: "Delete", danger: true }]}
+      trigger={<Button title="Actions" onPress={() => open.set(true)} />}
+    />
+    <Text>{`did ${did()} closes ${closes()}`}</Text>
+  </View>
+));
+"#;
+
+#[test]
+fn a_dropdown_menu_lists_its_items_and_reports_the_one_chosen() {
+    let (engine, rx) = start_with(
+        MENU,
+        Environment {
+            os: Os::MacOs,
+            ..Environment::default()
+        },
+    );
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    let trigger = parent_of(&first, text_id(&first, "Actions").expect("the trigger")).unwrap();
+    let control = engine.control();
+    control.dispatch_event(trigger, EventKind::Press, EventPayload::None);
+    let batches = until_text(&rx, "Delete");
+    // The shortcut reads as menus write it on macOS.
+    assert!(
+        batches.iter().any(|b| text_id(b, "⌘R").is_some()),
+        "the shortcut"
+    );
+    let delete = batches
+        .iter()
+        .find_map(|b| text_id(b, "Delete").and_then(|t| parent_of(b, t)))
+        .expect("the item");
+    control.dispatch_event(delete, EventKind::Press, EventPayload::None);
+    let batches = until_text(&rx, "did 2 closes 1");
+    assert!(
+        batches
+            .iter()
+            .any(|b| text_id(b, "did 2 closes 1").is_some())
+    );
+}

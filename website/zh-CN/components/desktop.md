@@ -471,3 +471,52 @@ import { Kbd } from "nsh/ui/desktop";
 |---|---|---|---|
 | `keys` | `string` | 必填 | 按键，按 `nsh/keymap` 的写法（`mod` 在 Apple 平台上是 Command，在其他平台上是 Control）。 |
 | `class`、`classList`、`style`、`testID`、`onLayout`、`ref` | | | 作用于这个小块。 |
+
+## DropdownMenu
+
+`open` 为 true 时，`DropdownMenu` 在 `trigger` 下方的浮层里列出操作。`items` 与 `nsh/desktop` 的 `Menu.popup` 的条目写法相同：
+带 `label` 的菜单项，`shortcut` 按平台的菜单写法显示在末尾（`"mod+r"` 在 macOS 上显示为 `⌘R`，其他平台为 `Ctrl+R`），`enabled`，
+`checked` 显示对勾，`danger` 用危险色表示破坏性操作；或者 `{ type: "separator" }` 分隔线。选中一项会先报告 `onSelect`（参数为它的索引），
+再报告 `onClose`；点击菜单外部或按 Escape 会报告 `onClose`。在回调里把 `open` 设为 false。
+
+```tsx
+import { mount, signal, View } from "nsh";
+import { Button, DropdownMenu } from "nsh/ui/desktop";
+
+function App() {
+  const open = signal(false);
+  const items = [
+    { label: "Rename", shortcut: "mod+r" },
+    { label: "Duplicate", shortcut: "shift+mod+d" },
+    { type: "separator" as const },
+    { label: "Delete", shortcut: "mod+backspace", danger: true },
+  ];
+  return (
+    <View class="flex-row p-6">
+      <DropdownMenu
+        open={open()}
+        onClose={() => open.set(false)}
+        onSelect={(i) => console.log(items[i])}
+        items={items}
+        trigger={<Button title="Actions" variant="secondary" onPress={() => open.set(true)} />}
+      />
+    </View>
+  );
+}
+
+mount(App);
+```
+
+快捷键只负责显示，绑定请用 `nsh/keymap`。在 macOS 和 Web 上，Tab 在可用的菜单项之间移动，按 Return 或空格选中一项，焦点随后回到触发按钮。
+
+| 属性 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `open` | `boolean` | `false` | 是否显示。 |
+| `trigger` | JSX | | 打开它的元素，菜单放在它下方。 |
+| `items` | `MenuEntry[]` | 必填 | 条目：`{ label, shortcut?, enabled?, checked?, danger? }` 或 `{ type: "separator" }`。 |
+| `size` | `"sm" \| "md" \| "lg"` | `"md"` | 菜单项的高度和字号。 |
+
+| 事件 | 参数 | 触发时机 |
+|---|---|---|
+| `onSelect` | `number`：菜单项在 `items` 中的索引 | 选中了一项。 |
+| `onClose` | 无 | 选中了一项、点击菜单外部，或按 Escape。 |

@@ -47,7 +47,31 @@ pub enum PopoverEvent {
 /// A floating surface next to its trigger ([`PopoverProps`]).
 #[component]
 pub fn Popover(props: PopoverProps, cx: Scope<PopoverEvent>) -> impl IntoElement {
-    let trigger = element_ref();
+    let children = props.children;
+    floating(
+        props.open,
+        props.side,
+        props.align,
+        |trigger| props.trigger.place(move |slot| slot.element_ref(&trigger)),
+        move || children.into_element(),
+        move || cx.emit(PopoverEvent::Close),
+    )
+}
+
+/// A floating surface next to a trigger while `open`, as [`Popover`] shows
+/// it, for the set's components that float their own content (a menu):
+/// `trigger` makes the trigger's element, with the ref given on the box it
+/// takes; `content` the surface's content, each time it opens; `close` runs
+/// on a press outside it or Escape, once (not again while it fades out).
+pub(crate) fn floating(
+    open: Prop<bool>,
+    side: Prop<Side>,
+    align: Prop<Align>,
+    trigger: impl FnOnce(ElementRef) -> AnyElement,
+    content: impl Fn() -> AnyElement + 'static,
+    close: impl Fn() + Copy + 'static,
+) -> View {
+    let anchor_ref = element_ref();
     // Where the trigger is, measured when the popover opens (and again
     // when the window changes); the surface's size, from its layout.
     let anchor = signal(None::<Rect>);
@@ -55,20 +79,20 @@ pub fn Popover(props: PopoverProps, cx: Scope<PopoverEvent>) -> impl IntoElement
     // Its opacity: in once placed, out when it closes, which it stays shown
     // for.
     let fade = native_value(0.0);
-    let shown = presence(props.open, {
+    let shown = presence(open, {
         let fade = fade.clone();
         move || fade.timing_with(0.0, motion::EXIT)
     });
     {
-        let trigger = trigger.clone();
+        let anchor_ref = anchor_ref.clone();
         effect(move || {
             let _ = window();
-            if !props.open.get() {
+            if !open.get() {
                 return;
             }
-            let trigger = trigger.clone();
+            let anchor_ref = anchor_ref.clone();
             spawn(async move {
-                if let Some(m) = trigger.measure().await {
+                if let Some(m) = anchor_ref.measure().await {
                     anchor.set(Some(Rect {
                         x: m.page_x,
                         y: m.page_y,
@@ -89,14 +113,7 @@ pub fn Popover(props: PopoverProps, cx: Scope<PopoverEvent>) -> impl IntoElement
             width: window.width - insets.left - insets.right - 2.0 * MARGIN,
             height: window.height - insets.top - insets.bottom - 2.0 * MARGIN,
         };
-        Some(place(
-            anchor,
-            size,
-            props.side.get(),
-            props.align.get(),
-            GAP,
-            bounds,
-        ))
+        Some(place(anchor, size, side.get(), align.get(), GAP, bounds))
     });
     // Gone: measured again on the next opening.
     effect(move || {
@@ -108,25 +125,21 @@ pub fn Popover(props: PopoverProps, cx: Scope<PopoverEvent>) -> impl IntoElement
     {
         let fade = fade.clone();
         effect(move || {
-            if props.open.get() && placed.with(Option::is_some) {
+            if open.get() && placed.with(Option::is_some) {
                 fade.spring(1.0, motion::SETTLE);
             }
         });
     }
     // Once: a press or Escape while it fades out asks nothing more.
     let close = move || {
-        if props.open.get_untracked() {
-            cx.emit(PopoverEvent::Close);
+        if open.get_untracked() {
+            close();
         }
     };
-    let children = props.children;
     // The trigger lays out as it would on its own: the surface goes next
     // to the box it takes.
     view()
-        .child(props.trigger.place({
-            let trigger = trigger.clone();
-            move |slot| slot.element_ref(&trigger)
-        }))
+        .child(trigger(anchor_ref))
         .child(If::new(shown, move || {
             modal()
                 .transparent(true)
@@ -161,7 +174,7 @@ pub fn Popover(props: PopoverProps, cx: Scope<PopoverEvent>) -> impl IntoElement
                         .border_1()
                         .border_color(move || theme().border)
                         .shadow_lg()
-                        .child(children),
+                        .child(content()),
                 )
         }))
 }

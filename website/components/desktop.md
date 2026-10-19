@@ -498,3 +498,54 @@ import { Kbd } from "nsh/ui/desktop";
 |---|---|---|---|
 | `keys` | `string` | required | The keystroke, as `nsh/keymap` writes it (`mod` is Command on Apple platforms, Control elsewhere). |
 | `class`, `classList`, `style`, `testID`, `onLayout`, `ref` | | | Applied to the chip. |
+
+## DropdownMenu
+
+`DropdownMenu` lists actions in a popover under its `trigger` while `open` is true. `items` are the entries of
+`nsh/desktop`'s `Menu.popup`: an item with a `label`, a `shortcut` shown at its end as menus write it on the platform
+(`"mod+r"` reads `⌘R` on macOS, `Ctrl+R` elsewhere), `enabled`, `checked` for a check mark, `danger` for a
+destructive action in the danger color, or `{ type: "separator" }`. Choosing an item reports `onSelect` with its
+index, then `onClose`; a click outside the menu or Escape reports `onClose`. Set `open` to false there.
+
+```tsx
+import { mount, signal, View } from "nsh";
+import { Button, DropdownMenu } from "nsh/ui/desktop";
+
+function App() {
+  const open = signal(false);
+  const items = [
+    { label: "Rename", shortcut: "mod+r" },
+    { label: "Duplicate", shortcut: "shift+mod+d" },
+    { type: "separator" as const },
+    { label: "Delete", shortcut: "mod+backspace", danger: true },
+  ];
+  return (
+    <View class="flex-row p-6">
+      <DropdownMenu
+        open={open()}
+        onClose={() => open.set(false)}
+        onSelect={(i) => console.log(items[i])}
+        items={items}
+        trigger={<Button title="Actions" variant="secondary" onPress={() => open.set(true)} />}
+      />
+    </View>
+  );
+}
+
+mount(App);
+```
+
+The shortcuts are shown, not bound: bind them with `nsh/keymap`. On macOS and the web, Tab moves through the enabled
+items, Return or Space chooses one, and the focus returns to the trigger.
+
+| Prop | Type | Default | Description |
+|---|---|---|---|
+| `open` | `boolean` | `false` | Shown. |
+| `trigger` | JSX | | What opens it: the menu goes under it. |
+| `items` | `MenuEntry[]` | required | The entries: `{ label, shortcut?, enabled?, checked?, danger? }` or `{ type: "separator" }`. |
+| `size` | `"sm" \| "md" \| "lg"` | `"md"` | The items' height and text size. |
+
+| Event | Payload | When |
+|---|---|---|
+| `onSelect` | `number`: the item's index in `items` | An item was chosen. |
+| `onClose` | none | An item was chosen, or a click outside the menu, or Escape. |

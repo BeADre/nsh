@@ -21,7 +21,7 @@ pub struct KbdProps {
 /// What `keys` reads as here: its label when it is a keystroke under
 /// either platform's conventions (`ctrl+mod+k` is one only where `mod` is
 /// Command, and `key_label` takes only keystrokes), the text otherwise.
-fn label(keys: &str) -> String {
+pub(crate) fn shortcut_label(keys: &str) -> String {
     let valid =
         Keystroke::parse_with(keys, true).is_ok() && Keystroke::parse_with(keys, false).is_ok();
     if valid {
@@ -34,7 +34,7 @@ fn label(keys: &str) -> String {
 /// A keyboard shortcut in a chip ([`KbdProps`]).
 #[component]
 pub fn Kbd(props: KbdProps) -> impl IntoElement {
-    let shown = computed(move || label(&props.keys.get()));
+    let shown = computed(move || shortcut_label(&props.keys.get()));
     view()
         .flex_row()
         .items_center()

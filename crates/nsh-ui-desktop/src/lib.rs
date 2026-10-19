@@ -16,6 +16,7 @@ mod badge;
 mod button;
 mod checkbox;
 mod dialog;
+mod dropdown_menu;
 mod kbd;
 mod metrics;
 mod number_input;
@@ -37,6 +38,7 @@ pub use crate::{
     button::{Button, ButtonEvent, ButtonProps, ButtonVariant},
     checkbox::{Checkbox, CheckboxEvent, CheckboxProps},
     dialog::{Dialog, DialogEvent, DialogProps},
+    dropdown_menu::{DropdownMenu, DropdownMenuEvent, DropdownMenuProps, MenuEntry, MenuEntryKind},
     kbd::{Kbd, KbdProps},
     metrics::ControlSize,
     number_input::{NumberInput, NumberInputEvent, NumberInputProps},
@@ -57,6 +59,7 @@ pub fn registry() -> Registry {
         .register::<Button>()
         .register::<Checkbox>()
         .register::<Dialog>()
+        .register::<DropdownMenu>()
         .register::<Popover>()
         .register::<Select>()
         .register::<NumberInput>()
@@ -89,6 +92,7 @@ mod tests {
                 "Button",
                 "Checkbox",
                 "Dialog",
+                "DropdownMenu",
                 "Kbd",
                 "NumberInput",
                 "Popover",
