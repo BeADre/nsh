@@ -377,3 +377,97 @@ mount(App);
 | 事件 | 参数 | 触发时机 |
 |---|---|---|
 | `onChange` | `number`：新的数值 | 按钮步进了数值，或读取的输入与当前数值不同。 |
+
+## Tabs
+
+`Tabs` 是一行标签页，其中一个处于选中状态。`underline` 变体在选中的标签下画一条 2 pt 的 `primary.background` 线，
+压在横贯整行的 `border` 分隔线上；`segmented` 变体把标签放进 `tab_bar.segmented.background` 的轨道里，所有标签和最宽的一样宽，
+选中的标签浮起在 `tab.active.background` 上。下划线或浮起的背景会以 NSH 的落定弹簧滑到新选中的标签，并在滑动中变成它的宽度。
+
+```tsx
+import { mount, signal, Text, View } from "nsh";
+import { Tabs } from "nsh/ui/desktop";
+
+function App() {
+  const tab = signal(0);
+  return (
+    <View class="gap-4 p-6">
+      <Tabs options={["Overview", "Activity", "Settings"]} value={tab()} onChange={(i) => tab.set(i)} />
+      <Text>{["Summary", "Recent events", "Preferences"][tab()]}</Text>
+      <Tabs variant="segmented" options={["Day", "Week", "Month"]} defaultValue={1} />
+    </View>
+  );
+}
+
+mount(App);
+```
+
+标签文字使用 `tab.foreground`，选中的标签和指针下的标签使用 `tab.active.foreground`；其他标签在指针下显示 `accent.background`。
+在 macOS 和 Web 上，每个标签都是键盘焦点的一站：Tab 在标签之间移动，按 Return 或空格选中获得焦点的标签，它显示焦点环。
+屏幕阅读器把这一行读作标签列表，并读出每个标签的选中状态。分段样式的一行和它的标签一样宽；加上 `class="self-stretch"`
+会铺满容器，标签平分宽度。
+
+| 属性 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `options` | `string[]` | 必填 | 各标签的文字。 |
+| `value` | `number \| null` | 无（非受控） | 由应用控制时，选中标签的索引（在 `onChange` 里更新它）。 |
+| `defaultValue` | `number` | `0` | 由组件自己保存选中状态时，最初选中标签的索引。 |
+| `variant` | `"underline" \| "segmented"` | `"underline"` | 选中标签下画一条线，或把标签放进轨道并浮起选中的那个。 |
+| `size` | `"sm" \| "md" \| "lg"` | `"md"` | 高度、内边距和字号。 |
+| `disabled` | `boolean` | `false` | 不响应按压，50% 不透明度。 |
+| `class`、`classList`、`style`、`testID`、`onLayout`、`ref` | | | 作用于这一行。 |
+
+| 事件 | 参数 | 触发时机 |
+|---|---|---|
+| `onChange` | `number`：标签的索引 | 点击另一个标签，或另一个标签获得键盘焦点时按 Return 或空格。 |
+
+## Badge
+
+`Badge` 是一个小的圆角标签，用于状态、分类或计数，高 20 pt，字号比主题字号小 4 pt。
+
+```tsx
+import { View } from "nsh";
+import { Badge } from "nsh/ui/desktop";
+
+<View class="flex-row items-center gap-2">
+  <Badge label="Draft" />
+  <Badge label="New" variant="primary" />
+  <Badge label="Failed" variant="danger" />
+  <Badge label="v2.1" variant="outline" />
+</View>;
+```
+
+| 变体 | 背景 | 文字 |
+|---|---|---|
+| `secondary`（默认） | `secondary.background` | `secondary.foreground` |
+| `primary` | `primary.background` | `primary.foreground` |
+| `danger` | `danger.background` | `danger.foreground` |
+| `outline` | 透明，带 `border` 颜色的边框 | `foreground` |
+
+| 属性 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `label` | `string` | 必填 | 文字。 |
+| `variant` | `"secondary" \| "primary" \| "danger" \| "outline"` | `"secondary"` | 外观。 |
+| `class`、`classList`、`style`、`testID`、`onLayout`、`ref` | | | 作用于徽标。 |
+
+## Kbd
+
+`Kbd` 在一个按键形状的小块里显示键盘快捷键，写法和应用所在平台的菜单一致：`keys="mod+k"` 在 macOS 和 Mac 上的浏览器里显示为 `⌘K`，
+在 Windows、Linux 和其他浏览器里显示为 `Ctrl+K`。它接受 `nsh/keymap` 的按键写法（`"mod+k"`、`"shift+mod+p"`、`"escape"`），
+所以提示显示的正是 `keymap.bind` 绑定的快捷键；其他文字按原样显示。它高 20 pt，背景是 `muted.background`，带 `border` 颜色的边框，
+文字使用 `muted.foreground`。
+
+```tsx
+import { Text, View } from "nsh";
+import { Kbd } from "nsh/ui/desktop";
+
+<View class="flex-row items-center gap-2">
+  <Text>Search</Text>
+  <Kbd keys="mod+k" />
+</View>;
+```
+
+| 属性 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `keys` | `string` | 必填 | 按键，按 `nsh/keymap` 的写法（`mod` 在 Apple 平台上是 Command，在其他平台上是 Control）。 |
+| `class`、`classList`、`style`、`testID`、`onLayout`、`ref` | | | 作用于这个小块。 |

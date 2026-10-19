@@ -2,7 +2,7 @@
 
 use nsh_core::{Checked, ui::prelude::*};
 
-use crate::metrics::{ControlSize, HOVER_OPACITY, RING_OFFSET, RING_WIDTH};
+use crate::metrics::{ControlSize, HOVER_OPACITY, RING_OFFSET, RING_WIDTH, radius_for};
 
 /// A box that is checked or not, with an optional label beside it; a click
 /// on the box or the label, or Return or Space while it has the keyboard
@@ -43,12 +43,6 @@ pub(crate) fn indicator(size: ControlSize) -> f32 {
         ControlSize::Md => 16.0,
         ControlSize::Lg => 20.0,
     }
-}
-
-/// The corner radius of something `side` points tall at `size`: the
-/// control's, scaled down to it, so a small box keeps the controls' shape.
-fn radius_for(size: ControlSize, side: f32) -> f32 {
-    size.radius() * side / size.height()
 }
 
 /// The colors of the box.
@@ -108,7 +102,7 @@ pub fn Checkbox(props: CheckboxProps, cx: Scope<CheckboxEvent>) -> impl IntoElem
         .items_center()
         .self_start()
         .gap_2()
-        .rounded(move || px(radius_for(size.get(), side())))
+        .rounded(move || px(radius_for(side())))
         .focus(|s| {
             s.outline(RING_WIDTH)
                 .outline_color(move || theme().ring)
@@ -143,7 +137,7 @@ pub fn Checkbox(props: CheckboxProps, cx: Scope<CheckboxEvent>) -> impl IntoElem
                 .size(move || px(side()))
                 .items_center()
                 .justify_center()
-                .rounded(move || px(radius_for(size.get(), side())))
+                .rounded(move || px(radius_for(side())))
                 .border_1()
                 .border_color(move || colors.get().border)
                 .bg(move || colors.get().background)

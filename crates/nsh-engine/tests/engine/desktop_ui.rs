@@ -8,6 +8,7 @@ use crossbeam_channel::Receiver;
 use nsh_core::{
     ApproxTextEngine, EventKind, EventPayload, MountBatch, MountItem, Size,
     nsh_animation::{AnimationOp, Driver, Finished},
+    platform::Os,
 };
 use nsh_engine::{Bundle, Engine, EngineConfig, Environment};
 
@@ -15,6 +16,11 @@ use crate::ChannelSink;
 
 /// The app, compiled by nsh with both UI sets and loaded as bytecode.
 fn start(app: &str) -> (Engine, Receiver<MountBatch>) {
+    start_with(app, Environment::default())
+}
+
+/// [`start`] in `environment`.
+fn start_with(app: &str, environment: Environment) -> (Engine, Receiver<MountBatch>) {
     static APPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let dir = std::env::temp_dir().join(format!(
         "nsh-desktop-ui-{}-{}",
@@ -41,7 +47,7 @@ fn start(app: &str) -> (Engine, Receiver<MountBatch>) {
         trace: false,
         network: None,
         assets: None,
-        environment: Environment::default(),
+        environment,
         header_heights: (44.0, 96.0),
         limits: nsh_engine::Limits::default(),
         ui_sets: sets(),
@@ -696,4 +702,150 @@ fn a_desktop_number_input_steps_within_its_range_and_reads_what_is_typed() {
         control.dispatch_event(field, EventKind::Blur, EventPayload::None);
     }
     assert!(shown(&rx, "n 5"));
+}
+
+const TABS: &str = r#"import { mount, signal, Text, View } from "nsh";
+import { Tabs } from "nsh/ui/desktop";
+
+const chosen = signal(0);
+const controlled = signal(0);
+mount(() => (
+  <View class="items-start gap-4 p-4">
+    <Tabs options={["Overview", "Activity", "Settings"]} onChange={(i) => chosen.set(i)} />
+    <Tabs
+      variant="segmented"
+      options={["Day", "Week"]}
+      value={controlled()}
+      onChange={(i) => controlled.set(i)}
+    />
+    <Text>{`chosen ${chosen()} controlled ${controlled()}`}</Text>
+  </View>
+));
+"#;
+
+/// The batches until one shows `wanted` (or nothing came for a second),
+/// and whether one did.
+fn shows(rx: &Receiver<MountBatch>, wanted: &str) -> (Vec<MountBatch>, bool) {
+    let batches = until_text(rx, wanted);
+    let shown = batches.iter().any(|b| text_id(b, wanted).is_some());
+    (batches, shown)
+}
+
+/// The values set, and how many animations started, in `batches`.
+fn animated(batches: &[MountBatch]) -> (Vec<f32>, usize) {
+    let (mut set, mut started) = (Vec::new(), 0);
+    for item in batches.iter().flat_map(|b| &b.items) {
+        match item {
+            MountItem::Animation(AnimationOp::Set { value, .. }) => set.push(*value),
+            MountItem::Animation(AnimationOp::Start { .. }) => started += 1,
+            _ => {}
+        }
+    }
+    (set, started)
+}
+
+#[test]
+fn tabs_are_dense_select_on_a_press_and_move_their_mark() {
+    let (engine, rx) = start(TABS);
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    let tab =
+        |label: &str| parent_of(&first, text_id(&first, label).expect(label)).expect("the tab");
+    let (overview, settings, day, week) =
+        (tab("Overview"), tab("Settings"), tab("Day"), tab("Week"));
+    let week_label = text_id(&first, "Week").unwrap();
+    let track = parent_of(&first, week).expect("the track");
+    // Each tab is a keyboard stop with a hover highlight.
+    let states = tracked(&first, overview).expect("tracked states");
+    for state in [
+        nsh_core::tailwind::state::HOVERED,
+        nsh_core::tailwind::state::FOCUSED,
+    ] {
+        assert_ne!(states & state, 0, "{states:#b} lacks {state:#b}");
+    }
+    let mut placed = vec![first];
+    while let Ok(batch) = rx.recv_timeout(Duration::from_millis(300)) {
+        placed.push(batch);
+    }
+    // The frames once the labels are measured.
+    let size = |id| placed.iter().rev().find_map(|b| size_of(b, id)).unwrap();
+    assert_eq!(size(overview).1, 32.0, "md");
+    // Segments sit in the track, 3 pt in from its edges, and are all as
+    // wide as the widest label with its padding.
+    assert_eq!(size(week).1, 26.0);
+    assert_eq!(size(track).1, 32.0);
+    assert_eq!(size(day).0, size(week).0, "equal segments");
+    assert_eq!(size(week).0, size(week_label).0 + 2.0 * 12.0);
+    // Laid out, the marks jump to the selected tabs: the underline takes
+    // the first tab's width.
+    let width = size(overview).0;
+    let (set, started) = animated(&placed);
+    assert!(set.contains(&width), "{set:?} lacks {width}");
+    assert_eq!(started, 0, "the first place jumps");
+    // A press selects a tab, and the mark springs there.
+    let control = engine.control();
+    control.dispatch_event(settings, EventKind::Press, EventPayload::None);
+    let (batches, shown) = shows(&rx, "chosen 2 controlled 0");
+    assert!(shown, "onChange reached the app");
+    assert!(
+        animated(&batches).1 >= 2,
+        "the underline slides and stretches"
+    );
+    // A controlled one moves when the app passes the new value.
+    control.dispatch_event(week, EventKind::Press, EventPayload::None);
+    let (batches, shown) = shows(&rx, "chosen 2 controlled 1");
+    assert!(shown, "the app took the change");
+    assert!(animated(&batches).1 >= 1, "the segment springs");
+    // Pressing the selected tab reports nothing.
+    control.dispatch_event(settings, EventKind::Press, EventPayload::None);
+    let (batches, _) = shows(&rx, "never shown");
+    assert!(
+        batches
+            .iter()
+            .all(|b| text_id(b, "chosen 2 controlled 1").is_none())
+    );
+    assert_eq!(animated(&batches).1, 0);
+}
+
+const LABELS: &str = r#"import { mount, View } from "nsh";
+import { Badge, Kbd } from "nsh/ui/desktop";
+
+mount(() => (
+  <View class="items-start gap-2 p-4">
+    <Badge label="New" />
+    <Badge label="Failed" variant="danger" />
+    <Kbd keys="mod+k" />
+    <Kbd keys="shift+mod+p" />
+    <Kbd keys="Fn" />
+  </View>
+));
+"#;
+
+#[test]
+fn badges_and_shortcuts_are_small_and_shortcuts_read_as_the_platform_writes_them() {
+    let on = |os| Environment {
+        os,
+        ..Environment::default()
+    };
+    let (_engine, rx) = start_with(LABELS, on(Os::MacOs));
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    for label in ["New", "Failed"] {
+        let badge = parent_of(&first, text_id(&first, label).expect(label)).unwrap();
+        assert_eq!(size_of(&first, badge).map(|s| s.1), Some(20.0), "{label}");
+    }
+    let chip = parent_of(&first, text_id(&first, "⌘K").expect("⌘K on macOS")).unwrap();
+    assert_eq!(size_of(&first, chip).map(|s| s.1), Some(20.0));
+    assert!(text_id(&first, "⇧⌘P").is_some());
+    // What is not a keystroke shows as written.
+    assert!(text_id(&first, "Fn").is_some());
+
+    let (_engine, rx) = start_with(LABELS, on(Os::Windows));
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    assert!(text_id(&first, "Ctrl+K").is_some());
+    assert!(text_id(&first, "Ctrl+Shift+P").is_some());
 }

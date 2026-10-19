@@ -66,7 +66,7 @@ impl ControlSize {
 
     /// The corner radius for a theme radius of `radius`.
     fn radius_from(self, radius: f32) -> f32 {
-        radius * self.height() / MOBILE_HEIGHT
+        radius_from(radius, self.height())
     }
 }
 
@@ -74,7 +74,26 @@ impl ControlSize {
 /// theme's radius of large surfaces, scaled as controls are (reading
 /// subscribes to the theme).
 pub(crate) fn surface_radius() -> f32 {
-    theme().radius_lg * ControlSize::Md.height() / MOBILE_HEIGHT
+    radius_from(theme().radius_lg, ControlSize::Md.height())
+}
+
+/// The corner radius of something `height` points tall that is not a
+/// [`ControlSize`] (a badge, a check box): the theme's, scaled as a
+/// control's is (reading subscribes to the theme).
+pub(crate) fn radius_for(height: f32) -> f32 {
+    radius_from(theme().radius, height)
+}
+
+/// The theme radius `radius` scaled from the mobile set's control height
+/// to `height`.
+fn radius_from(radius: f32, height: f32) -> f32 {
+    radius * height / MOBILE_HEIGHT
+}
+
+/// The text size of small labels on a control (a badge, a shortcut): the
+/// theme's font size less 4 points (reading subscribes to the theme).
+pub(crate) fn label_font_size() -> f32 {
+    theme().font_size - 4.0
 }
 
 /// How far a hovered control's background fades toward what is under it.

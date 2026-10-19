@@ -12,14 +12,17 @@
 //! TypeScript declarations) is generated from its props and events by the
 //! bundler. See README.md for how to write one.
 
+mod badge;
 mod button;
 mod checkbox;
 mod dialog;
+mod kbd;
 mod metrics;
 mod number_input;
 mod popover;
 mod select;
 mod switch;
+mod tabs;
 mod text_field;
 
 use std::sync::Arc;
@@ -30,14 +33,17 @@ pub use nsh_core::ui::{Align, Side};
 use nsh_core::ui::{ComponentSpec, Registry};
 
 pub use crate::{
+    badge::{Badge, BadgeProps, BadgeVariant},
     button::{Button, ButtonEvent, ButtonProps, ButtonVariant},
     checkbox::{Checkbox, CheckboxEvent, CheckboxProps},
     dialog::{Dialog, DialogEvent, DialogProps},
+    kbd::{Kbd, KbdProps},
     metrics::ControlSize,
     number_input::{NumberInput, NumberInputEvent, NumberInputProps},
     popover::{Popover, PopoverEvent, PopoverProps},
     select::{Select, SelectEvent, SelectProps},
     switch::{Switch, SwitchEvent, SwitchProps},
+    tabs::{Tabs, TabsEvent, TabsProps, TabsVariant},
     text_field::{TextField, TextFieldEvent, TextFieldProps},
 };
 
@@ -55,7 +61,10 @@ pub fn registry() -> Registry {
         .register::<Select>()
         .register::<NumberInput>()
         .register::<Switch>()
-        .register::<TextField>();
+        .register::<TextField>()
+        .register::<Badge>()
+        .register::<Kbd>()
+        .register::<Tabs>();
     registry
 }
 
@@ -76,13 +85,16 @@ mod tests {
         assert_eq!(
             components,
             [
+                "Badge",
                 "Button",
                 "Checkbox",
                 "Dialog",
+                "Kbd",
                 "NumberInput",
                 "Popover",
                 "Select",
                 "Switch",
+                "Tabs",
                 "TextField",
             ]
         );

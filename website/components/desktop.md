@@ -399,3 +399,102 @@ under the pointer and `secondary.active.background` while pressed.
 | Event | Payload | When |
 |---|---|---|
 | `onChange` | `number`: the new value | A button stepped it, or what was typed was read and differs from it. |
+
+## Tabs
+
+`Tabs` is a row of tabs, one of them selected. The `underline` variant draws a 2 pt line in `primary.background`
+under the selected tab, over a divider in `border` that spans the row; the `segmented` variant puts the tabs in a
+`tab_bar.segmented.background` track, all as wide as the widest, and raises the selected one on
+`tab.active.background`. The line or the raised background slides to the tab chosen with NSH's settling spring and
+takes its width as it goes.
+
+```tsx
+import { mount, signal, Text, View } from "nsh";
+import { Tabs } from "nsh/ui/desktop";
+
+function App() {
+  const tab = signal(0);
+  return (
+    <View class="gap-4 p-6">
+      <Tabs options={["Overview", "Activity", "Settings"]} value={tab()} onChange={(i) => tab.set(i)} />
+      <Text>{["Summary", "Recent events", "Preferences"][tab()]}</Text>
+      <Tabs variant="segmented" options={["Day", "Week", "Month"]} defaultValue={1} />
+    </View>
+  );
+}
+
+mount(App);
+```
+
+Labels use `tab.foreground`, and `tab.active.foreground` on the selected tab and under the pointer; the other tabs get
+`accent.background` under the pointer. Every tab is a stop of the keyboard focus on macOS and the web: Tab moves from
+tab to tab, Return or Space selects the focused one, and it shows the focus ring. Screen readers read the row as a tab
+list and each tab with its selected state. A segmented row is as wide as its tabs; `class="self-stretch"` spreads it
+across its container, the tabs sharing the width evenly.
+
+| Prop | Type | Default | Description |
+|---|---|---|---|
+| `options` | `string[]` | required | The tabs' labels. |
+| `value` | `number \| null` | none (uncontrolled) | The selected tab's index, when the app controls it (update it from `onChange`). |
+| `defaultValue` | `number` | `0` | The first selected tab's index, when the tabs keep their own selection. |
+| `variant` | `"underline" \| "segmented"` | `"underline"` | A line under the selected tab, or tabs in a track with the selected one raised. |
+| `size` | `"sm" \| "md" \| "lg"` | `"md"` | The height, padding and text size. |
+| `disabled` | `boolean` | `false` | No presses, 50% opacity. |
+| `class`, `classList`, `style`, `testID`, `onLayout`, `ref` | | | Applied to the row. |
+
+| Event | Payload | When |
+|---|---|---|
+| `onChange` | `number`: the tab's index | A click on another tab, or Return or Space on another tab with the keyboard focus. |
+
+## Badge
+
+`Badge` is a small rounded label for a status, a category or a count, 20 pt tall, its text 4 pt under the theme's font
+size.
+
+```tsx
+import { View } from "nsh";
+import { Badge } from "nsh/ui/desktop";
+
+<View class="flex-row items-center gap-2">
+  <Badge label="Draft" />
+  <Badge label="New" variant="primary" />
+  <Badge label="Failed" variant="danger" />
+  <Badge label="v2.1" variant="outline" />
+</View>;
+```
+
+| Variant | Background | Text |
+|---|---|---|
+| `secondary` (default) | `secondary.background` | `secondary.foreground` |
+| `primary` | `primary.background` | `primary.foreground` |
+| `danger` | `danger.background` | `danger.foreground` |
+| `outline` | transparent, with a `border` border | `foreground` |
+
+| Prop | Type | Default | Description |
+|---|---|---|---|
+| `label` | `string` | required | The text. |
+| `variant` | `"secondary" \| "primary" \| "danger" \| "outline"` | `"secondary"` | The look. |
+| `class`, `classList`, `style`, `testID`, `onLayout`, `ref` | | | Applied to the badge. |
+
+## Kbd
+
+`Kbd` shows a keyboard shortcut in a key-shaped chip, written as menus write it on the platform the app runs on:
+`keys="mod+k"` reads `⌘K` on macOS and in a browser on a Mac, and `Ctrl+K` on Windows, Linux and other browsers. It
+takes the keystrokes of `nsh/keymap` (`"mod+k"`, `"shift+mod+p"`, `"escape"`), so a hint shows exactly the shortcut
+that `keymap.bind` binds; other text shows as written. The chip is 20 pt tall, on `muted.background` with a `border`
+border, its text in `muted.foreground`.
+
+```tsx
+import { Text, View } from "nsh";
+import { Kbd } from "nsh/ui/desktop";
+
+<View class="flex-row items-center gap-2">
+  <Text>Search</Text>
+  <Kbd keys="mod+k" />
+</View>;
+```
+
+| Prop | Type | Default | Description |
+|---|---|---|---|
+| `keys` | `string` | required | The keystroke, as `nsh/keymap` writes it (`mod` is Command on Apple platforms, Control elsewhere). |
+| `class`, `classList`, `style`, `testID`, `onLayout`, `ref` | | | Applied to the chip. |
