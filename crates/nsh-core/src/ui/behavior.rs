@@ -4,16 +4,19 @@
 //!
 //! [`controllable`] is a value the app may control or leave to the
 //! component, [`NumberRange`] the bounds and step of a number changed in
-//! steps, [`press_repeat`] an action repeated while a press is held. They
-//! hold no elements and no styles; a component makes them in its body,
-//! where they go with it.
+//! steps, [`press_repeat`] an action repeated while a press is held,
+//! [`place`] where a floating surface (a popover, a menu) goes next to what
+//! opened it. They hold no elements and no styles; a component makes them
+//! in its body, where they go with it.
 
 use std::{rc::Rc, time::Duration};
 
 use super::{
+    PropEnum,
     ambient::{Spawned, spawn, timer},
     reactive::{IntoReactive, Memo, Reactive, Signal, Stored, computed, signal, stored, untracked},
 };
+use crate::geometry::{Rect, Size};
 
 /// A value the app may control (a text field's text, a stepper's value):
 /// while the app passes one (`Some`) it is shown, and the app updates it
@@ -251,6 +254,126 @@ impl PressRepeat {
     }
 }
 
+/// Which side of what opened it a floating surface goes on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PropEnum)]
+pub enum Side {
+    /// Above.
+    Top,
+    /// Below.
+    #[default]
+    Bottom,
+    /// To the left.
+    Left,
+    /// To the right.
+    Right,
+}
+
+impl Side {
+    /// The side across.
+    pub fn opposite(self) -> Self {
+        match self {
+            Self::Top => Self::Bottom,
+            Self::Bottom => Self::Top,
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+        }
+    }
+
+    /// Whether it is above or below (the surface moves along x to align).
+    fn vertical(self) -> bool {
+        matches!(self, Self::Top | Self::Bottom)
+    }
+}
+
+/// How a floating surface lines up with what opened it, along the side it
+/// is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PropEnum)]
+pub enum Align {
+    /// Its left (or top) edge on the anchor's.
+    #[default]
+    Start,
+    /// Centered on the anchor.
+    Center,
+    /// Its right (or bottom) edge on the anchor's.
+    End,
+}
+
+/// Where a floating surface goes ([`place`]): its top left corner and the
+/// side it ended up on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Placement {
+    /// Its left edge.
+    pub x: f32,
+    /// Its top edge.
+    pub y: f32,
+    /// The side of the anchor it is on (`side` or, flipped, the opposite).
+    pub side: Side,
+}
+
+/// Where a surface of `size` goes next to `anchor`: on `side`, `gap` away,
+/// lined up by `align`, inside `bounds` (the window less the system's
+/// insets; all in one coordinate space). It flips to the opposite side
+/// when that side has room for it and `side` has not (or more room, when
+/// neither has), then shifts along the side, and finally across it, to
+/// stay inside `bounds`.
+pub fn place(
+    anchor: Rect,
+    size: Size,
+    side: Side,
+    align: Align,
+    gap: f32,
+    bounds: Rect,
+) -> Placement {
+    // The room on a side, from the anchor's edge (and the gap) to the
+    // bounds.
+    let room = |side: Side| match side {
+        Side::Top => anchor.y - gap - bounds.y,
+        Side::Bottom => bounds.y + bounds.height - (anchor.y + anchor.height + gap),
+        Side::Left => anchor.x - gap - bounds.x,
+        Side::Right => bounds.x + bounds.width - (anchor.x + anchor.width + gap),
+    };
+    let needed = |side: Side| {
+        if side.vertical() {
+            size.height
+        } else {
+            size.width
+        }
+    };
+    let opposite = side.opposite();
+    let side = if room(side) >= needed(side) {
+        side
+    } else if room(opposite) >= needed(opposite) || room(opposite) > room(side) {
+        opposite
+    } else {
+        side
+    };
+    let (mut x, mut y) = match side {
+        Side::Top => (0.0, anchor.y - gap - size.height),
+        Side::Bottom => (0.0, anchor.y + anchor.height + gap),
+        Side::Left => (anchor.x - gap - size.width, 0.0),
+        Side::Right => (anchor.x + anchor.width + gap, 0.0),
+    };
+    // Along the side: lined up, then kept inside.
+    let line_up = |start: f32, length: f32, extent: f32| match align {
+        Align::Start => start,
+        Align::Center => start + (length - extent) / 2.0,
+        Align::End => start + length - extent,
+    };
+    if side.vertical() {
+        x = line_up(anchor.x, anchor.width, size.width);
+    } else {
+        y = line_up(anchor.y, anchor.height, size.height);
+    }
+    // A surface larger than the bounds keeps its start inside them.
+    let within =
+        |at: f32, extent: f32, start: f32, length: f32| at.min(start + length - extent).max(start);
+    Placement {
+        x: within(x, size.width, bounds.x, bounds.width),
+        y: within(y, size.height, bounds.y, bounds.height),
+        side,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -335,6 +458,116 @@ mod tests {
                 value.set(3);
                 assert_eq!(*seen.borrow(), [1, 2, 3]);
             },
+        );
+    }
+
+    /// A 400 × 300 window and a 100 × 40 surface.
+    const WINDOW: Rect = Rect {
+        x: 0.0,
+        y: 0.0,
+        width: 400.0,
+        height: 300.0,
+    };
+    const MENU: Size = Size {
+        width: 100.0,
+        height: 40.0,
+    };
+
+    fn anchor(x: f32, y: f32) -> Rect {
+        Rect {
+            x,
+            y,
+            width: 60.0,
+            height: 20.0,
+        }
+    }
+
+    fn at(p: Placement) -> (f32, f32, Side) {
+        (p.x, p.y, p.side)
+    }
+
+    #[test]
+    fn a_surface_goes_on_its_side_lined_up_with_the_anchor() {
+        let a = anchor(50.0, 50.0);
+        assert_eq!(
+            at(place(a, MENU, Side::Bottom, Align::Start, 4.0, WINDOW)),
+            (50.0, 74.0, Side::Bottom)
+        );
+        assert_eq!(
+            at(place(a, MENU, Side::Bottom, Align::Center, 4.0, WINDOW)),
+            (30.0, 74.0, Side::Bottom)
+        );
+        assert_eq!(
+            at(place(a, MENU, Side::Bottom, Align::End, 4.0, WINDOW)),
+            (10.0, 74.0, Side::Bottom)
+        );
+        assert_eq!(
+            at(place(a, MENU, Side::Right, Align::Center, 4.0, WINDOW)),
+            (114.0, 40.0, Side::Right)
+        );
+    }
+
+    #[test]
+    fn a_surface_without_room_flips_to_the_side_with_it() {
+        // Near the bottom: above instead.
+        let low = anchor(50.0, 260.0);
+        assert_eq!(
+            at(place(low, MENU, Side::Bottom, Align::Start, 4.0, WINDOW)),
+            (50.0, 216.0, Side::Top)
+        );
+        // Near the top, asked for above: below.
+        let high = anchor(50.0, 10.0);
+        assert_eq!(
+            place(high, MENU, Side::Top, Align::Start, 4.0, WINDOW).side,
+            Side::Bottom
+        );
+        // Near the right edge, asked for the right: the left.
+        let right = anchor(320.0, 100.0);
+        assert_eq!(
+            place(right, MENU, Side::Right, Align::Start, 4.0, WINDOW).side,
+            Side::Left
+        );
+    }
+
+    #[test]
+    fn a_surface_shifts_to_stay_in_the_window() {
+        // Lined up with an anchor at the right edge, it would leave the
+        // window: it moves left.
+        let right = anchor(360.0, 50.0);
+        assert_eq!(
+            at(place(right, MENU, Side::Bottom, Align::Start, 4.0, WINDOW)),
+            (300.0, 74.0, Side::Bottom)
+        );
+        // Taller than the room on both sides: the side with more, kept in.
+        let tall = Size {
+            width: 100.0,
+            height: 280.0,
+        };
+        let p = place(
+            anchor(50.0, 200.0),
+            tall,
+            Side::Bottom,
+            Align::Start,
+            4.0,
+            WINDOW,
+        );
+        assert_eq!((p.side, p.y), (Side::Top, 0.0));
+        // Wider than the window: its start stays inside.
+        let wide = Size {
+            width: 500.0,
+            height: 40.0,
+        };
+        assert_eq!(
+            place(
+                anchor(50.0, 50.0),
+                wide,
+                Side::Bottom,
+                Align::Center,
+                4.0,
+                WINDOW
+            )
+            .x,
+            0.0
         );
     }
 

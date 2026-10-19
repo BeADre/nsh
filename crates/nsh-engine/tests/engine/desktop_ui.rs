@@ -133,3 +133,108 @@ fn desktop_buttons_are_dense_track_the_pointer_and_keyboard_and_press() {
     }
     assert!(shown, "onPress reached the app");
 }
+
+const POPOVER: &str = r#"import { mount, signal, Text, View } from "nsh";
+import { Button, Popover } from "nsh/ui/desktop";
+
+const open = signal(false);
+const closes = signal(0);
+mount(() => (
+  <View class="p-6">
+    <Popover
+      open={open()}
+      onClose={() => { closes.update((c) => c + 1); open.set(false); }}
+      trigger={<Button title="Options" onPress={() => open.set(true)} />}
+    >
+      <Text>Menu</Text>
+    </Popover>
+    <Text>{`closes ${closes()}`}</Text>
+  </View>
+));
+"#;
+
+/// The batches until one shows `wanted` (or nothing came for a second).
+fn until_text(rx: &Receiver<MountBatch>, wanted: &str) -> Vec<MountBatch> {
+    let mut batches = Vec::new();
+    while let Ok(batch) = rx.recv_timeout(Duration::from_secs(1)) {
+        let done = text_id(&batch, wanted).is_some();
+        batches.push(batch);
+        if done {
+            break;
+        }
+    }
+    batches
+}
+
+#[test]
+fn a_popover_opens_below_its_trigger_and_closes_on_a_press_outside_or_escape() {
+    let (engine, rx) = start(POPOVER);
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    let trigger = parent_of(&first, text_id(&first, "Options").unwrap()).unwrap();
+    assert_eq!(size_of(&first, trigger).map(|s| s.1), Some(32.0));
+    let control = engine.control();
+    control.dispatch_event(trigger, EventKind::Press, EventPayload::None);
+    // The surface: measured, then placed under the trigger (24 pt of
+    // padding, 32 tall, 6 apart).
+    let mut modal = None;
+    // The modal's children: the backdrop, then the surface.
+    let mut layers = Vec::new();
+    let mut placed = None;
+    while let Ok(batch) = rx.recv_timeout(Duration::from_secs(1)) {
+        for item in &batch.items {
+            match item {
+                MountItem::Create {
+                    id,
+                    kind: nsh_core::ViewKind::Modal,
+                } => modal = Some(*id),
+                MountItem::Insert { parent, child, .. } if Some(*parent) == modal => {
+                    layers.push(*child);
+                }
+                MountItem::Frame { id, frame } if layers.get(1) == Some(id) && frame.y > 0.0 => {
+                    placed = Some((frame.x, frame.y));
+                }
+                _ => {}
+            }
+        }
+        if placed.is_some() {
+            break;
+        }
+    }
+    let backdrop = layers.first().copied();
+    let (x, y) = placed.expect("the surface was placed");
+    assert_eq!((x, y), (24.0, 24.0 + 32.0 + 6.0));
+    // A press on the backdrop closes it.
+    control.dispatch_event(backdrop.unwrap(), EventKind::Press, EventPayload::None);
+    assert!(
+        until_text(&rx, "closes 1")
+            .iter()
+            .any(|b| text_id(b, "closes 1").is_some())
+    );
+    // Opened again, Escape (the modal's request to close) closes it too.
+    control.dispatch_event(trigger, EventKind::Press, EventPayload::None);
+    let mut modal = None;
+    while let Ok(batch) = rx.recv_timeout(Duration::from_secs(1)) {
+        modal = batch.items.iter().find_map(|i| match i {
+            MountItem::Create {
+                id,
+                kind: nsh_core::ViewKind::Modal,
+            } => Some(*id),
+            _ => None,
+        });
+        if modal.is_some() {
+            break;
+        }
+    }
+    control.dispatch_event(
+        modal.expect("opened again"),
+        EventKind::RequestClose,
+        EventPayload::None,
+    );
+    assert!(
+        until_text(&rx, "closes 2")
+            .iter()
+            .any(|b| text_id(b, "closes 2").is_some())
+    );
+}

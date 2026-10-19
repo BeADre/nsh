@@ -18,7 +18,7 @@ back. One implementation draws the same on iOS and Android, is laid out in the s
 | `nsh_engine::EngineConfig::ui_sets` | The registries a surface serves (the platforms' `set_ui_sets`: by default `nsh_ui_mobile::registry()` on iOS and Android, both sets on the desktops and the web; an app's own set: `docs/dev/tooling.md`) |
 
 The desktop set (`nsh/ui/desktop`, `crates/nsh-ui-desktop`) is a crate of its own, not an abstraction over both; like
-every UI set it runs on every backend (macOS, Windows, Linux, GPUI, the web). It is in its first components (`Button`);
+every UI set it runs on every backend (macOS, Windows, Linux, GPUI, the web). It is in its first components (`Button`, `Popover`);
 until it has what the desktop apps and the gallery use, the desktops' runtimes serve both sets and their apps use
 `nsh/ui/mobile` too. Its controls are shorter than the mobile set's (`ControlSize`: 24, 32 and 40 points for a pointer;
 the mobile set's are 44 for a finger), with corners scaled from the theme's radius by height, so both draw one shape;
@@ -104,7 +104,11 @@ child components go with it. The design and its reasons: `reactive-components.md
   component still emits its event). A closure adapts another shape (`move || props.value.get().map(Some)` for a
   choice that may be none, `SelectList`). `NumberRange::new(min, max, step)` orders the bounds and rounds to the
   step's decimals (`fit`, `step_by`, `at_min` / `at_max`, `format`); `press_repeat()` runs an action at once, again
-  after `PressRepeat::HOLD` and every `PressRepeat::INTERVAL` until `stop()` (`Stepper`). Motion comes from
+  after `PressRepeat::HOLD` and every `PressRepeat::INTERVAL` until `stop()` (`Stepper`). `place(anchor, size, side,
+  align, gap, bounds)` is where a floating surface goes next to what opened it (`Side`, `Align`): flipped to the
+  opposite side when only that one has room, then shifted to stay inside the bounds (the desktop set's `Popover`:
+  a transparent modal, the trigger measured with `ElementRef::measure`, the surface's size from its layout, hidden
+  until placed). Motion comes from
   `ui::motion` (`Spring { velocity, ..motion::SETTLE }`, `v.timing_with(to, motion::EXIT)`, `Sheet`).
 - **`Scope<E>`** (`Copy`) is what the component has of its own: `cx.emit(event)` (to the app's `on<Event>`, or to the
   parent's `.on_event(..)`), `cx.insets()` (its screen's or modal's insets, reading subscribes) and

@@ -99,7 +99,10 @@ pub use self::{
         NativeValue, Spring, Timing, sample_decay, sample_decay_within, sample_spring,
     },
     asset::{AssetFile, AssetKind, FileAsset, FontAsset, ImageAsset, ImageSrc},
-    behavior::{Controllable, NumberRange, PressRepeat, controllable, press_repeat},
+    behavior::{
+        Align, Controllable, NumberRange, Placement, PressRepeat, Side, controllable, place,
+        press_repeat,
+    },
     call::{
         AnyValue, EventToJs, JsEvent, JsResult, MethodCall, OpCall, ParkedPost, Posts, RustCall,
         RustOp, TaskStart, ToJs,

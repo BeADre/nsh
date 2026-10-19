@@ -1,13 +1,13 @@
 ---
 title: Desktop UI
-description: nsh/ui/desktop UI 集：NSH 的设计语言在指针和键盘下的密度，以及它的 Button。
+description: nsh/ui/desktop UI 集：NSH 的设计语言在指针和键盘下的密度，以及它的 Button 和 Popover。
 order: 20
 ---
 
 # Desktop UI
 
 `nsh/ui/desktop` 是 NSH 面向 macOS、Windows、Linux 和 Web 窗口的 UI 集。它和 [Mobile UI](./index.md) 使用同一套设计语言、同一个主题，
-只是密度适合桌面：控件更矮，指针悬停时高亮，键盘把焦点移到控件上时显示焦点环。第一个组件是 `Button`，后续组件陆续加入。
+只是密度适合桌面：控件更矮，指针悬停时高亮，键盘把焦点移到控件上时显示焦点环。第一批组件是 `Button` 和 `Popover`，后续组件陆续加入。
 
 ```tsx
 import { Button } from "nsh/ui/desktop";
@@ -73,3 +73,48 @@ mount(App);
 | 事件 | 参数 | 触发时机 |
 |---|---|---|
 | `onPress` | 无 | 点击，或按钮获得键盘焦点时按 Return 或空格（macOS、Web）。 |
+
+## Popover
+
+`open` 为 true 时，`Popover` 在 `trigger` 旁边显示一个浮层：默认在下方；下方放不下时放到上方（或另一侧），并且始终保持在窗口内。
+点击浮层外部或按 Escape 会通过 `onClose` 关闭它，在回调里把 `open` 设为 false。每次打开时都会重新创建内容。
+
+```tsx
+import { mount, signal, View } from "nsh";
+import { Button, Popover } from "nsh/ui/desktop";
+
+function App() {
+  const open = signal(false);
+  return (
+    <View class="p-6">
+      <Popover
+        open={open()}
+        onClose={() => open.set(false)}
+        trigger={<Button title="Options" onPress={() => open.set(true)} />}
+      >
+        <View class="w-40 gap-1">
+          <Button title="Rename" variant="plain" onPress={() => open.set(false)} />
+          <Button title="Delete" variant="danger" onPress={() => open.set(false)} />
+        </View>
+      </Popover>
+    </View>
+  );
+}
+
+mount(App);
+```
+
+浮层使用主题的 `popover.background`、`popover.foreground` 和 `border` 颜色，淡入方式和 NSH 其他浮层的进入动效一致。
+在 macOS 和 Web 上，Tab 会从触发按钮进入浮层内容，浮层关闭后键盘焦点回到触发按钮。
+
+| 属性 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `open` | `boolean` | `false` | 是否显示。 |
+| `trigger` | JSX | | 打开它的元素，浮层放在它旁边。 |
+| `side` | `"top" \| "bottom" \| "left" \| "right"` | `"bottom"` | 放在触发元素的哪一侧。 |
+| `align` | `"start" \| "center" \| "end"` | `"start"` | 沿该侧与触发元素如何对齐。 |
+| `children` | JSX | | 内容，浮层打开时创建。 |
+
+| 事件 | 参数 | 触发时机 |
+|---|---|---|
+| `onClose` | 无 | 点击浮层外部，或按 Escape。 |

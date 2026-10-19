@@ -14,14 +14,19 @@
 
 mod button;
 mod metrics;
+mod popover;
 
 use std::sync::Arc;
 
+/// Where a [`Popover`] goes: re-exported from the core, which every set's
+/// floating surfaces share.
+pub use nsh_core::ui::{Align, Side};
 use nsh_core::ui::{ComponentSpec, Registry};
 
 pub use crate::{
     button::{Button, ButtonEvent, ButtonProps, ButtonVariant},
     metrics::ControlSize,
+    popover::{Popover, PopoverEvent, PopoverProps},
 };
 
 /// The JS module apps import the desktop UI as.
@@ -30,7 +35,7 @@ pub const SPECIFIER: &str = "nsh/ui/desktop";
 /// Every component of the desktop set, for an engine to render.
 pub fn registry() -> Registry {
     let mut registry = Registry::ui_set(SPECIFIER);
-    registry.register::<Button>();
+    registry.register::<Button>().register::<Popover>();
     registry
 }
 
@@ -48,7 +53,7 @@ mod tests {
     fn the_exports_are_pinned() {
         let registry = super::registry();
         let components: Vec<_> = registry.specs().iter().map(|s| s.export.clone()).collect();
-        assert_eq!(components, ["Button"]);
+        assert_eq!(components, ["Button", "Popover"]);
         assert!(registry.module_specs().is_empty());
     }
 }

@@ -1,6 +1,6 @@
 ---
 title: Desktop UI
-description: The nsh/ui/desktop UI set, NSH's design language at a pointer's and a keyboard's density, and its Button.
+description: The nsh/ui/desktop UI set, NSH's design language at a pointer's and a keyboard's density, its Button and Popover.
 order: 20
 ---
 
@@ -8,7 +8,8 @@ order: 20
 
 `nsh/ui/desktop` is NSH's UI set for windows on macOS, Windows, Linux and the web. It draws the same design language
 as the [mobile UI](./index.md), with the same theme, at a desktop's density: shorter controls, a highlight under the
-pointer, and a focus ring when the keyboard moves to a control. Its first component is `Button`; more follow.
+pointer, and a focus ring when the keyboard moves to a control. Its first components are `Button` and `Popover`; more
+follow.
 
 ```tsx
 import { Button } from "nsh/ui/desktop";
@@ -78,3 +79,50 @@ mount(App);
 | Event | Payload | When |
 |---|---|---|
 | `onPress` | none | A click, or Return or Space while the button has the keyboard focus (macOS, the web). |
+
+## Popover
+
+`Popover` shows a floating surface next to its `trigger` while `open` is true: below it by default, above it (or on
+the other side) when the window has no room there, and always inside the window. A click outside the surface or
+Escape closes it through `onClose`; set `open` to false there. The content is made each time the popover opens.
+
+```tsx
+import { mount, signal, View } from "nsh";
+import { Button, Popover } from "nsh/ui/desktop";
+
+function App() {
+  const open = signal(false);
+  return (
+    <View class="p-6">
+      <Popover
+        open={open()}
+        onClose={() => open.set(false)}
+        trigger={<Button title="Options" onPress={() => open.set(true)} />}
+      >
+        <View class="w-40 gap-1">
+          <Button title="Rename" variant="plain" onPress={() => open.set(false)} />
+          <Button title="Delete" variant="danger" onPress={() => open.set(false)} />
+        </View>
+      </Popover>
+    </View>
+  );
+}
+
+mount(App);
+```
+
+The surface uses the theme's `popover.background`, `popover.foreground` and `border` colors and fades in as NSH's
+other surfaces move in. On macOS and the web, Tab goes from the trigger into the content and the keyboard focus
+returns to the trigger when the popover closes.
+
+| Prop | Type | Default | Description |
+|---|---|---|---|
+| `open` | `boolean` | `false` | Shown. |
+| `trigger` | JSX | | What opens it: the surface goes next to it. |
+| `side` | `"top" \| "bottom" \| "left" \| "right"` | `"bottom"` | Which side of the trigger. |
+| `align` | `"start" \| "center" \| "end"` | `"start"` | How it lines up with the trigger along that side. |
+| `children` | JSX | | The content, made when the popover opens. |
+
+| Event | Payload | When |
+|---|---|---|
+| `onClose` | none | A click outside the surface, or Escape. |

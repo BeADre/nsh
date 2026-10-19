@@ -19,6 +19,10 @@ regions, slots, state, tasks, modules); this set adds what a desktop control is:
 - **Shared, not copied**: what a control does (a value the app may control, a number in steps, a press that repeats)
   is `nsh_core::ui`'s (`controllable`, `NumberRange`, `press_repeat`), the same as the mobile set uses. A component
   never imports from `nsh-ui-mobile`; what both need moves to the core.
+- **Floating surfaces** (`Popover`) are a transparent modal over the window: a backdrop that closes them on a click
+  (`focusable(false)`, so Tab goes straight to the content), Escape through the modal's `on_request_close`, the
+  trigger measured (`ElementRef::measure`) and the surface placed with the core's `place` (flipped and kept in the
+  window), hidden until it is placed. The platforms give the keyboard focus back to the trigger when it closes.
 - **One file per component** (`src/button.rs`), registered in `registry()` (`src/lib.rs`); `the_exports_are_pinned`
   lists the exports. Exports may share a name with the mobile set's (`Button`): apps import the set they draw with,
   or both under different names.
