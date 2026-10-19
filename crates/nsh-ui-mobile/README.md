@@ -28,8 +28,8 @@ state) stays native. JS only gets the events the component emits.
 - **What controls do is shared** with every UI set (`nsh_core::ui`'s `behavior.rs`): a value the app may control is
   `controllable(props.value, default)` (`TextField`, `Stepper`, `SelectList`: `set(v)` when the user changes it,
   then emit), a number changed in steps `NumberRange`, a press that repeats while held `press_repeat()` (`Stepper`).
-  **Motion is the design language's**: `motion::SETTLE`, `motion::EXIT` (`Sheet`), never springs or durations of a
-  component's own.
+  **Motion and dimming are the design language's**: `motion::SETTLE`, `motion::EXIT` (`Sheet`), a disabled control at
+  `DISABLED_OPACITY` (`Button`), never springs, durations or opacities of a component's own.
 - **What never changes is plain Rust**: `.when(cond, |v| ..)`, `match` at build time. Interaction states are variants:
   `.active(..)`, `.hover(..)`, `.focus(..)`.
 - **What comes and goes is a region**: `If::new(cond, || el).otherwise(|| el)`, `dynamic(move || ..)` (an element, an

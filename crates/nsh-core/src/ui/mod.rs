@@ -152,7 +152,7 @@ pub use self::{
         px, relative, rgb, rgba,
     },
     task::{Answer, DialogAnswer, ImageSize, Task},
-    theme::{Theme, ThemeColors, ThemeError},
+    theme::{DISABLED_OPACITY, Theme, ThemeColors, ThemeError},
     value::{JsValue, NodeRef, PropEnum, PropError, SharedString, TsType, TsTypes, ts_of},
     virtual_list::{ListLayout, ViewableItems, VirtualList, virtual_list},
 };
@@ -208,6 +208,7 @@ pub mod prelude {
         Controllable,
         Cursor,
         Curve,
+        DISABLED_OPACITY,
         DialogAnswer,
         EaseMode,
         // Native animation values.

@@ -72,7 +72,7 @@ pub fn Button(props: ButtonProps, cx: Scope<ButtonEvent>) -> impl IntoElement {
         .rounded(move || px(theme().radius))
         .bg(move || colors.get().0)
         .active(|s| s.bg(move || colors.get().1))
-        .style_when(props.disabled, |v| v.opacity(0.5))
+        .style_when(props.disabled, |v| v.opacity(DISABLED_OPACITY))
         .disabled(props.disabled)
         .role(AccessibilityRole::Button)
         .label(move || {

@@ -143,6 +143,10 @@ theme_colors! {
     warning_foreground = "warning.foreground",
 }
 
+/// How far a disabled control is dimmed (its opacity), the same in every UI
+/// set: what a theme's colors leave to the design language.
+pub const DISABLED_OPACITY: f32 = 0.5;
+
 /// The theme components are drawn with ([`super::ambient::theme`]). Derefs
 /// to its colors: `theme.primary`.
 #[derive(Debug, Clone, PartialEq)]

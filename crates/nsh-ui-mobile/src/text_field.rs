@@ -49,7 +49,7 @@ pub fn TextField(props: TextFieldProps, cx: Scope<TextFieldEvent>) -> impl IntoE
     };
     view()
         .gap_1()
-        .style_when(props.disabled, |v| v.opacity(0.5))
+        .style_when(props.disabled, |v| v.opacity(DISABLED_OPACITY))
         .child(dynamic(move || {
             props.label.get().map(|label| {
                 text(label)

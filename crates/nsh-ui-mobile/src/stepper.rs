@@ -113,7 +113,7 @@ pub fn Stepper(props: StepperProps, cx: Scope<StepperEvent>) -> impl IntoElement
                 .rounded(move || px(theme().radius))
                 .bg(move || theme().secondary)
                 .active(|s| s.bg(move || theme().secondary_active))
-                .style_when(off, |v| v.opacity(0.4))
+                .style_when(off, |v| v.opacity(DISABLED_OPACITY))
                 .disabled(off)
                 .role(AccessibilityRole::Button)
                 .label(name)

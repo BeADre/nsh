@@ -22,11 +22,12 @@ yet: on macOS, Windows and Linux apps use `nsh/ui/mobile`, whose components rend
 layouts from the primitives.
 
 The sets share one design language and the behavior under it, never components: each set draws its own controls for its
-form factor (sizes, density, how they are pressed, hovered and focused, which controls exist), and all of them take their
-colors, radii and font size from the `Theme`, their motion from `ui::motion` and what controls do from `ui/behavior.rs`:
-a value the app may control or leave to the component (`controllable`), a number changed in steps (`NumberRange`), an
-action repeated while a press is held (`press_repeat`). What two sets would otherwise both write goes there, once a
-second set needs it; a component's own numbers for these are a bug.
+form factor (sizes, density, how they are pressed, hovered and focused, which controls exist), and all of them take
+their colors, radii and font size from the `Theme`, a disabled control's dimming from `ui::DISABLED_OPACITY`, their
+motion from `ui::motion` and what controls do from `ui/behavior.rs`: a value the app may control or leave to the
+component (`controllable`), a number changed in steps (`NumberRange`), an action repeated while a press is held
+(`press_repeat`). What two sets would otherwise both write goes there, once a second set needs it; a component's own
+numbers for these are a bug.
 
 ## The API
 
