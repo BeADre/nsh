@@ -108,7 +108,9 @@ child components go with it. The design and its reasons: `reactive-components.md
   align, gap, bounds)` is where a floating surface goes next to what opened it (`Side`, `Align`): flipped to the
   opposite side when only that one has room, then shifted to stay inside the bounds (the desktop set's `Popover`:
   a transparent modal, the trigger measured with `ElementRef::measure`, the surface's size from its layout, hidden
-  until placed). Motion comes from
+  until placed). `presence(open, || leave())` is whether a surface that comes and goes is shown: until the exit
+  animation `leave` starts has ended after `open` turned false (an `If` of it, the animated native values owned
+  outside it), so it leaves in motion; opening again meanwhile keeps it. Motion comes from
   `ui::motion` (`Spring { velocity, ..motion::SETTLE }`, `v.timing_with(to, motion::EXIT)`, `Sheet`).
 - **`Scope<E>`** (`Copy`) is what the component has of its own: `cx.emit(event)` (to the app's `on<Event>`, or to the
   parent's `.on_event(..)`), `cx.insets()` (its screen's or modal's insets, reading subscribes) and

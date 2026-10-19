@@ -6,15 +6,19 @@
 //! component, [`NumberRange`] the bounds and step of a number changed in
 //! steps, [`press_repeat`] an action repeated while a press is held,
 //! [`place`] where a floating surface (a popover, a menu) goes next to what
-//! opened it. They hold no elements and no styles; a component makes them
-//! in its body, where they go with it.
+//! opened it, [`presence`] whether a surface that comes and goes is still
+//! shown while it leaves. They hold no elements and no styles; a component
+//! makes them in its body, where they go with it.
 
 use std::{rc::Rc, time::Duration};
 
 use super::{
-    PropEnum,
+    AnimationEnd, PropEnum,
     ambient::{Spawned, spawn, timer},
-    reactive::{IntoReactive, Memo, Reactive, Signal, Stored, computed, signal, stored, untracked},
+    reactive::{
+        IntoReactive, Memo, Reactive, ReadSignal, Signal, Stored, computed, effect, signal, stored,
+        untracked,
+    },
 };
 use crate::geometry::{Rect, Size};
 
@@ -252,6 +256,39 @@ impl PressRepeat {
     pub fn is_running(&self) -> bool {
         self.task.with(|t| t.is_some())
     }
+}
+
+/// Whether a surface that comes and goes (a popover, a dialog) is shown:
+/// from when `open` turns true until the exit animation `leave` starts has
+/// ended after it turned false, so the surface leaves in motion instead of
+/// vanishing. Opening again while it leaves keeps what is shown (the wait
+/// is dropped; the component's enter animation takes over). Show the
+/// surface in an `If` of what this returns; `leave` runs untracked, on
+/// native values the component owns outside that `If`.
+pub fn presence(
+    open: impl IntoReactive<bool>,
+    leave: impl Fn() -> AnimationEnd + 'static,
+) -> ReadSignal<bool> {
+    let open = open.into_reactive();
+    let shown = signal(untracked(|| open.get()));
+    let leaving = stored(None::<Spawned<()>>);
+    effect(move || {
+        if open.get() {
+            if let Some(task) = leaving.replace(None) {
+                task.cancel();
+            }
+            shown.set(true);
+        } else if untracked(|| shown.get()) && leaving.with(|l| l.is_none()) {
+            let end = untracked(&leave);
+            leaving.replace(Some(spawn(async move {
+                // Ended or interrupted: gone either way.
+                let _ = end.await;
+                leaving.replace(None);
+                shown.set(false);
+            })));
+        }
+    });
+    shown.read_only()
 }
 
 /// Which side of what opened it a floating surface goes on.

@@ -2,7 +2,7 @@
 
 use nsh_core::{
     Rect, Size,
-    ui::{Align, Side, place, prelude::*},
+    ui::{Align, Side, place, prelude::*, presence},
 };
 
 /// How far the surface stands off its trigger, and keeps from the window's
@@ -13,7 +13,7 @@ const MARGIN: f32 = 8.0;
 /// A floating surface next to its `trigger` while `open`: below it by
 /// default, flipped above (or to the other side) when the window has no
 /// room there, and kept inside the window. A press outside it or Escape
-/// closes it (`onClose`: set `open` to false).
+/// closes it (`onClose`: set `open` to false); it fades out as it goes.
 #[derive(Debug, Clone, PartialEq, Props)]
 pub struct PopoverProps {
     /// Shown.
@@ -50,13 +50,18 @@ pub fn Popover(props: PopoverProps, cx: Scope<PopoverEvent>) -> impl IntoElement
     // when the window changes); the surface's size, from its layout.
     let anchor = signal(None::<Rect>);
     let size = signal(None::<Size>);
+    // Its opacity: in once placed, out when it closes, which it stays shown
+    // for.
+    let fade = native_value(0.0);
+    let shown = presence(props.open, {
+        let fade = fade.clone();
+        move || fade.timing_with(0.0, motion::EXIT)
+    });
     {
         let trigger = trigger.clone();
         effect(move || {
             let _ = window();
             if !props.open.get() {
-                anchor.set(None);
-                size.set(None);
                 return;
             }
             let trigger = trigger.clone();
@@ -91,7 +96,27 @@ pub fn Popover(props: PopoverProps, cx: Scope<PopoverEvent>) -> impl IntoElement
             bounds,
         ))
     });
-    let close = move || cx.emit(PopoverEvent::Close);
+    // Gone: measured again on the next opening.
+    effect(move || {
+        if !shown.get() {
+            anchor.set(None);
+            size.set(None);
+        }
+    });
+    {
+        let fade = fade.clone();
+        effect(move || {
+            if props.open.get() && placed.with(Option::is_some) {
+                fade.spring(1.0, motion::SETTLE);
+            }
+        });
+    }
+    // Once: a press or Escape while it fades out asks nothing more.
+    let close = move || {
+        if props.open.get_untracked() {
+            cx.emit(PopoverEvent::Close);
+        }
+    };
     let children = props.children;
     view()
         .items_start()
@@ -99,18 +124,7 @@ pub fn Popover(props: PopoverProps, cx: Scope<PopoverEvent>) -> impl IntoElement
             let trigger = trigger.clone();
             move |slot| slot.element_ref(&trigger)
         }))
-        .child(If::new(props.open, move || {
-            // Fades in once it is placed: measured, it shows where it
-            // belongs.
-            let shown = native_value(0.0);
-            {
-                let shown = shown.clone();
-                effect(move || {
-                    if placed.with(Option::is_some) {
-                        shown.spring(1.0, motion::SETTLE);
-                    }
-                });
-            }
+        .child(If::new(shown, move || {
             modal()
                 .transparent(true)
                 .animation(ModalAnimation::None)
@@ -130,7 +144,7 @@ pub fn Popover(props: PopoverProps, cx: Scope<PopoverEvent>) -> impl IntoElement
                         .absolute()
                         .left(move || px(placed.get().map_or(0.0, |p| p.x)))
                         .top(move || px(placed.get().map_or(0.0, |p| p.y)))
-                        .bind_opacity(&shown)
+                        .bind_opacity(&fade)
                         .on_layout(move |frame: &Rect| {
                             size.set(Some(Size {
                                 width: frame.width,

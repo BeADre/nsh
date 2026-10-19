@@ -111,8 +111,8 @@ function App() {
 mount(App);
 ```
 
-The surface uses the theme's `popover.background`, `popover.foreground` and `border` colors and fades in as NSH's
-other surfaces move in. On macOS and the web, Tab goes from the trigger into the content and the keyboard focus
+The surface uses the theme's `popover.background`, `popover.foreground` and `border` colors, fades in as NSH's other
+surfaces move in and fades out as they leave. On macOS and the web, Tab goes from the trigger into the content and the keyboard focus
 returns to the trigger when the popover closes.
 
 | Prop | Type | Default | Description |

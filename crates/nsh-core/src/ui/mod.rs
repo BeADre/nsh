@@ -101,7 +101,7 @@ pub use self::{
     asset::{AssetFile, AssetKind, FileAsset, FontAsset, ImageAsset, ImageSrc},
     behavior::{
         Align, Controllable, NumberRange, Placement, PressRepeat, Side, controllable, place,
-        press_repeat,
+        presence, press_repeat,
     },
     call::{
         AnyValue, EventToJs, JsEvent, JsResult, MethodCall, OpCall, ParkedPost, Posts, RustCall,

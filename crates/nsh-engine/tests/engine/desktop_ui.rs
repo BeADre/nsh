@@ -5,7 +5,10 @@
 use std::time::Duration;
 
 use crossbeam_channel::Receiver;
-use nsh_core::{ApproxTextEngine, EventKind, EventPayload, MountBatch, MountItem, Size};
+use nsh_core::{
+    ApproxTextEngine, EventKind, EventPayload, MountBatch, MountItem, Size,
+    nsh_animation::{AnimationOp, Driver, Finished},
+};
 use nsh_engine::{Bundle, Engine, EngineConfig, Environment};
 
 use crate::ChannelSink;
@@ -205,13 +208,46 @@ fn a_popover_opens_below_its_trigger_and_closes_on_a_press_outside_or_escape() {
     let backdrop = layers.first().copied();
     let (x, y) = placed.expect("the surface was placed");
     assert_eq!((x, y), (24.0, 24.0 + 32.0 + 6.0));
-    // A press on the backdrop closes it.
+    // A press on the backdrop closes it: the app hears it at once, and the
+    // surface fades out (`motion::EXIT`) before the modal goes.
     control.dispatch_event(backdrop.unwrap(), EventKind::Press, EventPayload::None);
-    assert!(
-        until_text(&rx, "closes 1")
+    let mut fade_out = None;
+    let mut closed = false;
+    while let Ok(batch) = rx.recv_timeout(Duration::from_secs(1)) {
+        closed |= text_id(&batch, "closes 1").is_some();
+        fade_out = fade_out.or(batch.items.iter().find_map(|i| match i {
+            MountItem::Animation(AnimationOp::Start {
+                animation,
+                driver: Driver::Timing { to, .. },
+                ..
+            }) if *to == 0.0 => Some(*animation),
+            _ => None,
+        }));
+        if closed && fade_out.is_some() {
+            break;
+        }
+    }
+    assert!(closed, "onClose reached the app");
+    let removed = |batch: &MountBatch| {
+        batch
+            .items
             .iter()
-            .any(|b| text_id(b, "closes 1").is_some())
+            .any(|i| matches!(i, MountItem::Delete { id } if Some(*id) == modal))
+    };
+    // Still shown while it fades; gone once the fade ends.
+    assert!(
+        !rx.recv_timeout(Duration::from_millis(300))
+            .is_ok_and(|b| removed(&b))
     );
+    control.animations_finished(vec![Finished::new(fade_out.expect("a fade out"), true)]);
+    let mut gone = false;
+    while let Ok(batch) = rx.recv_timeout(Duration::from_secs(1)) {
+        if removed(&batch) {
+            gone = true;
+            break;
+        }
+    }
+    assert!(gone, "the modal went after the fade");
     // Opened again, Escape (the modal's request to close) closes it too.
     control.dispatch_event(trigger, EventKind::Press, EventPayload::None);
     let mut modal = None;

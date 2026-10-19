@@ -104,7 +104,7 @@ function App() {
 mount(App);
 ```
 
-浮层使用主题的 `popover.background`、`popover.foreground` 和 `border` 颜色，淡入方式和 NSH 其他浮层的进入动效一致。
+浮层使用主题的 `popover.background`、`popover.foreground` 和 `border` 颜色，淡入和淡出分别与 NSH 其他浮层的进入、离开动效一致。
 在 macOS 和 Web 上，Tab 会从触发按钮进入浮层内容，浮层关闭后键盘焦点回到触发按钮。
 
 | 属性 | 类型 | 默认值 | 说明 |
