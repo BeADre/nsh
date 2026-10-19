@@ -1,6 +1,6 @@
 //! `Stepper`: a number with − and + buttons; holding one keeps stepping.
 
-use std::{rc::Rc, time::Duration};
+use std::rc::Rc;
 
 use nsh_core::ui::prelude::*;
 
@@ -36,55 +36,22 @@ pub enum StepperEvent {
     Change(f64),
 }
 
-/// How long a press is held before it repeats, and how fast it repeats.
-const HOLD: Duration = Duration::from_millis(400);
-const REPEAT: Duration = Duration::from_millis(80);
-
-/// The bounds and the step.
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct Range {
-    min: f64,
-    max: f64,
-    step: f64,
-    controlled: bool,
-}
-
-impl Range {
-    fn of(props: &StepperProps) -> Self {
-        let (min, max) = (props.min.get(), props.max.get());
-        Self {
-            min: min.min(max),
-            max: min.max(max),
-            step: props.step.get().abs(),
-            controlled: props.value.with(Option::is_some),
-        }
-    }
-
-    /// `value` on the step grid within the bounds.
-    fn fit(&self, value: f64) -> f64 {
-        let decimals = decimals(self.step);
-        let scale = 10f64.powi(decimals as i32);
-        ((value * scale).round() / scale).clamp(self.min, self.max)
-    }
-}
-
-/// The decimals of `step` (0.25 has 2), to show and round to.
-fn decimals(step: f64) -> usize {
-    let text = format!("{step}");
-    text.split_once('.').map_or(0, |(_, d)| d.len())
+/// The bounds and the step of `props`.
+fn range(props: &StepperProps) -> NumberRange {
+    NumberRange::new(props.min.get(), props.max.get(), props.step.get())
 }
 
 /// What JS calls on a stepper's ref.
 pub struct StepperApi {
     value: Memo<f64>,
-    range: Memo<Range>,
+    range: Memo<NumberRange>,
     change: Rc<dyn Fn(f64)>,
 }
 
 #[methods]
 impl StepperApi {
-    /// Sets the value (on the step grid, within the bounds) and reports it
-    /// as a press would.
+    /// Sets the value (rounded to the step's decimals, within the bounds)
+    /// and reports it as a press would.
     pub fn set_value(&self, value: f64) {
         (self.change)(self.range.get_untracked().fit(value));
     }
@@ -98,54 +65,37 @@ impl StepperApi {
 /// A number with − and + buttons ([`StepperProps`]).
 #[component(methods = StepperApi)]
 pub fn Stepper(props: StepperProps, cx: Scope<StepperEvent>) -> impl IntoElement {
-    let range = computed(move || Range::of(&props));
-    // Our value, when the app does not control it; on the grid and within
+    let range = computed(move || range(&props));
+    // The app's value or our own, shown on the step's decimals and within
     // the bounds either way.
-    let own = signal(untracked(|| range.get().fit(props.default_value.get())));
-    let value = computed(move || range.get().fit(props.value.get().unwrap_or(own.get())));
+    let given = controllable(
+        props.value,
+        untracked(|| range.get().fit(props.default_value.get())),
+    );
+    let value = computed(move || range.get().fit(given.get()));
     // Stepping while a button is held.
-    let repeat = stored(None::<Spawned<()>>);
-    let stop = move || {
-        if let Some(task) = repeat.replace(None) {
-            task.cancel();
-        }
-    };
+    let repeat = press_repeat();
     // Shows `next` (unless the app controls the value) and reports it.
     let change = move |next: f64| {
         if next == value.get_untracked() {
-            stop();
+            repeat.stop();
             return;
         }
-        // The app's value follows from `onChange` when it controls it.
-        if !range.get_untracked().controlled {
-            own.set(next);
-        }
+        given.set(next);
         cx.emit(StepperEvent::Change(next));
     };
     // One step of `direction` (−1 or 1); stops repeating at a bound.
     let step = move |direction: f64| {
         let range = range.get_untracked();
-        change(range.fit(value.get_untracked() + direction * range.step));
+        change(range.step_by(value.get_untracked(), direction));
         let now = value.get_untracked();
-        if now == range.min || now == range.max {
-            stop();
+        if range.at_min(now) || range.at_max(now) {
+            repeat.stop();
         }
-    };
-    // A press on − or +: one step now, more while it is held.
-    let press = move |direction: f64| {
-        stop();
-        step(direction);
-        repeat.replace(Some(spawn(async move {
-            timer(HOLD).await;
-            loop {
-                step(direction);
-                timer(REPEAT).await;
-            }
-        })));
     };
     effect(move || {
         if props.disabled.get() {
-            stop();
+            repeat.stop();
         }
     });
     cx.methods(StepperApi {
@@ -167,8 +117,11 @@ pub fn Stepper(props: StepperProps, cx: Scope<StepperEvent>) -> impl IntoElement
                 .disabled(off)
                 .role(AccessibilityRole::Button)
                 .label(name)
-                .on(EventKind::PressIn, move |_: &EventPayload| press(direction))
-                .on(EventKind::PressOut, move |_: &EventPayload| stop())
+                // One step now, more while it is held.
+                .on(EventKind::PressIn, move |_: &EventPayload| {
+                    repeat.start(move || step(direction));
+                })
+                .on(EventKind::PressOut, move |_: &EventPayload| repeat.stop())
                 .child(
                     text(label)
                         .text_size(move || px(theme().font_size + 4.0))
@@ -184,10 +137,10 @@ pub fn Stepper(props: StepperProps, cx: Scope<StepperEvent>) -> impl IntoElement
             "−",
             "Decrease",
             -1.0,
-            computed(move || value.get() <= range.get().min),
+            computed(move || range.get().at_min(value.get())),
         ))
         .child(
-            text(move || format!("{:.*}", decimals(range.get().step), value.get()))
+            text(move || range.get().format(value.get()))
                 .min_w(px(48.0))
                 .text_center()
                 .text_size(move || px(theme().font_size + 1.0))
@@ -198,6 +151,6 @@ pub fn Stepper(props: StepperProps, cx: Scope<StepperEvent>) -> impl IntoElement
             "+",
             "Increase",
             1.0,
-            computed(move || value.get() >= range.get().max),
+            computed(move || range.get().at_max(value.get())),
         ))
 }

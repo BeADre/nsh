@@ -105,6 +105,48 @@ iOS 的 `AppView` 上用 `AppSource::Rust` 挂载 Rust 根组件。
 等待用 `timer`、`set_timeout` 和 `set_interval`，时钟用 `nsh_core::time::Instant` 和 `nsh_core::time::unix_ms()`。
 `background` 和 `blocking` 在原生目标的线程上运行任务。
 
+## 自己的控件
+
+应用 crate 里写的控件和 NSH 自带组件用同一套构件，行为和动效与 `nsh/ui/mobile` 的组件一致：
+
+```rust
+use nsh_core::ui::prelude::*;
+
+/// A quantity the app controls (`value`, updated from `onChange`) or leaves to the control.
+#[derive(Debug, Clone, Copy, PartialEq, Props)]
+pub struct QuantityProps {
+    pub value: Prop<Option<f64>>,
+    #[prop(default = 1.0)]
+    pub default_value: Prop<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Event)]
+pub enum QuantityEvent {
+    Change(f64),
+}
+
+#[component]
+pub fn Quantity(props: QuantityProps, cx: Scope<QuantityEvent>) -> impl IntoElement {
+    let range = NumberRange::new(1.0, 99.0, 1.0);
+    let quantity = controllable(props.value, props.default_value.get_untracked());
+    let add = move |steps: f64| {
+        let next = range.step_by(quantity.get_untracked(), steps);
+        quantity.set(next);
+        cx.emit(QuantityEvent::Change(next));
+    };
+    view()
+        .flex_row()
+        .gap_3()
+        .child(text("−").on_press(move |_: &()| add(-1.0)))
+        .child(text(move || range.format(quantity.get())))
+        .child(text("+").on_press(move |_: &()| add(1.0)))
+}
+```
+
+应用传入值时，`controllable` 显示应用的值，否则显示控件自己的值；`set` 在后一种情况下保存用户的修改，前一种情况由应用从事件里取新值。
+`NumberRange` 把数值保持在范围内并按步长的小数位取整，`press_repeat()` 在按住期间重复执行一个动作，`motion::SETTLE` 和
+`motion::EXIT` 是 NSH 组件所用的弹簧和时长曲线。
+
 ## 桌面标题栏
 
 Rust 应用通过 `nsh_core::ui::desktop` 绘制自定义标题栏。调用

@@ -8,6 +8,7 @@ back. One implementation draws the same on iOS and Android, is laid out in the s
 | Where | What |
 |---|---|
 | `crates/nsh-core/src/ui/` | The API (`nsh_core::ui`, `prelude`): `Component`, `Module`, `Class` (`class.rs`, `callback.rs`; direct JS values: `js.rs`), elements, `Styled`, `Theme`, `Registry`, the status bar's layers (`status_bar.rs`), the declarations generator `typescript` |
+| `crates/nsh-core/src/ui/behavior.rs`, `motion.rs` | What every UI set shares besides the theme: controls' behavior (`controllable`, `NumberRange`, `press_repeat`) and the design language's motion (`motion::SETTLE`, `motion::EXIT`) |
 | `crates/nsh-macros` | `#[component]`, `#[derive(Props)]`, `#[derive(PropEnum)]`, `#[derive(Event)]`, `#[derive(JsObject)]`; `#[methods]`, `#[module]`, `#[class]`; `#[native_module("…")]` (an app crate's set: `docs/dev/tooling.md`); `style_helpers!` (the spacing methods of `Styled`) |
 | `crates/nsh-core/src/core/components.rs` | The core side: instances, children and slots, events; `core/views.rs`: views, their bindings' patches and regions |
 | `crates/nsh-ui-mobile` | The mobile set's components, one file each (`README.md`: how to write one) |
@@ -19,6 +20,13 @@ A desktop set is planned as a crate of its own (`nsh-ui-desktop`), not an abstra
 on every backend (macOS, Windows, Linux, and GPUI, a separate platform backend in development, `gpui.md`). It does not exist
 yet: on macOS, Windows and Linux apps use `nsh/ui/mobile`, whose components render there as on phones, or their own
 layouts from the primitives.
+
+The sets share one design language and the behavior under it, never components: each set draws its own controls for its
+form factor (sizes, density, how they are pressed, hovered and focused, which controls exist), and all of them take their
+colors, radii and font size from the `Theme`, their motion from `ui::motion` and what controls do from `ui/behavior.rs`:
+a value the app may control or leave to the component (`controllable`), a number changed in steps (`NumberRange`), an
+action repeated while a press is held (`press_repeat`). What two sets would otherwise both write goes there, once a
+second set needs it; a component's own numbers for these are a bug.
 
 ## The API
 
@@ -84,6 +92,14 @@ child components go with it. The design and its reasons: `reactive-components.md
   assignment that ran it, or by `mount` in the first render. A Rust parent passes a value
   (`3.into()`), a signal (`n.into()`) or a closure (`Prop::bind(move || ..)`). Platform-only props are an `android` /
   `ios` prop of a `JsObject` struct (`StatusBar`'s `android={{ backgroundColor }}`), as for host elements.
+- **Shared behavior** (`ui/behavior.rs`): `controllable(props.value, default)` is a `Copy` handle to the value shown,
+  the app's while its prop is `Some` and the component's own otherwise (`get()` / `with(..)` in bindings,
+  `get_untracked()` in listeners, `set(v)` when the user changes it: kept only when the component keeps its own; the
+  component still emits its event). A closure adapts another shape (`move || props.value.get().map(Some)` for a
+  choice that may be none, `SelectList`). `NumberRange::new(min, max, step)` orders the bounds and rounds to the
+  step's decimals (`fit`, `step_by`, `at_min` / `at_max`, `format`); `press_repeat()` runs an action at once, again
+  after `PressRepeat::HOLD` and every `PressRepeat::INTERVAL` until `stop()` (`Stepper`). Motion comes from
+  `ui::motion` (`Spring { velocity, ..motion::SETTLE }`, `v.timing_with(to, motion::EXIT)`, `Sheet`).
 - **`Scope<E>`** (`Copy`) is what the component has of its own: `cx.emit(event)` (to the app's `on<Event>`, or to the
   parent's `.on_event(..)`), `cx.insets()` (its screen's or modal's insets, reading subscribes) and
   `cx.methods(api)` (below). Everything else is a free function of `ui::prelude`.

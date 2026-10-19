@@ -33,6 +33,7 @@ pub mod ambient;
 pub(crate) mod animated;
 mod asset;
 mod back;
+mod behavior;
 pub(crate) mod call;
 mod callback;
 pub(crate) mod class;
@@ -49,6 +50,7 @@ mod js;
 pub(crate) mod json_host;
 pub(crate) mod keys;
 pub(crate) mod module;
+pub mod motion;
 mod once;
 pub mod palette;
 mod prop;
@@ -97,6 +99,7 @@ pub use self::{
         NativeValue, Spring, Timing, sample_decay, sample_decay_within, sample_spring,
     },
     asset::{AssetFile, AssetKind, FileAsset, FontAsset, ImageAsset, ImageSrc},
+    behavior::{Controllable, NumberRange, PressRepeat, controllable, press_repeat},
     call::{
         AnyValue, EventToJs, JsEvent, JsResult, MethodCall, OpCall, ParkedPost, Posts, RustCall,
         RustOp, TaskStart, ToJs,
@@ -202,6 +205,7 @@ pub mod prelude {
         ComponentElement,
         ComponentError,
         ComponentRef,
+        Controllable,
         Cursor,
         Curve,
         DialogAnswer,
@@ -257,6 +261,7 @@ pub mod prelude {
         NativeValue,
         NativeView,
         NoEvent,
+        NumberRange,
         Orientation,
         Painter,
         PanActivation,
@@ -265,6 +270,7 @@ pub mod prelude {
         ParentElement,
         PointerEvents,
         Position,
+        PressRepeat,
         PropEnum,
         Props,
         Registry,
@@ -341,8 +347,8 @@ pub mod prelude {
             set_clipboard, set_color_scheme, set_interval, set_timeout, spawn, theme, timer,
             timer_until, toast, update_status_bar, window,
         },
-        batch, catch_error, cleanup, component, computed, dynamic, effect, provide_context, signal,
-        signal_with, stored, untracked, use_context,
+        batch, catch_error, cleanup, component, computed, controllable, dynamic, effect, motion,
+        press_repeat, provide_context, signal, signal_with, stored, untracked, use_context,
     };
 }
 

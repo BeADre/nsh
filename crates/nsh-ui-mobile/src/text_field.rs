@@ -39,18 +39,12 @@ pub enum TextFieldEvent {
 /// A labeled text input ([`TextFieldProps`]).
 #[component]
 pub fn TextField(props: TextFieldProps, cx: Scope<TextFieldEvent>) -> impl IntoElement {
-    // Our own text, when the app does not control it.
-    let own = signal(props.default_value.get_untracked().as_str().to_owned());
+    // The app's text or our own.
+    let content = controllable(props.value, props.default_value.get_untracked());
     let focused = signal(false);
     let field = element_ref();
-    let shown = computed(move || match props.value.get() {
-        Some(value) => value.as_str().to_owned(),
-        None => own.get(),
-    });
     let change = move |text: String| {
-        if props.value.with_untracked(Option::is_none) {
-            own.set(text.clone());
-        }
+        content.set(text.clone().into());
         cx.emit(TextFieldEvent::Change(text));
     };
     view()
@@ -87,7 +81,7 @@ pub fn TextField(props: TextFieldProps, cx: Scope<TextFieldEvent>) -> impl IntoE
                         .py_2()
                         .text_base()
                         .text_color(move || theme().foreground)
-                        .value(move || shown.get())
+                        .value(move || content.with(|t| t.as_str().to_owned()))
                         .placeholder(move || {
                             props
                                 .placeholder
@@ -108,7 +102,7 @@ pub fn TextField(props: TextFieldProps, cx: Scope<TextFieldEvent>) -> impl IntoE
                 .child(If::new(
                     move || {
                         props.clearable.get()
-                            && !shown.with(String::is_empty)
+                            && !content.with(|t| t.is_empty())
                             && !props.disabled.get()
                     },
                     move || {

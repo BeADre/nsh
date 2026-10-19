@@ -112,6 +112,50 @@ Code for every platform, the web included, uses NSH's services: `fetch` for HTTP
 `nsh_core::time::Instant` and `nsh_core::time::unix_ms()` for the clock. `background` and `blocking` run work on the
 native targets' threads.
 
+## Controls of your own
+
+Controls written in the app's crate use the same building blocks as NSH's own components, so they behave and move
+as `nsh/ui/mobile`'s do:
+
+```rust
+use nsh_core::ui::prelude::*;
+
+/// A quantity the app controls (`value`, updated from `onChange`) or leaves to the control.
+#[derive(Debug, Clone, Copy, PartialEq, Props)]
+pub struct QuantityProps {
+    pub value: Prop<Option<f64>>,
+    #[prop(default = 1.0)]
+    pub default_value: Prop<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Event)]
+pub enum QuantityEvent {
+    Change(f64),
+}
+
+#[component]
+pub fn Quantity(props: QuantityProps, cx: Scope<QuantityEvent>) -> impl IntoElement {
+    let range = NumberRange::new(1.0, 99.0, 1.0);
+    let quantity = controllable(props.value, props.default_value.get_untracked());
+    let add = move |steps: f64| {
+        let next = range.step_by(quantity.get_untracked(), steps);
+        quantity.set(next);
+        cx.emit(QuantityEvent::Change(next));
+    };
+    view()
+        .flex_row()
+        .gap_3()
+        .child(text("−").on_press(move |_: &()| add(-1.0)))
+        .child(text(move || range.format(quantity.get())))
+        .child(text("+").on_press(move |_: &()| add(1.0)))
+}
+```
+
+`controllable` shows the app's value while the app passes one and the control's own value otherwise; `set` keeps the
+user's change in the second case, and in the first the app takes it from the event. `NumberRange` keeps a number
+within its bounds on the step's decimals, `press_repeat()` repeats an action while a press is held, and
+`motion::SETTLE` and `motion::EXIT` are the spring and the timing NSH's components move with.
+
 ## Desktop title bars
 
 Rust apps draw their own title bars with `nsh_core::ui::desktop`. Call

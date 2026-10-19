@@ -24,7 +24,8 @@ crates/
   nsh-core/            Platform-independent core: shadow tree, styles (RN semantics), Taffy layout (flex + grid), text merging, list virtualization,
                        mount items; CSS values (`css.rs`: colors, lengths, shadows, gradients, filters), effects (`effects.rs`), Tailwind (`tailwind/`);
                        the reactive graph both sides run on (`reactive.rs`, Solid's algorithm, generic over the host);
-                       Rust components that run once (`ui/`: signals, elements, bindings, typed styles, the theme;
+                       Rust components that run once (`ui/`: signals, elements, bindings, typed styles, the theme; what
+                       every UI set shares besides it: controls' behavior and the motion (`behavior.rs`, `motion.rs`);
                        `core/components.rs`, `core/views.rs`), classes TS uses with `new` (`ui/class.rs`), JS's calls into
                        Rust and what comes back, typed (`ui/call.rs`: ops carrying closures, the event stream, posts); the runtime's Rust
                        modules (`runtime/`: `nsh/android`'s Toast, `nsh/image`, ...; their JS face is made from their specs)

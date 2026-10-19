@@ -25,6 +25,11 @@ state) stays native. JS only gets the events the component emits.
 - **Colors come from the theme** (`theme()`: gpui-kit's semantic fields, a light and a dark value each), never
   literals: apps restyle every component with their `nsh.json` theme, and dark appearance switches natively. Read
   `theme()` inside the bindings that use it, so a new theme reaches them.
+- **What controls do is shared** with every UI set (`nsh_core::ui`'s `behavior.rs`): a value the app may control is
+  `controllable(props.value, default)` (`TextField`, `Stepper`, `SelectList`: `set(v)` when the user changes it,
+  then emit), a number changed in steps `NumberRange`, a press that repeats while held `press_repeat()` (`Stepper`).
+  **Motion is the design language's**: `motion::SETTLE`, `motion::EXIT` (`Sheet`), never springs or durations of a
+  component's own.
 - **What never changes is plain Rust**: `.when(cond, |v| ..)`, `match` at build time. Interaction states are variants:
   `.active(..)`, `.hover(..)`, `.focus(..)`.
 - **What comes and goes is a region**: `If::new(cond, || el).otherwise(|| el)`, `dynamic(move || ..)` (an element, an

@@ -7,9 +7,8 @@ use nsh_core::ui::prelude::*;
 /// A list of options ([`SelectListProps`]).
 #[component]
 pub fn SelectList(props: SelectListProps, cx: Scope<SelectListEvent>) -> impl IntoElement {
-    // Our own choice, when the app does not control it.
-    let own = signal(None::<u32>);
-    let chosen = computed(move || props.value.get().or(own.get()));
+    // The app's choice or our own (none at first).
+    let chosen = controllable(move || props.value.get().map(Some), None);
     let options = props.options;
     view().flex_1().child(
         virtual_list(
@@ -35,9 +34,7 @@ pub fn SelectList(props: SelectListProps, cx: Scope<SelectListEvent>) -> impl In
                     })
                     .on_press(move |_: &()| {
                         let index = at.index() as u32;
-                        if props.value.with_untracked(Option::is_none) {
-                            own.set(Some(index));
-                        }
+                        chosen.set(Some(index));
                         cx.emit(SelectListEvent::Select(index));
                     })
                     .child(

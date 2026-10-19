@@ -29,13 +29,11 @@ pub enum SheetEvent {
 const CLOSE_DISTANCE: f32 = 120.0;
 const CLOSE_VELOCITY: f32 = 900.0;
 
-/// How the panel springs back to where it rests.
+/// How the panel springs to where it rests, from `velocity` (a drag's).
 fn settle(velocity: Option<f32>) -> Spring {
     Spring {
-        stiffness: 280.0,
-        damping: 30.0,
         velocity,
-        ..Spring::default()
+        ..motion::SETTLE
     }
 }
 
@@ -64,7 +62,7 @@ pub fn Sheet(props: SheetProps, cx: Scope<SheetEvent>) -> impl IntoElement {
             if closing.with(|c| c.is_some()) {
                 return;
             }
-            let end = offset.timing(untracked(window).height, 220.0, Easing::EaseIn);
+            let end = offset.timing_with(untracked(window).height, motion::EXIT);
             closing.replace(Some(spawn(async move {
                 // Ended or interrupted: closed either way.
                 let _ = end.await;
