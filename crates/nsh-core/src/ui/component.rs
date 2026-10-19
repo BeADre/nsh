@@ -572,13 +572,15 @@ struct ClassType {
     type_name: &'static str,
 }
 
+type NativeControlledFields = Vec<(&'static str, Vec<&'static str>)>;
+
 /// What a UI set exports to JS: its components and modules, and what it
 /// passes on from the runtime. Cheap to clone.
 #[derive(Clone, Default)]
 pub struct Registry {
     types: Arc<FxHashMap<&'static str, ComponentType>>,
     native: Arc<FxHashMap<&'static str, Arc<ComponentSpec>>>,
-    native_controls: Arc<FxHashMap<&'static str, Vec<(&'static str, Vec<&'static str>)>>>,
+    native_controls: Arc<FxHashMap<&'static str, NativeControlledFields>>,
     native_exclusive: Arc<FxHashMap<&'static str, Vec<Vec<&'static str>>>>,
     modules: Arc<FxHashMap<&'static str, ModuleType>>,
     /// By the specifier of their set and their name: the sets merged for

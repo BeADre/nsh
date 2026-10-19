@@ -260,10 +260,10 @@ impl JsHost for JsonHost {
         let Some(value) = self.json_of(value) else {
             return Ok(());
         };
-        if let Val::Json(object) = &mut self.values.borrow_mut()[obj.0[0] as usize] {
-            if let JsonValue::Object(map) = Rc::make_mut(object) {
-                map.insert(key.to_owned(), self.copy_json(&value));
-            }
+        if let Val::Json(object) = &mut self.values.borrow_mut()[obj.0[0] as usize]
+            && let JsonValue::Object(map) = Rc::make_mut(object)
+        {
+            map.insert(key.to_owned(), self.copy_json(&value));
         }
         Ok(())
     }
