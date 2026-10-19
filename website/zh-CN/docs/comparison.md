@@ -45,7 +45,6 @@ AI 助手的一次回答可能需要可筛选列表，另一次需要分步确�
 | **GPUI** | 以 Rust 代码构建 GPU 加速 UI，主要用于桌面 | 应用或附加运行时提供动态模块；上游已有浏览器路径 |
 | **Qt Quick / Qt Widgets** | QML 与场景图 / 传统桌面控件工具箱 | 动态加载和创建 QML 组件；通过应用代码构造控件 |
 | **Slint** | 声明式 UI，连接 Rust、C++ 等业务逻辑 | 编译 UI，或通过解释器加载 |
-| **MyGo** | Go 原生 GPU UI 或系统 WebView 前端 | 原生 Go UI、网页内容，以及原生 UI 的 WebAssembly 浏览器目标 |
 
 ### React Native 与 Flutter
 
@@ -61,11 +60,9 @@ Flutter 的[架构](https://docs.flutter.dev/resources/architectural-overview)�
 
 Qt Quick 已支持[动态创建 QML 组件](https://doc.qt.io/qt-6/qtqml-javascript-dynamicobjectcreation.html)，[Qt Widgets](https://doc.qt.io/qt-6/qtwidgets-index.html) 则提供成熟的桌面工具箱，两者都能连接原生业务。NSH 更强调独立加载模块的交付与管理：包的来源、宿主能力、资源限制和 Surface 生命周期。依赖 Qt 成熟控件与平台模块的团队，应将这些积累纳入选择。
 
-### Slint 与 MyGo
+### Slint
 
 除了常用的编译路径，[Slint 解释器](https://docs.slint.dev/latest/docs/rust/slint_interpreter/)也支持运行时加载 UI。NSH 使用 TSX 模块表达状态、异步操作和交互，并通过包与宿主策略管理执行。Slint 同样支持状态和命令式事件处理；这里的差异在于 NSH 的包与宿主能力管理流程，而不是界面能否包含逻辑。
-
-[MyGo](https://mygo.egoist.dev/docs/architecture) 为 Go 开发者同时提供原生 UI 与系统 WebView 路径，原生 UI 也有 WebAssembly 浏览器目标。NSH 更关注手机和桌面的模块承载，以及 Rust 集成。Go 桌面产品可能更适合 MyGo 的语言和工具；Rust 或 GPUI 宿主若需增加动态任务界面，NSH 提供了相应的组件与运行时模型。
 
 ## 组合方式与性能
 

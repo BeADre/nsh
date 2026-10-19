@@ -45,7 +45,6 @@ The comparison is about product fit, not a performance ranking. These frameworks
 | **GPUI** | Rust code-first GPU UI, primarily used on desktop | The application or an added runtime supplies dynamic modules; upstream also has a browser path |
 | **Qt Quick / Qt Widgets** | QML and a scene graph / a traditional desktop widget toolkit | Load and create QML components dynamically; construct widgets through application code |
 | **Slint** | Declarative UI connected to Rust, C++ and other application logic | Compile UI or load it with the interpreter |
-| **MyGo** | Go applications with native GPU UI or a system WebView frontend | Native Go UI, web content, and a WebAssembly browser target for native UI |
 
 ### React Native and Flutter
 
@@ -61,11 +60,9 @@ Flutter's [architecture](https://docs.flutter.dev/resources/architectural-overvi
 
 Qt Quick already supports [dynamic QML component creation](https://doc.qt.io/qt-6/qtqml-javascript-dynamicobjectcreation.html). [Qt Widgets](https://doc.qt.io/qt-6/qtwidgets-index.html) supplies a mature desktop toolkit. Both connect UI to native application logic. NSH's emphasis is the delivery and management of independently loaded modules: package provenance, host capabilities, resource limits and surface lifecycle. Teams that depend on Qt's established widgets and platform modules should include that investment in their choice.
 
-### Slint and MyGo
+### Slint
 
 [Slint's interpreter](https://docs.slint.dev/latest/docs/rust/slint_interpreter/) supports loading UI at runtime as well as the usual compiled UI path. NSH uses TSX modules to express state, asynchronous work and interaction, with package and host policies around their execution. Slint also supports state and imperative handlers; the distinction here is NSH's package and host-capability workflow, not whether an interface can contain logic.
-
-[MyGo](https://mygo.egoist.dev/docs/architecture) offers Go developers both native UI and a system WebView path. Its native UI also has a WebAssembly browser target. NSH focuses on mobile and desktop module hosting and Rust integration. For a Go desktop product, MyGo's language and tooling may be a more direct fit; for a Rust or GPUI host adding dynamic task interfaces, NSH provides a related component and runtime model.
 
 ## Composition and performance
 
