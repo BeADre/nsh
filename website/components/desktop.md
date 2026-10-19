@@ -8,8 +8,7 @@ order: 20
 
 `nsh/ui/desktop` is NSH's UI set for windows on macOS, Windows, Linux and the web. It draws the same design language
 as the [mobile UI](./index.md), with the same theme, at a desktop's density: shorter controls, a highlight under the
-pointer, and a focus ring when the keyboard moves to a control. Its first components are `Button`, `Popover`, `Dialog`
-and `Select`; more follow.
+pointer, and a focus ring when the keyboard moves to a control.
 
 ```tsx
 import { Button } from "nsh/ui/desktop";
@@ -222,3 +221,91 @@ the list, Tab moves through the options, Return or Space picks one, and the focu
 | Event | Payload | When |
 |---|---|---|
 | `onChange` | `number`: the option's index | An option was picked. |
+
+## Checkbox
+
+`Checkbox` is a small square box with a check mark, and an optional `label` beside it. A click on the box or the label,
+or Return or Space while it has the keyboard focus, checks or unchecks it. With `value` the app controls it and updates
+`value` from `onChange`; with `defaultValue` (or neither) the checkbox keeps its own state.
+
+```tsx
+import { mount, signal, View } from "nsh";
+import { Checkbox } from "nsh/ui/desktop";
+
+function App() {
+  const remember = signal(false);
+  return (
+    <View class="gap-3 p-6">
+      <Checkbox label="Remember me" value={remember()} onChange={(v) => remember.set(v)} />
+      <Checkbox label="Send a copy" defaultValue />
+      <Checkbox label="Dense" size="sm" />
+    </View>
+  );
+}
+
+mount(App);
+```
+
+The box is 14, 16 or 20 pt for `sm`, `md` and `lg`, with the control's corner shape scaled down to it, and the label
+uses the control's text size. Checked, it is filled with `primary.background` and the mark is `primary.foreground`;
+unchecked, it is `background` with an `input.border` outline. Under the pointer a checked box fades a little and an
+unchecked one shows `accent.background`; pressed, it shows `primary.active.background` or
+`secondary.active.background`. The focus ring goes around the box and its label. Screen readers read it as a checkbox
+with its checked state.
+
+| Prop | Type | Default | Description |
+|---|---|---|---|
+| `value` | `boolean \| null` | | Checked, when the app controls it. |
+| `defaultValue` | `boolean` | `false` | Checked at first, when the app does not control it. |
+| `label` | `string \| null` | | Beside the box; a click on it toggles the box too. |
+| `size` | `"sm" \| "md" \| "lg"` | `"md"` | The box and the label's text size. |
+| `disabled` | `boolean` | `false` | No presses, no feedback, 50% opacity. |
+| `accessibilityLabel` | `string \| null` | `label` | What screen readers read, when `label` is not enough or there is none. |
+
+| Event | Payload | When |
+|---|---|---|
+| `onChange` | `boolean` | A click, or Return or Space with the keyboard focus: the new checked state. |
+
+## Switch
+
+`Switch` is a track with a round thumb that springs across when it turns on or off, with an optional `label` beside
+it. A click on the switch or the label, or Return or Space while it has the keyboard focus, flips it. `value`,
+`defaultValue` and `onChange` work as `Checkbox`'s do.
+
+```tsx
+import { mount, signal, View } from "nsh";
+import { Switch } from "nsh/ui/desktop";
+
+function App() {
+  const wifi = signal(true);
+  return (
+    <View class="gap-3 p-6">
+      <Switch label="Wi-Fi" value={wifi()} onChange={(v) => wifi.set(v)} />
+      <Switch label="Bluetooth" />
+      <Switch label="Compact" size="sm" defaultValue />
+    </View>
+  );
+}
+
+mount(App);
+```
+
+The track is 32 × 18, 36 × 20 or 44 × 24 pt for `sm`, `md` and `lg`. Off, it is `switch.background`; on, it is
+`primary.background`, and the color fades from one to the other as the thumb moves, with NSH's settling motion. The
+thumb is `switch.thumb.background`, blending to `primary.foreground` as it turns on, so it stands out on the on color
+in light and dark themes alike. The track fades a little under the pointer and shows `primary.active.background`
+while pressed when on. The focus ring goes around the switch and its label. Screen readers read it as a switch with
+its state.
+
+| Prop | Type | Default | Description |
+|---|---|---|---|
+| `value` | `boolean \| null` | | On, when the app controls it. |
+| `defaultValue` | `boolean` | `false` | On at first, when the app does not control it. |
+| `label` | `string \| null` | | Beside the switch; a click on it flips the switch too. |
+| `size` | `"sm" \| "md" \| "lg"` | `"md"` | The track and the label's text size. |
+| `disabled` | `boolean` | `false` | No presses, no feedback, 50% opacity. |
+| `accessibilityLabel` | `string \| null` | `label` | What screen readers read, when `label` is not enough or there is none. |
+
+| Event | Payload | When |
+|---|---|---|
+| `onChange` | `boolean` | A click, or Return or Space with the keyboard focus: the new state. |

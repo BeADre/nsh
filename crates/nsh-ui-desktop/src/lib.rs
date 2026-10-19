@@ -13,10 +13,12 @@
 //! bundler. See README.md for how to write one.
 
 mod button;
+mod checkbox;
 mod dialog;
 mod metrics;
 mod popover;
 mod select;
+mod switch;
 
 use std::sync::Arc;
 
@@ -27,10 +29,12 @@ use nsh_core::ui::{ComponentSpec, Registry};
 
 pub use crate::{
     button::{Button, ButtonEvent, ButtonProps, ButtonVariant},
+    checkbox::{Checkbox, CheckboxEvent, CheckboxProps},
     dialog::{Dialog, DialogEvent, DialogProps},
     metrics::ControlSize,
     popover::{Popover, PopoverEvent, PopoverProps},
     select::{Select, SelectEvent, SelectProps},
+    switch::{Switch, SwitchEvent, SwitchProps},
 };
 
 /// The JS module apps import the desktop UI as.
@@ -41,9 +45,11 @@ pub fn registry() -> Registry {
     let mut registry = Registry::ui_set(SPECIFIER);
     registry
         .register::<Button>()
+        .register::<Checkbox>()
         .register::<Dialog>()
         .register::<Popover>()
-        .register::<Select>();
+        .register::<Select>()
+        .register::<Switch>();
     registry
 }
 
@@ -61,7 +67,12 @@ mod tests {
     fn the_exports_are_pinned() {
         let registry = super::registry();
         let components: Vec<_> = registry.specs().iter().map(|s| s.export.clone()).collect();
-        assert_eq!(components, ["Button", "Dialog", "Popover", "Select"]);
+        assert_eq!(
+            components,
+            [
+                "Button", "Checkbox", "Dialog", "Popover", "Select", "Switch"
+            ]
+        );
         assert!(registry.module_specs().is_empty());
     }
 }

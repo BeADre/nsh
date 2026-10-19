@@ -7,7 +7,7 @@ order: 20
 # Desktop UI
 
 `nsh/ui/desktop` 是 NSH 面向 macOS、Windows、Linux 和 Web 窗口的 UI 集。它和 [Mobile UI](./index.md) 使用同一套设计语言、同一个主题，
-只是密度适合桌面：控件更矮，指针悬停时高亮，键盘把焦点移到控件上时显示焦点环。第一批组件是 `Button`、`Popover`、`Dialog` 和 `Select`，后续组件陆续加入。
+只是密度适合桌面：控件更矮，指针悬停时高亮，键盘把焦点移到控件上时显示焦点环。
 
 ```tsx
 import { Button } from "nsh/ui/desktop";
@@ -209,3 +209,85 @@ mount(App);
 | 事件 | 参数 | 触发时机 |
 |---|---|---|
 | `onChange` | `number`：选项的索引 | 选中了一项。 |
+
+## Checkbox
+
+`Checkbox` 是一个带勾选标记的小方框，旁边可以有一个 `label`。点击方框或标签，或者在它获得键盘焦点时按 Return 或空格，
+会勾选或取消勾选。传入 `value` 时由应用控制状态，并在 `onChange` 里更新 `value`；传入 `defaultValue`（或两者都不传）时，复选框自己保存状态。
+
+```tsx
+import { mount, signal, View } from "nsh";
+import { Checkbox } from "nsh/ui/desktop";
+
+function App() {
+  const remember = signal(false);
+  return (
+    <View class="gap-3 p-6">
+      <Checkbox label="Remember me" value={remember()} onChange={(v) => remember.set(v)} />
+      <Checkbox label="Send a copy" defaultValue />
+      <Checkbox label="Dense" size="sm" />
+    </View>
+  );
+}
+
+mount(App);
+```
+
+`sm`、`md`、`lg` 的方框边长分别是 14、16、20 pt，圆角按控件的形状等比缩小，标签使用控件的字号。勾选时方框填充
+`primary.background`，勾选标记为 `primary.foreground`；未勾选时为 `background`，边框为 `input.border`。指针悬停时，
+已勾选的方框稍微变淡，未勾选的方框显示 `accent.background`；按下时显示 `primary.active.background` 或
+`secondary.active.background`。焦点环围绕方框和标签。屏幕阅读器把它读作复选框，并读出勾选状态。
+
+| 属性 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `value` | `boolean \| null` | | 应用控制状态时，是否勾选。 |
+| `defaultValue` | `boolean` | `false` | 应用不控制状态时，初始是否勾选。 |
+| `label` | `string \| null` | | 显示在方框旁边；点击它同样会切换方框。 |
+| `size` | `"sm" \| "md" \| "lg"` | `"md"` | 方框大小和标签字号。 |
+| `disabled` | `boolean` | `false` | 不响应按压，没有反馈，50% 不透明度。 |
+| `accessibilityLabel` | `string \| null` | `label` | 当 `label` 不够或没有标签时，屏幕阅读器读出的内容。 |
+
+| 事件 | 参数 | 触发时机 |
+|---|---|---|
+| `onChange` | `boolean` | 点击，或获得键盘焦点时按 Return 或空格：新的勾选状态。 |
+
+## Switch
+
+`Switch` 是一条轨道和一个圆形滑块，打开或关闭时滑块以弹簧动效移到另一端，旁边可以有一个 `label`。点击开关或标签，
+或者在它获得键盘焦点时按 Return 或空格，会切换它。`value`、`defaultValue` 和 `onChange` 的用法与 `Checkbox` 相同。
+
+```tsx
+import { mount, signal, View } from "nsh";
+import { Switch } from "nsh/ui/desktop";
+
+function App() {
+  const wifi = signal(true);
+  return (
+    <View class="gap-3 p-6">
+      <Switch label="Wi-Fi" value={wifi()} onChange={(v) => wifi.set(v)} />
+      <Switch label="Bluetooth" />
+      <Switch label="Compact" size="sm" defaultValue />
+    </View>
+  );
+}
+
+mount(App);
+```
+
+`sm`、`md`、`lg` 的轨道尺寸分别是 32 × 18、36 × 20、44 × 24 pt。关闭时轨道为 `switch.background`，打开时为
+`primary.background`，颜色随滑块移动逐渐过渡，使用 NSH 统一的落定动效。滑块为 `switch.thumb.background`，打开时逐渐过渡到
+`primary.foreground`，因此在浅色和深色主题下都能在打开的颜色上清晰显示。指针悬停时轨道稍微变淡，打开状态下按住时显示
+`primary.active.background`。焦点环围绕开关和标签。屏幕阅读器把它读作开关，并读出开关状态。
+
+| 属性 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `value` | `boolean \| null` | | 应用控制状态时，是否打开。 |
+| `defaultValue` | `boolean` | `false` | 应用不控制状态时，初始是否打开。 |
+| `label` | `string \| null` | | 显示在开关旁边；点击它同样会切换开关。 |
+| `size` | `"sm" \| "md" \| "lg"` | `"md"` | 轨道大小和标签字号。 |
+| `disabled` | `boolean` | `false` | 不响应按压，没有反馈，50% 不透明度。 |
+| `accessibilityLabel` | `string \| null` | `label` | 当 `label` 不够或没有标签时，屏幕阅读器读出的内容。 |
+
+| 事件 | 参数 | 触发时机 |
+|---|---|---|
+| `onChange` | `boolean` | 点击，或获得键盘焦点时按 Return 或空格：新的开关状态。 |

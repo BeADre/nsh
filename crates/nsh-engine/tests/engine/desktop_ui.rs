@@ -389,3 +389,161 @@ fn a_select_shows_its_choice_and_picks_from_a_popover() {
             .any(|b| text_id(b, "Banana") == text_id(&first, "Pick one"))
     );
 }
+
+/// The first child inserted into `parent`.
+fn first_child(batch: &MountBatch, parent: u32) -> Option<u32> {
+    batch.items.iter().find_map(|i| match i {
+        MountItem::Insert {
+            parent: p, child, ..
+        } if *p == parent => Some(*child),
+        _ => None,
+    })
+}
+
+/// The role and checked state `id` was given last, for screen readers.
+fn checked_state(
+    batch: &MountBatch,
+    id: u32,
+) -> Option<(nsh_core::AccessibilityRole, Option<nsh_core::Checked>)> {
+    batch.items.iter().rev().find_map(|i| match i {
+        MountItem::ViewProps { id: v, props } if *v == id => {
+            Some((props.accessibility.role, props.accessibility.state.checked))
+        }
+        _ => None,
+    })
+}
+
+/// The springs started in `batches`, by their target.
+fn springs(batches: &[MountBatch]) -> Vec<f32> {
+    batches
+        .iter()
+        .flat_map(|b| &b.items)
+        .filter_map(|i| match i {
+            MountItem::Animation(nsh_animation::AnimationOp::Start {
+                driver: nsh_animation::Driver::Spring { to, .. },
+                ..
+            }) => Some(*to),
+            _ => None,
+        })
+        .collect()
+}
+
+const CHECKBOXES: &str = r#"import { mount, signal, Text, View } from "nsh";
+import { Checkbox } from "nsh/ui/desktop";
+
+const agreed = signal(false);
+mount(() => (
+  <View class="items-start gap-2 p-4">
+    <Checkbox label="Remember me" onChange={(v) => agreed.set(v)} />
+    <Checkbox label="Small" size="sm" defaultValue />
+    <Text>{`agreed ${agreed()}`}</Text>
+  </View>
+));
+"#;
+
+#[test]
+fn a_checkbox_is_a_small_square_its_row_toggles_it() {
+    use nsh_core::{AccessibilityRole, Checked};
+    let (engine, rx) = start(CHECKBOXES);
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    let row = |label: &str| parent_of(&first, text_id(&first, label).expect(label)).unwrap();
+    let (remember, small) = (row("Remember me"), row("Small"));
+    let boxed = |row| first_child(&first, row).expect("the box");
+    assert_eq!(size_of(&first, boxed(remember)), Some((16.0, 16.0)), "md");
+    assert_eq!(size_of(&first, boxed(small)), Some((14.0, 14.0)), "sm");
+    // The row is what the keyboard focuses and screen readers read.
+    let states = tracked(&first, remember).expect("tracked states");
+    assert_ne!(states & nsh_core::tailwind::state::FOCUSED, 0);
+    assert_eq!(
+        checked_state(&first, remember),
+        Some((AccessibilityRole::Checkbox, Some(Checked::False)))
+    );
+    // `defaultValue`: checked, with its mark.
+    assert_eq!(
+        checked_state(&first, small).map(|s| s.1),
+        Some(Some(Checked::True))
+    );
+    assert!(first_child(&first, boxed(small)).is_some(), "the mark");
+    assert!(first_child(&first, boxed(remember)).is_none());
+    // A press on the row (the label's too) checks it and tells the app.
+    let control = engine.control();
+    control.dispatch_event(remember, EventKind::Press, EventPayload::None);
+    let batches = until_text(&rx, "agreed true");
+    assert!(batches.iter().any(|b| text_id(b, "agreed true").is_some()));
+    assert!(
+        batches
+            .iter()
+            .any(|b| first_child(b, boxed(remember)).is_some()),
+        "the mark shows"
+    );
+    assert!(
+        batches
+            .iter()
+            .any(|b| checked_state(b, remember).map(|s| s.1) == Some(Some(Checked::True)))
+    );
+    control.dispatch_event(remember, EventKind::Press, EventPayload::None);
+    assert!(
+        until_text(&rx, "agreed false")
+            .iter()
+            .any(|b| text_id(b, "agreed false").is_some())
+    );
+}
+
+const SWITCHES: &str = r#"import { mount, signal, Text, View } from "nsh";
+import { Switch } from "nsh/ui/desktop";
+
+const on = signal(false);
+const tries = signal(0);
+mount(() => (
+  <View class="items-start gap-2 p-4">
+    <Switch label="Wi-Fi" value={on()} onChange={(v) => on.set(v)} />
+    <Switch label="Locked" value={false} onChange={() => tries.update((t) => t + 1)} />
+    <Text>{`on ${on()} tries ${tries()}`}</Text>
+  </View>
+));
+"#;
+
+#[test]
+fn a_switch_springs_its_thumb_when_the_app_turns_it_on() {
+    use nsh_core::{AccessibilityRole, Checked};
+    let (engine, rx) = start(SWITCHES);
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    let row = |label: &str| parent_of(&first, text_id(&first, label).expect(label)).unwrap();
+    let (wifi, locked) = (row("Wi-Fi"), row("Locked"));
+    let track = first_child(&first, wifi).expect("the track");
+    assert_eq!(size_of(&first, track), Some((36.0, 20.0)), "md");
+    assert_eq!(
+        checked_state(&first, wifi),
+        Some((AccessibilityRole::Switch, Some(Checked::False)))
+    );
+    // Off at first, with no animation.
+    assert!(springs(std::slice::from_ref(&first)).is_empty());
+    let control = engine.control();
+    // A switch the app holds off reports the press and stays off.
+    control.dispatch_event(locked, EventKind::Press, EventPayload::None);
+    let batches = until_text(&rx, "on false tries 1");
+    assert!(
+        batches
+            .iter()
+            .any(|b| text_id(b, "on false tries 1").is_some())
+    );
+    assert!(springs(&batches).is_empty(), "the thumb stays");
+    // The app takes the change: the thumb springs across.
+    control.dispatch_event(wifi, EventKind::Press, EventPayload::None);
+    let batches = until_text(&rx, "on true tries 1");
+    assert!(
+        batches
+            .iter()
+            .any(|b| text_id(b, "on true tries 1").is_some())
+    );
+    assert_eq!(springs(&batches), [1.0]);
+    assert!(
+        batches
+            .iter()
+            .any(|b| checked_state(b, wifi).map(|s| s.1) == Some(Some(Checked::True)))
+    );
+}
