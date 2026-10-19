@@ -73,11 +73,23 @@ AI 生成界面需要的不只是渲染器。应用还需要知道代码来自�
 
 [签名包](./signed-packages.md)用于验证来源与完整性；[运行时限制和能力策略](./sandbox-and-capabilities.md)用于约束执行行为。需要限制模块时应明确配置策略：省略能力声明意味着模块声明这一层不额外收紧能力；有效访问仍须满足宿主授权，资源限额独立生效。
 
-宿主开放的自定义原生和业务 API 必须自行检查授权。VM 是进程内的边界，不等同于操作系统进程隔离；签名也不保证行为安全。QuickJS 字节码必须来自可信输入，例如已验证的包。应结合宿主及其开放能力评估完整的信任边界。
+宿主开放的自定义原生和业务 API 必须自行检查授权。VM 是进程内的边界，不等同于操作系统进程隔离；签名也不保证行为安全。QuickJS 字节码必须来自可信输入，例如已验证的包。应结合宿主及其开放能力评估完整的信任边界。撤销列表需要宿主获取并更新到信任存储，在打开包时检查；已运行的模块何时停止或重载仍由宿主管理，签名撤销不是即时远程终止机制。
+
+## 用同样的任务看差异
+
+下文用三个任务比较框架实际提供什么，以及宿主还需要实现什么：
+
+1. **生成一个新交互：**AI 在应用发布后生成订单确认表单，包含校验、异步查询和确认逻辑，调用宿主已经提供的保存订单 API。
+2. **管理合作方模块：**同时加载两个来源不同的模块，为它们设置不同的网络权限和执行预算，并能拒绝已经撤销的包。
+3. **复用 Rust 核心：**保留编译后的图表或计算服务，让动态界面控制参数、显示结果，并正确处理组件销毁与异步回调。
+
+这三件事分别检验表达和交付、执行治理、原生集成。拥有动态语言不自动带来模块授权；能够调用 Rust 也不代表已有 UI 可以零成本嵌入。
+
+对于动态 TSX，NSH 在原生端按 Surface 分配 QuickJS VM 和引擎线程，信号图、组件核心与布局由 Rust 实现，一次提交形成一个挂载批次。Web 使用页面线程上的本地引擎，不能照搬原生端的线程隔离结论。VM 的调用时间与堆限制也不覆盖任意宿主原生函数消耗的全部 CPU 或内存；宿主 API 需要自己的预算和取消设计。机制见[架构](./architecture.md)与[执行限制](./sandbox-and-capabilities.md)。
 
 ## 与其他框架的方向差异
 
-这不是性能排名。不同框架可以通过扩展覆盖更多需求，其中多个已经具备嵌入、动态加载与原生业务集成能力。NSH 更关注将生成、交付、组合和执行边界组织成一条模块使用路径。
+以下以 2026 年 10 月 19 日的实现与官方文档为依据，比较各框架提供的机制及宿主需要完成的工作。NSH 的侧重点，是将生成、交付、组合和执行边界组织成一条模块使用路径；性能仍应在具体产品上测量。
 
 | 框架 | 主要设计重心 | 动态界面的路径 | NSH 更关注的部分 |
 | --- | --- | --- | --- |
@@ -89,85 +101,97 @@ AI 生成界面需要的不只是渲染器。应用还需要知道代码来自�
 | Qt Widgets | 成熟的桌面控件与应用工具箱 | 通过应用代码动态创建控件 | 面向手机和桌面的可交付交互模块 |
 | Slint | 可编译的声明式 UI，连接 Rust、C++ 等业务 | 编译 UI，或用解释器运行时加载 | TSX 模块与宿主能力、签名交付和资源预算的组合 |
 
-### 与 React Native 相比
+### 与 React Native 相比：同样能交付 JS，模块边界放在哪里
 
-React Native 已有平台原生视图、原生模块和丰富的 React 组件生态，也支持[在现有应用中嵌入单个视图或流程](https://reactnative.dev/docs/integration-with-existing-apps)。[EAS Update](https://docs.expo.dev/eas-update/introduction/) 等服务可以向兼容运行时交付新的 JS、样式和图片；原生代码或原生依赖变化需要新的应用二进制。
+React Native 也能嵌入已有应用，运行新交付的 JavaScript，并调用已安装的原生能力。NSH 将模块的执行、能力和交付边界集中在 Surface 上；使用 RN 时，宿主从 React 运行时与更新服务出发组织相应策略。
 
-NSH 的起点是应用运行时承载一个新界面：AI 生成的面板怎样进入已有客户端，可以调用什么，如何限制执行，以及怎样与已有业务共同工作。
+| 维度 | NSH 的实际机制 | React Native 的实际机制 | 实际差异与代价 |
+| --- | --- | --- | --- |
+| 运行时与调度 | 原生动态 Surface 各有 QuickJS VM 和引擎线程，提交批次到 UI 线程 | 通常使用 [Hermes](https://reactnative.dev/docs/hermes)；新架构通过 [JSI 与原生协作](https://reactnative.dev/blog/2024/10/23/the-new-architecture-is-here)，React 调度可区分更新优先级 | 都可以让 JS 驱动原生 UI；NSH 把 VM 作为 Surface 边界，RN 的 React 调度不等于限制任意脚本执行时间 |
+| 状态、布局与挂载 | Rust 信号图追踪依赖，组件初始化后更新绑定；Taffy 布局，提交 MountBatch | [Fabric](https://reactnative.dev/architecture/render-pipeline) 由 React 更新 C++ 影子树，Yoga 布局，再 diff 并挂载宿主视图 | 两者都有原生布局和批量挂载；NSH 是信号模型而非 React 重渲染模型，React Hooks 与组件不能只换导入就迁移 |
+| Surface 与运行时关系 | 一个原生动态 Surface 对应一个 VM、状态和执行预算 | [ReactHost](https://github.com/react/react-native/blob/main/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactHost.kt) 管理 ReactInstance 与多个 Surface；Surface 本身不意味着独立 VM | NSH 的模块预算有明确归属；RN 可以另建运行时，但宿主需规划共享模块、状态与销毁关系 |
+| 新交互的交付 | bundle 或签名包包含模块行为，使用宿主已有 API | [EAS Update](https://docs.expo.dev/eas-update/runtime-versions/) 交付与 native runtime version 匹配的 JS 和资源 | 两者都能更新已有原生能力之上的逻辑；新增原生 API 都需要宿主升级。应用更新版本与独立合作方模块版本需要分别设计 |
+| 签名与模块策略 | 包验证、撤销和回滚检查结合 Surface 能力交集与 VM 限额 | EAS 也提供[更新签名](https://docs.expo.dev/eas-update/code-signing/)；签名更新不自动带有每个 Surface 的权限和预算 | NSH 的差异是验证后如何受限运行，而不是独占签名能力；RN 宿主要补充模块级授权、撤销和资源策略 |
+| 原生 UI 与 Rust | 宿主注册组件的属性、事件和命令；Rust 组件和业务类型可向 TSX 开放 | [Fabric 原生组件](https://reactnative.dev/docs/fabric-native-components-introduction)用类型规范和 Codegen 接入；[C++ TurboModule](https://reactnative.dev/docs/the-new-architecture/pure-cxx-modules)可作为 Rust ABI 的适配入口 | Rust 计算两边都能复用；NSH 的 Rust 核心减少跨语言实现层，RN 仍需 Rust/C++ 或平台适配及对象生命周期管理。已有原生视图两边都需接入 |
+| 平台与已有代码 | 各端 NSH 后端共享组件模型，Web 呈现 HTML | RN 核心面向 iOS/Android，Web 等由[生态平台实现](https://reactnative.dev/docs/next/out-of-tree-platforms) | NSH 提供统一模块路径；已有 RN 组件库、Hooks 与原生依赖仍是 RN 产品的重要资产，迁移需逐项核对 |
 
-| 对比点 | NSH 的选择 | 适合的需求 |
-| --- | --- | --- |
-| 动态模块单元 | 以 Surface、宿主能力与执行预算组织动态执行 | AI 界面、合作方模块和用户扩展 |
-| 现有应用集成 | 原生移动嵌入接口与 Rust/GPUI 桌面路径 | 在已有产品局部增加动态能力 |
-| 核心实现 | Rust 组件与业务 API 可供 TSX 模块使用 | 编译后的核心与动态页面共同演进 |
-| 脚本使用范围 | 应用选择纯 Rust、TSX 或混合实现 | 按功能决定动态执行的范围 |
+**同样生成订单确认界面：**RN 可以通过更新机制交付新的 JS，调用已有保存订单模块；NSH 可以交付一个带该交互的 Surface 包。若只更新自己的受信任应用，RN 的既有更新链路已经贴合需求。若同屏承载多个来源、权限不同的任务模块，NSH 提供更直接的预算和策略挂载点；RN 需要把这些规则加到运行时和宿主接口上。
 
-例如，Rust 桌面客户端可以保留现有聊天窗口、数据模型和图表，再将任务表单交给 NSH。已有 React 团队则应结合 RN 的组件、工具和集成经验评估成本。两者都能嵌入宿主；NSH 的差异在于模块交付、Surface 管理与 Rust 实现路径的组合。
+**同样撤销合作方模块：**两者都需要宿主取得最新策略，并决定何时卸载已运行界面。NSH 已定义包撤销检查与 Surface 预算；RN 的运行时/Surface 生命周期提供基础，但不是同一套包治理协议。多实例也不是 NSH 独有：[Expo SDK 56](https://expo.dev/changelog/sdk-56)已提供实验性的 iOS 多应用嵌入路径，应按所选版本评估。
 
-### 与 Flutter 相比
+### 与 Flutter 相比：应用补丁、远程 Widget，还是可执行任务模块
 
-Flutter 擅长用统一的 Widget、动画和渲染模型构建跨平台应用，其[架构](https://docs.flutter.dev/resources/architectural-overview)也包含 Add-to-app 与平台视图。它适合希望在各端共享一套完整界面体系的团队。
+Flutter 的 Widget、布局和绘制体系适合完整跨平台应用；NSH 更关注把新交互模块放进已有宿主。Flutter 可以结合更新服务、远程 Widget 或额外执行引擎；NSH 将可执行任务模块作为现成单元，两边需要宿主补齐的能力因而不同。
 
-NSH 更接近可放进应用的动态界面引擎：保留已有页面和服务，按任务加载新的交互模块，再通过各平台后端呈现。
+| 维度 | NSH 的实际机制 | Flutter 的实际机制 | 实际差异与代价 |
+| --- | --- | --- | --- |
+| 运行时与调度 | 原生 Surface 使用 QuickJS 引擎线程；Rust 核心提交挂载批次 | 原生发布使用 AOT Dart；当前原生平台默认采用[合并的 UI/平台线程](https://docs.flutter.dev/release/breaking-changes/linux-merged-threads)，光栅化另行执行，计算可用 [isolate](https://docs.flutter.dev/perf/isolates) | NSH 分离模块脚本与挂载；Flutter 已是编译后的执行路径，不应把选择 Rust 写成对 Dart 的速度结论 |
+| 状态与布局 | 信号更新绑定，核心树用 Taffy 布局 | [Widget 构建、Element 身份与 RenderObject 布局/绘制](https://docs.flutter.dev/resources/architectural-overview)协作，按父约束与子尺寸布局 | 两边的组件模型和布局约定不同；Flutter Widget 不能直接当作 NSH 组件使用 |
+| 控件与呈现 | 移动端平台视图，桌面按后端绘制，Web 为 HTML | 通常由 Flutter 引擎绘制控件；平台视图用于嵌入宿主控件 | Flutter 提供统一绘制和动画体系；NSH 更贴近各宿主的呈现路径，但各端行为仍需验证 |
+| 多界面与生命周期 | 每个原生动态 Surface 有自己的 VM、生命周期与预算 | [FlutterEngineGroup](https://docs.flutter.dev/add-to-app/multiple-flutters)支持独立状态的多引擎，并共享可复用资源 | 两者都能局部嵌入和多实例；独立状态本身不定义合作方包权限，NSH 额外把执行策略纳入 Surface |
+| 新交互的交付 | TSX 包同时交付布局、状态、异步逻辑和事件 | [RFW](https://pub.dev/packages/rfw)下载 Widget 描述与数据，并调用宿主提供的事件；可再结合脚本机制。[Shorebird](https://docs.shorebird.dev/code-push/)提供 Dart 代码补丁 | RFW 的回调范围、应用补丁与独立任务模块是不同单元。NSH 直接定义可执行模块，但宿主仍需开放足够的业务 API |
+| 更新兼容与治理 | 检查包、运行时要求、撤销和回滚；能力与预算按 Surface 配置 | Flutter 核心[没有内置 code push](https://docs.flutter.dev/resources/faq#does-flutter-support-code-push)；第三方补丁依赖对应发布版本，原生依赖需已存在 | NSH 将模块接受与执行策略放在一起；Flutter 宿主要根据 RFW、补丁或脚本路线另外设计模块级信任和限额 |
+| Rust 计算与原生组件 | Rust 组件/模块直接进入 NSH 核心及其绑定接口 | [dart:ffi](https://docs.flutter.dev/platform-integration/bind-native-code)可直接调用 Rust 导出的 C ABI；原生视图另走平台视图集成 | 调用 Rust 两边都可行，也不必经过序列化消息桥。FFI 解决计算接口，不自动解决图表的 Widget、渲染和销毁适配 |
+| Web 集成 | HTML/DOM 呈现；TSX 运行逻辑与纯 Rust 路径分开选择 | [Flutter Web 多视图](https://docs.flutter.dev/platform-integration/web/embedding-flutter-web)可嵌入宿主 DOM 元素，内部仍使用 Flutter 呈现体系 | 都能放进已有网页；区别在界面内部使用 DOM 还是 Flutter 的绘制/组件模型，而不是能否嵌入 |
 
-| 对比点 | NSH 的选择 | 对应用的价值 |
-| --- | --- | --- |
-| 交付单元 | 带状态和行为的动态模块 | 让生成式界面拥有独立的交付流程 |
-| 宿主组合 | 注册的原生组件、Rust 能力与动态 TSX 协作 | 复用已有客户端业务和核心实现 |
-| 执行管理 | 签名包、能力策略与 Surface 资源限制 | 管理不同来源模块的接受与运行 |
-| Web 呈现 | 在浏览器中呈现 HTML 与 DOM | 将界面放入网页结构中 |
-| 性能敏感部分 | 直接用 Rust 实现组件与业务 | 由动态模块组织和调用编译后的能力 |
+**同样生成订单确认界面：**RFW 适合组合已提供的 Widget 和事件；要加入新的校验、查询与流程逻辑，需要确认逻辑能否由已开放的回调表达，或引入脚本/代码补丁。NSH 的 TSX 包直接承载这些逻辑，因此更贴合每次任务交付不同程序化界面的场景。
 
-Flutter [官方 FAQ](https://docs.flutter.dev/resources/faq#does-flutter-support-code-push)说明框架没有内置通用 code push，第三方方案可提供代码更新；[deferred components](https://docs.flutter.dev/perf/deferred-components)则服务其特定范围内的按需加载。这些能力与“每次任务交付一个由宿主管理的界面模块”关注的层次不同。选择时应先确定产品需要完整共享界面体系，还是已有客户端中的动态模块层。
+**同样复用 Rust 图表：**Flutter 可以通过 FFI 使用计算核心，再用 Flutter 绘图或平台视图展示；NSH 可以让 Rust 组件承担绘制和业务，TSX 负责组合。差异是组件和生命周期边界在哪里，不是只有 NSH 能执行原生 Rust。选择 NSH 也意味着需要核对现有 Flutter 控件、动画和插件的替代或适配工作。
 
-### 与 GPUI 相比
+### 与 GPUI 相比：直接编译的 Rust 视图，还是宿主中的动态 Surface
 
-[GPUI](https://www.gpui.rs/) 为 Rust 客户端提供 GPU UI 基础，GPUI Kit 在这一生态上提供可复用组件。对于编辑器、IDE 和复杂桌面应用，应用可以直接围绕 Rust 构建核心界面和状态。
+[GPUI](https://github.com/zed-industries/zed/blob/main/crates/gpui/README.md) 用 Rust 的 `Entity` 保存状态，以 `Render` 构造元素树，再由 GPU 绘制。NSH 的 [GPUI 后端](./gpui.md)目前基于 GPUI Fast：外围仍是 GPUI 应用，里面放一个拥有自身视图树的 NSH Surface。比较的关键是这层运行时带来了什么，也增加了什么。
 
-NSH 与 GPUI 可以组合使用。NSH 的 [GPUI 后端](./gpui.md)目前基于 GPUI Fast，将 NSH Surface 作为 GPUI 视图嵌入现有应用。
+| 维度 | NSH 的实际机制 | 直接使用 GPUI | 实际差异与代价 |
+| --- | --- | --- | --- |
+| 新交互如何到达用户 | 加载 TSX bundle，使用已编译进宿主的组件与服务 | Rust 视图和事件处理随应用编译；额外动态层由应用选择和实现 | NSH 可以在发布后交付新的任务逻辑；直接 GPUI 保留更直接的 Rust 类型和调用关系 |
+| 状态与更新 | Rust 信号图追踪绑定；组件初始化后按依赖更新，核心维护影子树并用 Taffy 布局 | `Entity` 管理状态，视图通过 `Render` 生成元素并交给 GPUI 布局和绘制 | NSH 的响应式边界在 Surface 内；它不会自动把宿主的 `Entity` 变成模块状态，需要明确同步接口 |
+| 调度与绘制 | 桌面 Surface 的引擎线程处理脚本、文本和布局，再向 GPUI 主线程提交批次；一个 Surface 元素绘制内部保留树 | UI 操作遵守 GPUI 上下文与前台执行规则，后台工作使用其执行器 | NSH 把模块逻辑与挂载分开，但引入自己的布局、事件和数据转换路径；不能据此推断整体更快 |
+| 组件与生命周期 | `AppView` 管理 Surface；嵌入点和暴露能力由宿主确定 | GPUI 元素、视图和 Rust 对象在同一应用模型内直接组合 | 包住一个动态区域很直接；把任意已有 GPUI 组件放进动态树仍需实际适配，不是导入 crate 后自动可用 |
+| 模块治理 | 签名验证、撤销检查、能力策略及 VM 预算按 NSH 路径配置 | GPUI 的视图和执行器是应用基础设施；独立包信任、脚本运行时及权限策略由应用另行设计 | 需要任务扩展时，NSH 提供现成的管理单元；完全受信任的 Rust 核心无需为此增加脚本运行时 |
+| 平台边界 | 同一模块模型还可通过 NSH 移动后端与 Web 路径承载 | 上游提供桌面后端及[浏览器示例](https://github.com/zed-industries/zed/blob/main/crates/gpui/examples/README.md) | NSH 的移动接入是另一套后端能力，不等于把既有 GPUI 桌面交互直接移植到手机 |
 
-| 对比点 | NSH 增加的路径 | 典型用途 |
-| --- | --- | --- |
-| 运行时界面 | TSX 模块描述新页面与交互 | 根据任务生成操作面板 |
-| 模块交付 | 签名包、兼容检查与版本管理 | 为客户端交付独立扩展 |
-| 核心复用 | 外围应用保留 Rust，宿主开放选定的能力 | 复用现有数据处理、组件实现与业务服务 |
-| 执行生命周期 | 独立 Surface 与宿主策略 | 管理扩展的加载、运行与销毁 |
-| 手机客户端 | 独立的 UIKit、Android Views 等后端 | 将动态界面的开发模型用于移动产品 |
+**放到同一任务里看：**已有 GPUI Kit 应用要展示新生成的订单确认面板，NSH 可以让外围导航和数据服务保持 Rust 实现，只加载面板逻辑。若面板完全可预先实现，直接用 GPUI 组件通常减少一层状态、布局和事件边界。对于 Rust 图表，两边都可以保留编译后的实现；NSH 的额外价值是让运行时模块调用它，而不是让 Rust 本身更快。
 
-例如，GPUI Kit 应用可以保留导航、输入区和复杂视图，把某次 AI 任务的操作面板作为 NSH Surface 加入。宿主组件的接入仍需按注册接口实现。上游 GPUI 也已有[浏览器示例](https://github.com/zed-industries/zed/blob/main/crates/gpui/examples/README.md)；这里比较的重点是动态模块层，而不是把 GPUI 限定为仅能运行于桌面。
+调度依据：[GPUI 执行器](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/executor.rs)、[NSH 架构](./architecture.md)与 [GPUI 后端](./gpui.md)。
 
-### 与 Qt 相比
+### 与 Qt 相比：动态 QML 已存在，信任模型与宿主边界才是重点
 
-Qt 提供成熟的跨平台工具箱。[Qt Widgets](https://doc.qt.io/qt-6/qtwidgets-index.html)面向传统桌面控件与工作流；Qt Quick 使用 QML、属性绑定与场景图构建声明式界面。QML 已支持[动态加载和创建组件](https://doc.qt.io/qt-6/qtqml-javascript-dynamicobjectcreation.html)，可以连接宿主业务。
+Qt Quick 与 Qt Widgets 需要分开看。Quick 的 QML 本来就有动态对象、属性绑定与 JavaScript 行为；Widgets 是 QWidget 对象与布局工具箱，也能加载 UI 文件。NSH 更有价值的差异，是怎样接收不同来源的模块，以及这些模块怎样调用宿主。
 
-NSH 与 Qt Quick 都能连接动态界面和原生逻辑。NSH 更强调生成模块进入客户端之后的来源、交付、能力与资源管理。
+| 维度 | NSH 的实际机制 | Qt Quick / Qt Widgets 的实际机制 | 实际差异与代价 |
+| --- | --- | --- | --- |
+| 动态表达 | TSX bundle 带状态、异步逻辑和事件，通过 Surface 加载 | Quick 可[加载 QML 文件或动态编译字符串](https://doc.qt.io/qt-6/qtqml-javascript-dynamicobjectcreation.html)，包含 JS 处理函数；Widgets 的 [QUiLoader](https://doc.qt.io/qt-6/quiloader.html)创建已有类型的控件 | Quick 同样能生成新交互；Widgets 的 UI 描述与新增程序逻辑是两层。NSH 的区别在模块执行契约，不是唯一支持动态 UI |
+| 状态与布局 | Rust 信号图、Taffy flex/grid 和挂载批次 | QML 的[属性绑定](https://doc.qt.io/qt-6/qtqml-syntax-propertybinding.html)按依赖更新，使用 anchors/Layouts；Widgets 使用 [QLayout](https://doc.qt.io/qt-6/layout.html)管理控件尺寸 | QML 与 NSH 都有细粒度依赖更新；组件、布局规则和业务对象模型不同，不能仅凭“响应式”断言一方性能更好 |
+| 执行与渲染 | 原生 Surface 将脚本和布局放在引擎线程，平台后端负责呈现 | QML 引擎执行绑定/处理函数，可使用[编译优化](https://doc.qt.io/qt-6/qtqml-qtquick-compiler-tech.html)；Quick 场景图有[单线程或线程化渲染循环](https://doc.qt.io/qt-6/qtquick-visualcanvas-scenegraph.html)，Widgets UI 在主线程 | NSH 的分隔点是 Surface 提交；Quick 的分隔点是 GUI 对象与场景图。两者原生扩展都必须遵守线程要求 |
+| 信任与预算 | 包验证后仍执行能力检查、VM 堆/栈/调用时间及节点限制 | Qt 的[安全模型](https://doc.qt.io/qt-6/shared-security-model.html)假定受信任应用代码；不支持把不可信 QML 当成隔离域。Qt 也有 [QJSEngine 中断接口](https://doc.qt.io/qt-6/qjsengine.html) | Qt 可构建受控脚本宿主，但独立模块授权、限额和隔离策略需要额外设计；NSH 已把一部分策略纳入模块接口，仍不是进程级隔离 |
+| 宿主对象与销毁 | 宿主注册组件工厂、属性、事件和命令，Surface 管理动态树；业务资源另有授权与取消规则 | QML 使用 QObject 的属性/信号/方法，需遵守 [C++/QML 所有权规则](https://doc.qt.io/qt-6/qtqml-cppintegration-data.html)；Loader 可销毁子树 | 两者都可卸载界面，但都不能把“删掉 UI”当作撤销已发出的业务操作；对象和异步任务的所有权必须明确 |
+| Rust 与已有 UI | Rust 组件和业务类型可直接接入 NSH；已有平台视图走注册接口 | [CXX-Qt](https://kdab.github.io/cxx-qt/book/concepts/generated_qobject.html)等桥接 QObject 与 Rust；[QQuickWidget](https://doc.qt.io/qt-6/qquickwidget.html)把 Quick 放入 Widgets，但增加离屏渲染步骤并影响渲染线程模式 | Qt 可以复用 Rust，也有具体的嵌入代价。NSH 更贴合现有 Rust/原生宿主；Qt 产品则保留成熟 QObject、控件与工具积累 |
+| UI 模块与二进制插件 | 动态包使用宿主已有能力，新增本机实现随宿主交付 | QML 源码加载与 [QPluginLoader](https://doc.qt.io/qt-6/qpluginloader.html)共享库插件是不同路径，后者有平台/ABI 部署要求 | 两者都须区分界面逻辑与本机能力。NSH 签名包不是任意跨平台原生插件格式 |
+| 浏览器呈现 | Web 后端输出 HTML/DOM | [Qt for WebAssembly](https://doc.qt.io/qt-6/wasm.html)支持 Widgets、QML 与 Quick，以浏览器绘制路径承载并有平台限制 | 都能进入浏览器；NSH 的差异是 DOM 集成方式，不是独有 Web 支持，DOM 本身也不自动保证全部无障碍行为 |
 
-| 对比点 | NSH 的选择 | 对应用的价值 |
-| --- | --- | --- |
-| 生成后的检查 | 类型化组件 API 与无界面 trace | 检查生成代码的运行、布局操作和交互 |
-| 模块治理 | 签名包、宿主能力和原生 Surface 限制 | 将不同来源的界面纳入一致管理 |
-| UI 与业务语言 | Rust 可以编写组件、业务和完整应用 | 在 Rust 项目中复用核心实现 |
-| 接入方式 | 原生移动嵌入、桌面后端与 GPUI 路径 | 结合已有客户端选择模块入口 |
-| Web 呈现 | HTML 与 DOM | 在浏览器页面中承载界面 |
+**同样生成订单确认界面：**Qt Quick 可以直接加载带 JS 的 QML，并调用已开放的 QObject 方法，这一表达能力与 NSH 的目标有重叠。若代码全部由同一受信任团队交付，Qt 的动态组件和业务模型已经很完整。若接受来自多个合作方或模型生成的代码，Qt 官方信任假设就成为关键：宿主需要额外设计接受策略和执行边界，NSH 则将其中的包验证、能力交集和 VM 预算作为现有接口提供。
 
-如果产品围绕 Qt 的成熟控件、模型视图、平台模块与开发工具构建，这些积累是重要优势。若核心需求是“宿主开放能力，任务模块按需交付”，尤其已有 Rust 业务或 GPUI 客户端，NSH 提供了与这一组织方式直接对应的接口和流程。
+**同样撤销模块：**Qt Loader 可以移除界面，QJSEngine 可以中断执行；NSH 提供包撤销检查与按 Surface 配置的限制。两者仍需宿主处理进行中的原生调用和业务副作用。NSH 的价值在于将这些接受与执行策略串成模块流程。
 
-### 与 Slint 相比
+### 与 Slint 相比：同为 Rust 友好，交付语言与模块治理不同
 
-Slint 用声明式 UI、属性绑定以及函数和回调连接 Rust、C++ 等业务。它提供编译路径，也有[运行时解释器](https://docs.slint.dev/latest/docs/rust/slint_interpreter/)；其界面同样可以包含状态和交互逻辑。
+Slint 是 NSH 很有意义的对照：它也连接 Rust、支持细粒度绑定，并有运行时解释器。两者的取舍在于新交付的程序是什么、宿主怎样接入，以及生命周期和策略由哪一层管理。
 
-NSH 更关注模块表达与宿主管理的组合：交付单元可以用 TSX 组织任务状态、异步操作和交互，调用宿主服务，并使用相应的包与执行策略。
+| 维度 | NSH 的实际机制 | Slint 的实际机制 | 实际差异与代价 |
+| --- | --- | --- | --- |
+| 交付的界面程序 | TSX 包组织状态、Promise/异步操作与事件，运行在 QuickJS | 通常将 `.slint` 编译成组件类型；[解释器](https://docs.slint.dev/latest/docs/rust/slint_interpreter/)也能从源码/文件构建组件，设置属性并接入回调 | 两者都能运行时生成交互；NSH 交付通用 TSX 模块，Slint 使用自己的 UI 语言并通过宿主回调连接业务 |
+| 状态求值与布局 | 信号图追踪依赖，更新绑定后由 Taffy 布局 | Slint 绑定按依赖标脏，在读取时[惰性重新求值](https://docs.slint.dev/latest/docs/slint/reference/language/evaluation-and-purity/)；布局使用最小/最大/首选尺寸与伸缩约束 | 同为细粒度模型，求值与布局规则不同。选择应看组件和任务逻辑是否自然表达，不是简单对比“是否重渲染” |
+| 调度 | 原生动态 Surface 使用独立引擎线程，UI 线程应用批次 | 组件通常在 UI 事件循环线程使用；后台结果通过 [invoke_from_event_loop](https://docs.slint.dev/latest/docs/rust/slint/)排回 UI | NSH 为脚本模块提供独立调度单元；Slint 的宿主需要安排耗时工作，NSH 的原生回调同样要自行管理阻塞 |
+| 对象与回调生命周期 | Surface 管理模块和节点，宿主注册对象保留自己的资源责任 | [ComponentHandle](https://docs.slint.dev/latest/docs/rust/slint/trait.ComponentHandle)是强引用；回调捕获通常使用 [Weak](https://docs.slint.dev/latest/docs/rust/slint/struct.Weak)，跨线程更新进入事件循环 | Slint 的生命周期规则是显式且可控的；NSH 将模块生命周期集中到 Surface，但异步回调和宿主资源仍需协作清理 |
+| 包接受与权限 | 签名、撤销、回滚、能力交集和 VM 限额有对应接口 | 解释器提供编译、导入和组件 API；导入钩子可以限制来源，独立包信任/权限/预算由宿主实现 | NSH 减少为合作方模块搭建策略层的工作；这不是说 Slint 无法实现，而是框架负责的范围不同 |
+| Rust 计算与绘制 | Rust 核心组件可供 TSX 使用，宿主平台视图可按注册接口接入 | Rust 属性/回调 API 连接业务；可将 Rust 生成的像素经 [SharedPixelBuffer/Image](https://docs.slint.dev/latest/docs/rust/slint/struct.Image)显示，或接入渲染器 | Rust 计算不是 NSH 独有优势；已有 Slint 组件可直接保留，NSH 则让动态任务模块与 Rust 能力共享其组件模型 |
+| 新的原生能力 | 更新宿主二进制，再允许模块调用 | 动态解释 `.slint` 也不等于加载新的 Rust 本机实现 | 两者都受宿主 API 和二进制兼容约束；NSH 的动态包不消除原生发布流程 |
+| 移动与 Web | iOS/Android 后端与 HTML/DOM Web 路径 | Slint 有 [Android](https://docs.slint.dev/latest/docs/slint/guide/platforms/mobile/android/)和 [iOS](https://docs.slint.dev/latest/docs/slint/guide/platforms/mobile/ios/)路径，[Web](https://docs.slint.dev/latest/docs/slint/guide/platforms/web/)通过 Canvas 绘制 | 区别在平台集成与呈现模型。已有 Slint 产品迁移时要比较具体输入、渲染和嵌入需求，不能假设它没有移动端或浏览器支持 |
 
-| 对比点 | NSH 的选择 | 对应用的价值 |
-| --- | --- | --- |
-| 模块表达 | TSX 组织组件、状态、异步操作与事件 | 适合按任务生成可操作页面 |
-| 宿主组合 | 注册原生组件与 Rust 业务 API | 复用已有组件和服务实现 |
-| 交付管理 | 签名包、信任与兼容检查 | 将运行时 UI 加载纳入可验证的交付流程 |
-| 执行预算 | 原生 Surface 的资源与能力策略 | 为模块设定宿主可管理的执行范围 |
-| 完整 Rust 应用 | Rust 组件与响应式 API | 同一产品按需选择静态核心和动态扩展 |
-| Web 呈现 | HTML 与 DOM | 与 Slint 的浏览器 Canvas 渲染路径形成不同集成选择 |
+**同样生成订单确认界面：**Slint 解释器可以构造新的界面和处理逻辑，再接上宿主保存订单回调；NSH 可在 TSX 中组织异步查询和事件流程，再调用注册 API。需要复杂通用任务逻辑时，NSH 的语言和模块执行路径更直接；如果已有 Slint 组件与回调足够表达需求，继续使用它可避免引入另一套运行时。
 
-[Slint 的 Web 路径](https://docs.slint.dev/latest/docs/slint/guide/platforms/web/)使用浏览器 Canvas 渲染。对已有 Slint 或偏重声明式编译工作流的产品，继续使用其工具和组件很自然；以 AI 生成模块、签名交付和宿主能力管理为核心的产品，则可以从 NSH 的整体路径评估集成价值。
+**同样复用 Rust 图表：**Slint 和 NSH 都可保持 Rust 计算与绘制实现。NSH 的收益在于已有 Surface 包和宿主能力契约；Slint 的收益在于现有原生组件/API 和可选择的编译路径。双方都需要把绘制资源、线程和销毁责任接好，不能从语言一致推导“零适配”。
 
 ## 动态能力与编译后的核心共同存在
 
