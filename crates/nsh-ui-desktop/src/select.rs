@@ -3,7 +3,7 @@
 use nsh_core::ui::prelude::*;
 
 use crate::{
-    metrics::{ControlSize, HOVER_OPACITY, RING_OFFSET, RING_WIDTH},
+    metrics::{ControlSize, FIELD_HOVER_OPACITY, RING_OFFSET, RING_WIDTH},
     popover::{Popover, PopoverEvent, PopoverProps},
 };
 
@@ -37,6 +37,20 @@ pub enum SelectEvent {
     Change(u32),
 }
 
+/// The field's chevron: a corner (two borders) turned onto its point, in
+/// proportion to the text, as the check box's mark is drawn.
+fn chevron(size: Prop<ControlSize>) -> View {
+    let side = move || size.get().font_size() * 0.4;
+    view()
+        .w(move || px(side()))
+        .h(move || px(side()))
+        .mb(move || px(side() * 0.5))
+        .border_r(move || side() / 4.0)
+        .border_b(move || side() / 4.0)
+        .border_color(move || theme().muted_foreground)
+        .rotate(45.0)
+}
+
 /// One of a list of options ([`SelectProps`]).
 #[component]
 pub fn Select(props: SelectProps, cx: Scope<SelectEvent>) -> impl IntoElement {
@@ -64,7 +78,7 @@ pub fn Select(props: SelectProps, cx: Scope<SelectEvent>) -> impl IntoElement {
         .bg(move || theme().background)
         .border_1()
         .border_color(move || theme().input)
-        .hover(|s| s.border_color(move || theme().ring.opacity(HOVER_OPACITY)))
+        .hover(|s| s.border_color(move || theme().ring.opacity(FIELD_HOVER_OPACITY)))
         .active(|s| s.bg(move || theme().accent))
         .focus(|s| {
             s.outline(RING_WIDTH)
@@ -106,11 +120,7 @@ pub fn Select(props: SelectProps, cx: Scope<SelectEvent>) -> impl IntoElement {
                 }
             }),
         )
-        .child(
-            text("⌄")
-                .text_size(move || px(size.get().font_size()))
-                .text_color(move || theme().muted_foreground),
-        );
+        .child(chevron(size));
     let list = view()
         .min_w(move || px(width.get()))
         .child(dynamic(move || {
