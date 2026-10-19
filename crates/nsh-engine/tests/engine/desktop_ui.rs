@@ -338,3 +338,54 @@ fn a_dialog_shows_its_title_content_and_actions_and_closes_on_the_backdrop() {
             .any(|b| text_id(b, "closes 1").is_some())
     );
 }
+
+const SELECT: &str = r#"import { mount, signal, Text, View } from "nsh";
+import { Select } from "nsh/ui/desktop";
+
+const picked = signal(-1);
+mount(() => (
+  <View class="w-56">
+    <Select options={["Apple", "Banana"]} placeholder="Pick one" onChange={(i: number) => picked.set(i)} />
+    <Text>{`picked ${picked()}`}</Text>
+  </View>
+));
+"#;
+
+#[test]
+fn a_select_shows_its_choice_and_picks_from_a_popover() {
+    let (engine, rx) = start(SELECT);
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    let field = parent_of(
+        &first,
+        text_id(&first, "Pick one").expect("the placeholder"),
+    )
+    .expect("the field");
+    assert_eq!(
+        size_of(&first, field),
+        Some((224.0, 32.0)),
+        "as wide as its column"
+    );
+    let control = engine.control();
+    control.dispatch_event(field, EventKind::Press, EventPayload::None);
+    let batches = until_text(&rx, "Banana");
+    let banana = batches
+        .iter()
+        .find_map(|b| text_id(b, "Banana").and_then(|t| parent_of(b, t)))
+        .expect("the options");
+    let list_width = batches
+        .iter()
+        .find_map(|b| parent_of(b, banana).and_then(|list| size_of(b, list)))
+        .map(|s| s.0);
+    assert!(list_width.is_some_and(|w| w >= 224.0), "{list_width:?}");
+    control.dispatch_event(banana, EventKind::Press, EventPayload::None);
+    let batches = until_text(&rx, "picked 1");
+    assert!(batches.iter().any(|b| text_id(b, "picked 1").is_some()));
+    // The field shows the choice.
+    assert!(
+        batches
+            .iter()
+            .any(|b| text_id(b, "Banana") == text_id(&first, "Pick one"))
+    );
+}

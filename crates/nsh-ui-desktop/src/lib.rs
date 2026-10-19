@@ -16,6 +16,7 @@ mod button;
 mod dialog;
 mod metrics;
 mod popover;
+mod select;
 
 use std::sync::Arc;
 
@@ -29,6 +30,7 @@ pub use crate::{
     dialog::{Dialog, DialogEvent, DialogProps},
     metrics::ControlSize,
     popover::{Popover, PopoverEvent, PopoverProps},
+    select::{Select, SelectEvent, SelectProps},
 };
 
 /// The JS module apps import the desktop UI as.
@@ -40,7 +42,8 @@ pub fn registry() -> Registry {
     registry
         .register::<Button>()
         .register::<Dialog>()
-        .register::<Popover>();
+        .register::<Popover>()
+        .register::<Select>();
     registry
 }
 
@@ -58,7 +61,7 @@ mod tests {
     fn the_exports_are_pinned() {
         let registry = super::registry();
         let components: Vec<_> = registry.specs().iter().map(|s| s.export.clone()).collect();
-        assert_eq!(components, ["Button", "Dialog", "Popover"]);
+        assert_eq!(components, ["Button", "Dialog", "Popover", "Select"]);
         assert!(registry.module_specs().is_empty());
     }
 }

@@ -120,8 +120,9 @@ pub fn Popover(props: PopoverProps, cx: Scope<PopoverEvent>) -> impl IntoElement
         }
     };
     let children = props.children;
+    // The trigger lays out as it would on its own: the surface goes next
+    // to the box it takes.
     view()
-        .items_start()
         .child(props.trigger.place({
             let trigger = trigger.clone();
             move |slot| slot.element_ref(&trigger)

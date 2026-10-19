@@ -8,8 +8,8 @@ order: 20
 
 `nsh/ui/desktop` is NSH's UI set for windows on macOS, Windows, Linux and the web. It draws the same design language
 as the [mobile UI](./index.md), with the same theme, at a desktop's density: shorter controls, a highlight under the
-pointer, and a focus ring when the keyboard moves to a control. Its first components are `Button`, `Popover` and
-`Dialog`; more follow.
+pointer, and a focus ring when the keyboard moves to a control. Its first components are `Button`, `Popover`, `Dialog`
+and `Select`; more follow.
 
 ```tsx
 import { Button } from "nsh/ui/desktop";
@@ -178,3 +178,47 @@ when the dialog closes.
 | Event | Payload | When |
 |---|---|---|
 | `onClose` | none | A click on the backdrop, or Escape. |
+
+## Select
+
+`Select` shows one of `options` in a field; pressing it opens the list in a popover below it (above, when the window
+has no room) to pick another. The list is at least as wide as the field, with a check mark on the current choice.
+With `value` the app controls the choice and updates it from `onChange`; without, the select keeps its own, starting
+at `defaultValue`.
+
+```tsx
+import { mount, signal, View } from "nsh";
+import { Select } from "nsh/ui/desktop";
+
+function App() {
+  const theme = signal<number | null>(null);
+  return (
+    <View class="w-56 p-6">
+      <Select
+        options={["Light", "Dark", "System"]}
+        value={theme()}
+        onChange={(i) => theme.set(i)}
+        placeholder="Appearance"
+      />
+    </View>
+  );
+}
+
+mount(App);
+```
+
+The field takes the width its parent gives it, as a view does. On macOS and the web, Tab reaches it and Return opens
+the list, Tab moves through the options, Return or Space picks one, and the focus returns to the field.
+
+| Prop | Type | Default | Description |
+|---|---|---|---|
+| `options` | `string[]` | required | The options. |
+| `value` | `number \| null` | | The index of the chosen option, when the app controls it. |
+| `defaultValue` | `number \| null` | none | The first choice, when the app does not control it. |
+| `placeholder` | `string` | | Shown while nothing is chosen. |
+| `size` | `"sm" \| "md" \| "lg"` | `"md"` | The field's and the options' height and text size. |
+| `disabled` | `boolean` | `false` | Not opened, dimmed. |
+
+| Event | Payload | When |
+|---|---|---|
+| `onChange` | `number`: the option's index | An option was picked. |

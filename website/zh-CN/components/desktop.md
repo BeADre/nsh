@@ -7,7 +7,7 @@ order: 20
 # Desktop UI
 
 `nsh/ui/desktop` 是 NSH 面向 macOS、Windows、Linux 和 Web 窗口的 UI 集。它和 [Mobile UI](./index.md) 使用同一套设计语言、同一个主题，
-只是密度适合桌面：控件更矮，指针悬停时高亮，键盘把焦点移到控件上时显示焦点环。第一批组件是 `Button`、`Popover` 和 `Dialog`，后续组件陆续加入。
+只是密度适合桌面：控件更矮，指针悬停时高亮，键盘把焦点移到控件上时显示焦点环。第一批组件是 `Button`、`Popover`、`Dialog` 和 `Select`，后续组件陆续加入。
 
 ```tsx
 import { Button } from "nsh/ui/desktop";
@@ -167,3 +167,45 @@ mount(App);
 | 事件 | 参数 | 触发时机 |
 |---|---|---|
 | `onClose` | 无 | 点击背景，或按 Escape。 |
+
+## Select
+
+`Select` 在一个字段里显示 `options` 中的某一项；按下它会在下方（窗口放不下时在上方）的浮层里展开列表，从中选择另一项。
+列表至少和字段一样宽，当前选中项带有对勾。传入 `value` 时由应用控制选中项，并在 `onChange` 里更新；不传时组件自己保存，初始为 `defaultValue`。
+
+```tsx
+import { mount, signal, View } from "nsh";
+import { Select } from "nsh/ui/desktop";
+
+function App() {
+  const theme = signal<number | null>(null);
+  return (
+    <View class="w-56 p-6">
+      <Select
+        options={["Light", "Dark", "System"]}
+        value={theme()}
+        onChange={(i) => theme.set(i)}
+        placeholder="Appearance"
+      />
+    </View>
+  );
+}
+
+mount(App);
+```
+
+字段的宽度由父容器决定，和普通视图一样。在 macOS 和 Web 上，Tab 可以聚焦到它，按 Return 展开列表，Tab 在选项之间移动，
+按 Return 或空格选中一项，焦点随后回到字段上。
+
+| 属性 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `options` | `string[]` | 必填 | 选项。 |
+| `value` | `number \| null` | | 应用控制时，选中项的索引。 |
+| `defaultValue` | `number \| null` | 无 | 应用不控制时的初始选中项。 |
+| `placeholder` | `string` | | 未选中时显示的文字。 |
+| `size` | `"sm" \| "md" \| "lg"` | `"md"` | 字段和选项的高度与字号。 |
+| `disabled` | `boolean` | `false` | 不能展开，变暗显示。 |
+
+| 事件 | 参数 | 触发时机 |
+|---|---|---|
+| `onChange` | `number`：选项的索引 | 选中了一项。 |
