@@ -2,7 +2,7 @@
 
 Every tag is a component in scope, imported from its one home (`native-pipeline.md`): `View`, `Text`, `Scroll`,
 `Input` from `nsh`, `Image` from `nsh/image`, `List` from `nsh/list`, `Canvas` from `nsh/canvas`, `WebView` from
-`nsh/webview`, `Video` from `nsh/video`, `Modal` (and `Stack` / `Screen`) from `nsh/ui/mobile`, `InputAccessoryView` from
+`nsh/webview`, `Video` from `nsh/video`, `Modal` (and `Stack` / `Screen`) from `nsh/ui`, `InputAccessoryView` from
 `nsh/ios`; only `If` and `Each` are globals.
 
 | JSX | Native (Apple) | Notes |
@@ -42,15 +42,15 @@ in one of them.
 
 ## Primitives only
 
-NSH's runtime provides the basic capabilities. Components are the UI sets' (Rust, `crates/nsh-ui-mobile`,
+NSH's runtime provides the basic capabilities. Components are the UI sets' (Rust, `crates/nsh-ui`, `crates/nsh-ui-mobile`,
 `docs/dev/components.md`), drawn with views, classes, canvases and native animations so they look the same on every platform. Do not
 add platform-styled widgets (UISwitch / SeekBar wrappers and the like), and do not add compositions of existing
 primitives to the runtime (section lists, touchables, drawers, ...): they belong to a UI set. React Native is a
 reference for which capabilities exist, not an API to be compatible with. Components that need core or native support
-are primitives of their own (`List`, `Canvas`, `WebView`, `Video`; in the mobile set `Stack`, `Modal`, `SafeAreaView`,
-`KeyboardAvoidingView`; `InputAccessoryView` in `nsh/ios`). Tags are PascalCase names of what is in scope: a host
+are primitives of their own (`List`, `Canvas`, `WebView`, `Video`; in `nsh/ui` `Stack`, `Modal`, `SafeAreaView`, in
+`nsh/ui/mobile` `KeyboardAvoidingView`; `InputAccessoryView` in `nsh/ios`). Tags are PascalCase names of what is in scope: a host
 element's primitive is imported from its home (`import { View } from "nsh"`) and compiled in place, a component is
-imported (`import { Button } from "nsh/ui/mobile"`) or local; lowercase tags are errors (`native-pipeline.md`).
+imported (`import { Button } from "nsh/ui"`) or local; lowercase tags are errors (`native-pipeline.md`).
 
 ## The main thread never waits for JS
 
@@ -185,7 +185,7 @@ misses the deadline is not waited for again until it catches up (`docs/dev/macos
   negative offsets), starting at the right end and keeping their distance from it; horizontal lists are flipped natively
   (`ScrollConfig::mirrored`: the scroll view and each cell get scaleX −1, composed with their transforms), so the list's
   offset logic stays left to right.
-- **Environment** (reactive accessors; `nsh/device`, and `nsh/ui/mobile` for the mobile ones): `windowSize()`, `safeArea()`, `keyboard()` (`{ height, duration }`: how
+- **Environment** (reactive accessors; `nsh/device`, `nsh/ui` (`safeArea()`) and `nsh/ui/mobile` (`keyboard()`)): `windowSize()`, `safeArea()`, `keyboard()` (`{ height, duration }`: how
   far the keyboard reaches into the surface, the bottom safe area under it included, on every platform),
   `colorScheme()`, `fontScale()`. `KeyboardAvoidingView` pads its bottom by `keyboard().height`, animated with the keyboard,
   for content outside scroll views (message bars). Inputs inside a scroll view are kept clear of the keyboard natively (bottom inset + scroll to the

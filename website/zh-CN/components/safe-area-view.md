@@ -9,14 +9,14 @@ order: 6
 `SafeAreaView` 通过添加内边距，避免内容被刘海、状态栏、Home 指示条、导航标题栏或 Mac Catalyst 的窗口标题栏遮挡。内边距取的是**视图所在位置**的 inset：在 [Screen](./navigation.md) 内，是该页面标题栏下方的 inset；在 [Modal](./navigation.md#modal) 内，是模态框的 inset；其他情况下，是整个 surface 的安全区域。
 
 ```tsx
-import { SafeAreaView } from "nsh/ui/mobile";
+import { SafeAreaView } from "nsh/ui";
 ```
 
 ## 用法
 
 ```tsx
 import { mount, Text } from "nsh";
-import { SafeAreaView } from "nsh/ui/mobile";
+import { SafeAreaView } from "nsh/ui";
 
 function App() {
   return (
@@ -68,7 +68,7 @@ inset 会**叠加**在视图自身的内边距上。在上面的例子里，内�
 
 ```tsx
 import { Text, View } from "nsh";
-import { useSafeAreaInsets } from "nsh/ui/mobile";
+import { useSafeAreaInsets } from "nsh/ui";
 
 function BottomBar() {
   const insets = useSafeAreaInsets();

@@ -8,17 +8,17 @@ demo: ui-button
 # Button
 
 `Button` is a press target with a text label. It is filled with a theme color, darkens while pressed and reports
-presses with `onPress`. It looks the same on iOS and Android.
+presses with `onPress`. It looks the same on every platform.
 
 ```tsx
-import { Button } from "nsh/ui/mobile";
+import { Button } from "nsh/ui";
 ```
 
 ## Usage
 
 ```tsx
 import { mount, signal, Text, View } from "nsh";
-import { Button } from "nsh/ui/mobile";
+import { Button } from "nsh/ui";
 
 function App() {
   const count = signal(0);

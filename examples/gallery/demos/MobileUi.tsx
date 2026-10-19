@@ -1,10 +1,11 @@
-// `nsh/ui/mobile`'s Rust components laying out the app's content: a
-// `ListView` recycles rows the app renders, a `Group` wraps each child in a
-// row. The app writes the content; the components only place it. Their
-// colors come from the app's theme, so the text the app puts inside them
-// keeps the color they give it.
+// `nsh/ui`'s and `nsh/ui/mobile`'s Rust components laying out the app's
+// content: a `ListView` recycles rows the app renders, a `Group` wraps
+// each child in a row. The app writes the content; the components only
+// place it. Their colors come from the app's theme, so the text the app
+// puts inside them keeps the color they give it.
 import { signal, Text, View } from "nsh";
-import { Button, Group, ListView, SelectList, Sheet, Stepper, type StepperRef, TextField } from "nsh/ui/mobile";
+import { Button, Group, ListView, SelectList, Stepper, type StepperRef, TextField } from "nsh/ui";
+import { Sheet } from "nsh/ui/mobile";
 import { Appear, Badge, Caption, Card, colors, hint, isDark, mono, Row, Toggle } from "../ui";
 
 const inset = signal(false);
@@ -32,7 +33,7 @@ function Header() {
         <View style={{ gap: 6, paddingHorizontal: 4 }}>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <Badge label="Rust" tone="accent" />
-            <Badge label="nsh-ui-mobile" />
+            <Badge label="nsh-ui" />
           </View>
           <Text style={{ fontSize: 15, lineHeight: 21, color: colors.muted }}>
             Components written in Rust, running in the core: the app hands them JSX and data, they draw the boxes and keep their own state.

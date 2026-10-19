@@ -12,7 +12,7 @@ and Mac Catalyst, a Dialog on Android. It is used for full-screen flows, sheets 
 
 ```tsx
 import { signal, Text, View } from "nsh";
-import { Button, Modal, SafeAreaView } from "nsh/ui/mobile";
+import { Button, Modal, SafeAreaView } from "nsh/ui";
 
 function Example() {
   const open = signal(false);
@@ -30,7 +30,7 @@ function Example() {
 }
 ```
 
-`Modal` comes from [`nsh/ui/mobile`](../components/navigation.md). It is presented while `visible` is not `false` and
+`Modal` comes from [`nsh/ui`](../components/navigation.md). It is presented while `visible` is not `false` and
 dismissed when it becomes `false`, and it gives its content the modal's safe-area insets, which `SafeAreaView` and
 `useSafeAreaInsets()` inside it read.
 
@@ -88,7 +88,7 @@ A transparent modal with a fade draws its own dialog over a dimmed background:
 </Modal>
 ```
 
-For a system alert or action sheet, use `Alert` and `ActionSheet` from `nsh/ui/mobile` instead
+For a system alert or action sheet, use `Alert` from `nsh/ui` and `ActionSheet` from `nsh/ui/mobile` instead
 ([alert](../components/alert.md), [action sheet](../components/action-sheet.md)). For a sheet drawn by the app, see
 [`Sheet`](../components/sheet.md).
 

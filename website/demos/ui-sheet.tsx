@@ -1,6 +1,7 @@
 // Sheet: a bottom panel dragged down, tapped outside or closed with a button.
 import { mount, signal, Text, View } from "nsh";
-import { Button, Sheet } from "nsh/ui/mobile";
+import { Button } from "nsh/ui";
+import { Sheet } from "nsh/ui/mobile";
 import { ui } from "./palette";
 
 function App() {

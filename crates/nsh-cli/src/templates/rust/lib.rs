@@ -1,7 +1,7 @@
 //! The application's Rust UI, shared by the native and TSX entry points.
 
 use nsh_core::ui::prelude::*;
-use nsh_ui_mobile::{Button, ButtonEvent, ButtonProps, SafeAreaView, SafeAreaViewProps};
+use nsh_ui::{Button, ButtonEvent, ButtonProps, SafeAreaView, SafeAreaViewProps};
 
 /// The components available to the TSX entry through `app/native`.
 #[native_module("app/native")]

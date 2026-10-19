@@ -41,12 +41,12 @@ loader). Where each one is implemented and declared: `js-modules.md`.
   `nsh/image` (`Image`: the image element's component with its registry's functions on it) and the hand-written part
   of `nsh/android` (below).
 - The modules of registries (`Registry::specifier`): the UI sets a host serves (`HostOptions::ui_sets`,
-  `nsh/ui/mobile`) and the runtime's (the registry parts of `nsh/android`, `nsh/accessibility` and `nsh/image`). Their
+  `nsh/ui`, `nsh/ui/mobile`) and the runtime's (the registry parts of `nsh/android`, `nsh/accessibility` and `nsh/image`). Their
   components, modules and re-exports become exports (`components.rs`): a component is a host view naming it, with its
   props converted into their Rust types and sent by one render effect, events delivered to `on<Event>` handlers,
   children and slot holders; a module function runs in the call, or converts its arguments there and sends what it
   runs to the core as an op, returning a promise the core's events settle when it has a result
-  (`docs/dev/rust-classes.md`, "How calls cross"). Values a registry names natively (`Registry::native_values`: the mobile UI's navigation) and
+  (`docs/dev/rust-classes.md`, "How calls cross"). Values a registry names natively (`Registry::native_values`: `nsh/ui`'s navigation) and
   re-exports (`safeArea`, `useSafeAreaInsets`) come from the runtime. NSH's own export wins over a registry's of the
   same name.
 
@@ -123,7 +123,7 @@ One Oxc pass removes TypeScript and lowers JSX (`plugin.rs` `compile_native`):
 
 ## Navigation
 
-`createNavigator`, `Stack`, `Screen` and `Modal` are natives (`navigation.rs`), which the mobile UI exports
+`createNavigator`, `Stack`, `Screen` and `Modal` are natives (`navigation.rs`), which `nsh/ui` exports
 (`Registry::native_values`). A stack renders each route (by identity) with the app's function into a screen, the app's
 `<Screen>` or one around what it rendered (also when a hot component returns an accessor); a screen the user pops
 natively removes its route; screens and modals provide the insets they report to what they render

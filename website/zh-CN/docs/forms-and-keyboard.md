@@ -10,7 +10,7 @@ demo: guide-forms
 
 文本输入使用 `<Input>` 元素：iOS 上是 UITextField 或 UITextView，Android 上是 EditText。输入、光标、选区、自动更正和自动填充都由平台自己处理；应用通过事件拿到文本，也可以控制文本。NSH 还会自动让获得焦点的输入框保持在软键盘上方，并把键盘高度作为响应式的值提供给你，用于它自己处理不了的情况。
 
-如果需要符合移动端 UI 套件外观、带标签和清除按钮的输入框，见 [`TextField`](../components/text-field.md)。本页介绍底层的元素。
+如果需要符合 NSH UI 组件集外观、带标签和清除按钮的输入框，见 [`TextField`](../components/text-field.md)。本页介绍底层的元素。
 
 ## 受控与非受控输入框
 
@@ -237,7 +237,8 @@ const height = signal(0);
 
 ```tsx
 import { Input, Scroll, signal, View } from "nsh";
-import { keyboard, KeyboardAvoidingView, useSafeAreaInsets } from "nsh/ui/mobile";
+import { useSafeAreaInsets } from "nsh/ui";
+import { keyboard, KeyboardAvoidingView } from "nsh/ui/mobile";
 
 function ChatScreen() {
   const insets = useSafeAreaInsets();

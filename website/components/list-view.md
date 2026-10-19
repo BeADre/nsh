@@ -12,7 +12,7 @@ near the screen and reuses their cells as you scroll, so a list of thousands of 
 visible rows. ListView adds the look: padding around each row, dividers between rows and an optional inset style.
 
 ```tsx
-import { ListView } from "nsh/ui/mobile";
+import { ListView } from "nsh/ui";
 ```
 
 ## Usage
@@ -21,7 +21,7 @@ Pass the data as `each` and a row renderer as the child function, the same way a
 
 ```tsx
 import { mount, Text, View } from "nsh";
-import { ListView } from "nsh/ui/mobile";
+import { ListView } from "nsh/ui";
 
 const people = Array.from({ length: 1000 }, (_, i) => ({ id: i, name: `Person ${i + 1}` }));
 

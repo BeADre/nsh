@@ -1,4 +1,4 @@
-//! Components written in Rust: the UI sets' components (`nsh-ui-mobile`),
+//! Components written in Rust: the UI sets' components (`nsh-ui`, `nsh-ui-mobile`),
 //! run by the core on the engine thread.
 //!
 //! A [`Component`] is a function that runs once ([`Component::view`]) and

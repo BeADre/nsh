@@ -1,6 +1,6 @@
 // TextField: labels, placeholders, controlled and uncontrolled text, secure entry.
 import { mount, signal, Text, View } from "nsh";
-import { Button, TextField } from "nsh/ui/mobile";
+import { Button, TextField } from "nsh/ui";
 import { ui } from "./palette";
 
 function App() {

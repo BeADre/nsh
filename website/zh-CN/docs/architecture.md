@@ -25,7 +25,7 @@ group: tools
 2. **NSH 的 JSX 编译器**在同一遍处理中把 JSX 转换为对原生渲染器的直接调用。静态的 prop 和子节点只设置一次；可能变化的
    表达式（调用了函数或读取了属性）会成为渲染器跟踪的绑定。组件变成普通的函数调用，传入一个 props 对象，其中会变化的
    prop 是 getter。
-3. **rolldown** 把你的模块打包成一个 ES 模块。对 NSH 模块（`nsh`、`nsh/list`、`nsh/ui/mobile` 等）的导入保持为导入：
+3. **rolldown** 把你的模块打包成一个 ES 模块。对 NSH 模块（`nsh`、`nsh/list`、`nsh/ui` 等）的导入保持为导入：
    这些模块是原生的，由运行时提供。**bundle 只包含你的应用代码**；计数器示例的 JS 不到 1 KB。
 4. bundle 被编译为 **字节码**（`bundle.nshc`），加载比源码更快；同时会跨所有步骤合成一份 **source map**，
    让堆栈跟踪指向你的 `.tsx` 代码行。
@@ -47,7 +47,7 @@ group: tools
 - 编译后的 JSX 所调用的**渲染器**是原生的。它创建节点，并把每个变化转换为一个 **op**，直接推入原生队列：没有 JSON，
   也没有每个 prop 一条的消息。
 - **core** 维护所有节点的影子树（shadow tree）。一个 JS 轮次结束时，它一次性取出所有排队的 op 并进行 **commit**：
-  渲染 Rust 组件（`nsh/ui/mobile`），重建变化的文本，用 **Taffy** 布局（flexbox 和 grid，默认纵向排列且不收缩），
+  渲染 Rust 组件（`nsh/ui`、`nsh/ui/mobile`），重建变化的文本，用 **Taffy** 布局（flexbox 和 grid，默认纵向排列且不收缩），
   对 frame 和样式做 diff，并生成一个 **MountBatch**：原生视图所需的操作列表。
 
 ### 主线程
@@ -116,7 +116,8 @@ NSH 是一个 Rust workspace。编写应用时你永远不需要构建它（发�
 | Crate | 说明 |
 |---|---|
 | `nsh-core` | 平台无关的核心：影子树、样式、Taffy 布局、文本合并、列表虚拟化、mount item；CSS 值和 Tailwind；Rust 组件的框架和主题。 |
-| `nsh-ui-mobile` | `nsh/ui/mobile` 的组件和模块（`Button`、`Card`、`SafeAreaView`、`Alert` 等），用 Rust 编写。 |
+| `nsh-ui` | `nsh/ui` 的组件和模块，各种设备形态共用（`Button`、`Card`、`SafeAreaView`、导航、`Alert` 等），用 Rust 编写。 |
+| `nsh-ui-mobile` | `nsh/ui/mobile` 中手机和平板专属的组件和模块（`StatusBar`、`Sheet`、`ActionSheet`、`Keyboard` 等），用 Rust 编写。 |
 | `nsh-animation` | 原生动画图：值、插值、timing / spring / decay。 |
 | `nsh-js` | QuickJS 宿主和 NSH 的运行时：响应式图、渲染器、所有原生模块、全局 API、热模块替换、限制；以及这一切的 TypeScript 声明。 |
 | `nsh-engine` | 引擎线程：驱动 `nsh-js` 和 `nsh-core`，每帧向平台交付一个 batch。 |

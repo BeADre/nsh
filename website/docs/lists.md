@@ -346,13 +346,13 @@ list.scrollToIndex({ index: 120, viewPosition: 0.5 });
 
 `scrollToIndex` (and `scrollToEnd`) is resolved natively with the sizes known at that moment: measured rows where they have been measured, `estimatedItemSize` elsewhere. The list then follows its target while the rows around it are measured, so it lands exactly, until the user scrolls or the items change. To open a list at an item, use `initialScrollIndex` rather than scrolling after the first frame.
 
-## ListView from nsh/ui/mobile
+## ListView from nsh/ui
 
-`ListView` from `nsh/ui/mobile` is a ready-made list built on the same machinery: you pass `each` and render a row, and it adds the padding, dividers and an `inset` grouped look. Use it for settings-style and plain lists that should look like the rest of the mobile UI set; use `List` when you control the whole look. See [ListView](../components/list-view.md).
+`ListView` from `nsh/ui` is a ready-made list built on the same machinery: you pass `each` and render a row, and it adds the padding, dividers and an `inset` grouped look. Use it for settings-style and plain lists that should look like the rest of NSH's UI set; use `List` when you control the whole look. See [ListView](../components/list-view.md).
 
 ```tsx
 import { Text } from "nsh";
-import { ListView } from "nsh/ui/mobile";
+import { ListView } from "nsh/ui";
 
 <ListView variant="inset" dividers each={settings} keyExtractor={(s) => s.id}>
   {(s) => <Text>{s().label}</Text>}

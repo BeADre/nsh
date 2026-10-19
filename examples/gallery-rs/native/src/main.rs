@@ -14,7 +14,7 @@ fn main() -> impl std::process::Termination {
     env_logger::init();
     let gallery = gallery_native::__nsh_native_module();
     let assets = asset_directory(&gallery).expect("copy the gallery's registered assets");
-    platform::set_ui_sets(vec![nsh_ui_mobile::registry(), gallery]);
+    platform::set_ui_sets(vec![nsh_ui::registry(), nsh_ui_mobile::registry(), gallery]);
     let theme = nsh_core::ui::Theme::from_json(include_str!("../../theme.json"))
         .expect("the gallery theme is valid");
     platform::run_app(

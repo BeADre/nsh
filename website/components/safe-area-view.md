@@ -12,14 +12,14 @@ navigation header or the Mac Catalyst title bar. The padding is the insets **whe
 they are the modal's insets. Elsewhere they are the surface's safe area.
 
 ```tsx
-import { SafeAreaView } from "nsh/ui/mobile";
+import { SafeAreaView } from "nsh/ui";
 ```
 
 ## Usage
 
 ```tsx
 import { mount, Text } from "nsh";
-import { SafeAreaView } from "nsh/ui/mobile";
+import { SafeAreaView } from "nsh/ui";
 
 function App() {
   return (
@@ -76,7 +76,7 @@ change, for example on rotation.
 
 ```tsx
 import { Text, View } from "nsh";
-import { useSafeAreaInsets } from "nsh/ui/mobile";
+import { useSafeAreaInsets } from "nsh/ui";
 
 function BottomBar() {
   const insets = useSafeAreaInsets();

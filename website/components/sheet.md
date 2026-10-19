@@ -22,7 +22,8 @@ import { Sheet } from "nsh/ui/mobile";
 
 ```tsx
 import { mount, signal, Text, View } from "nsh";
-import { Button, Sheet } from "nsh/ui/mobile";
+import { Button } from "nsh/ui";
+import { Sheet } from "nsh/ui/mobile";
 
 function App() {
   const open = signal(false);

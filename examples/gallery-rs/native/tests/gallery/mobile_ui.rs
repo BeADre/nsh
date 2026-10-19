@@ -12,7 +12,7 @@ fn mobile_ui_renders_and_answers_presses() {
     let (engine, rx, mut screen) = crate::common::open("Mobile UI");
     for label in [
         "Rust",
-        "nsh-ui-mobile",
+        "nsh-ui",
         "TextField",
         "Name",
         "Hello, Ada",

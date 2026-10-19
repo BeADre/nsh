@@ -60,7 +60,7 @@ works and its runner only needs GTK.
   requests (the root's tick callback, `surface.rs`), `LayoutAnimation`, style transitions and keyframes
   (`transition.rs`), scroll glides and navigation transitions; tick callbacks exist only while something animates.
 - **Embedding**: `AppView` (`app.rs`) is one surface as a widget; `run_app` opens one in a window. `set_ui_sets`
-  replaces the default `nsh/ui/mobile` set for apps with Rust components of their own.
+  replaces the default sets (`nsh/ui`, `nsh/ui/mobile`) for apps with Rust components of their own.
 
 ## How each area maps to GTK
 

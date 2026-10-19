@@ -8,7 +8,7 @@ group: start
 # 用 Rust 开发
 
 Native Shell 应用可以用 TSX 编写，也可以用 Rust，或者两者结合。三种方式运行在同一个引擎上：响应式图、渲染器、Taffy
-布局和 `nsh/ui/mobile` 组件始终是 Rust，各平台都用自己的原生 UI 渲染。不同的是你自己的代码用什么语言，以及应用是否带着
+布局以及 `nsh/ui`、`nsh/ui/mobile` 组件始终是 Rust，各平台都用自己的原生 UI 渲染。不同的是你自己的代码用什么语言，以及应用是否带着
 JavaScript 虚拟机。
 
 | | TSX | Rust | Rust + TSX |
@@ -43,7 +43,7 @@ nsh package --target web       # 或 ios、ios-simulator、android、macos、lin
 
 ```rust
 use nsh_core::ui::prelude::*;
-use nsh_ui_mobile::{Button, ButtonEvent, ButtonProps};
+use nsh_ui::{Button, ButtonEvent, ButtonProps};
 
 /// TSX 通过 `app/native` 可以使用的组件。
 #[native_module("app/native")]
@@ -191,7 +191,7 @@ impl Portfolio {
 
 ```tsx
 import { mount, signal, View, Text } from "nsh";
-import { Button } from "nsh/ui/mobile";
+import { Button } from "nsh/ui";
 import { Chart, Ledger, Portfolio } from "app/native";   // Rust
 
 const ledger = new Ledger();   // 状态保存在 Rust 中

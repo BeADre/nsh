@@ -49,12 +49,16 @@ fn start() -> (Engine, Receiver<MountBatch>) {
         entry: dir.join("App.tsx"),
         minify: true,
         split: false,
-        ui_sets: vec![nsh_ui_mobile::registry()],
+        ui_sets: vec![nsh_ui::registry(), nsh_ui_mobile::registry()],
     })
     .unwrap();
     assert!(!bundle.code.contains("solid"), "only the app's code");
-    let bytecode =
-        nsh_js::compile_bytecode_with(&bundle.code, true, &[nsh_ui_mobile::registry()]).unwrap();
+    let bytecode = nsh_js::compile_bytecode_with(
+        &bundle.code,
+        true,
+        &[nsh_ui::registry(), nsh_ui_mobile::registry()],
+    )
+    .unwrap();
     let (tx, rx) = crossbeam_channel::unbounded();
     let config = EngineConfig {
         // SAFETY: compiled just now by this runtime.
@@ -141,7 +145,7 @@ fn a_single_file_app_on_the_native_modules() {
 }
 
 const NAVIGATION: &str = r#"import { mount, signal, Text, View } from "nsh";
-import { Modal, Screen, Stack, createNavigator, useSafeAreaInsets } from "nsh/ui/mobile";
+import { Modal, Screen, Stack, createNavigator, useSafeAreaInsets } from "nsh/ui";
 
 type Route = { name: string };
 const nav = createNavigator<Route>({ name: "home" });
@@ -184,11 +188,15 @@ fn start_app(app: &str) -> (Engine, Receiver<MountBatch>) {
         entry: dir.join("App.tsx"),
         minify: false,
         split: false,
-        ui_sets: vec![nsh_ui_mobile::registry()],
+        ui_sets: vec![nsh_ui::registry(), nsh_ui_mobile::registry()],
     })
     .unwrap();
-    let bytecode =
-        nsh_js::compile_bytecode_with(&bundle.code, false, &[nsh_ui_mobile::registry()]).unwrap();
+    let bytecode = nsh_js::compile_bytecode_with(
+        &bundle.code,
+        false,
+        &[nsh_ui::registry(), nsh_ui_mobile::registry()],
+    )
+    .unwrap();
     let (tx, rx) = crossbeam_channel::unbounded();
     let config = EngineConfig {
         // SAFETY: compiled just now by this runtime.
@@ -200,7 +208,7 @@ fn start_app(app: &str) -> (Engine, Receiver<MountBatch>) {
         environment: Default::default(),
         header_heights: (44.0, 96.0),
         limits: nsh_engine::Limits::default(),
-        ui_sets: vec![nsh_ui_mobile::registry()],
+        ui_sets: vec![nsh_ui::registry(), nsh_ui_mobile::registry()],
         runtime: None,
     };
     (
@@ -299,7 +307,7 @@ fn navigation_stacks_screens_and_modals() {
 }
 
 const MODAL_DISMISS: &str = r#"import { mount, signal, Text, View } from "nsh";
-import { Modal } from "nsh/ui/mobile";
+import { Modal } from "nsh/ui";
 
 const open = signal(true);
 const status = signal("waiting");

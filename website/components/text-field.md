@@ -11,14 +11,14 @@ demo: ui-text-field
 and a clear button. It is built on the [`<Input>`](../elements/input.md) element.
 
 ```tsx
-import { TextField } from "nsh/ui/mobile";
+import { TextField } from "nsh/ui";
 ```
 
 ## Usage
 
 ```tsx
 import { mount, signal, Text, View } from "nsh";
-import { TextField } from "nsh/ui/mobile";
+import { TextField } from "nsh/ui";
 
 function App() {
   const name = signal("");

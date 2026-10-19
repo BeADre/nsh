@@ -128,7 +128,8 @@ pub struct HostOptions {
     /// bytecode: only from the CLI that compiled the app.
     pub harden_bytecode: Option<std::sync::Arc<Vec<u8>>>,
     /// The UI sets apps import as native modules
-    /// (`nsh_ui_mobile::registry()`, served as `nsh/ui/mobile`).
+    /// (`nsh_ui::registry()`, served as `nsh/ui`, and
+    /// `nsh_ui_mobile::registry()`, as `nsh/ui/mobile`).
     pub ui_sets: Vec<nsh_core::ui::Registry>,
     /// The queue of the JS calls Rust posts (`Callback::post`,
     /// `call_async`): the engine hands the core the same one

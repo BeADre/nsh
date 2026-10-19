@@ -1,6 +1,6 @@
 // Navigation: a stack of screens with header options, pushed and popped.
 import { mount, signal, Text, View } from "nsh";
-import { Button, createNavigator, Screen, Stack } from "nsh/ui/mobile";
+import { Button, createNavigator, Screen, Stack } from "nsh/ui";
 import { ui } from "./palette";
 
 type Route = { name: "home" } | { name: "detail"; id: number };

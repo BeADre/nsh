@@ -1,19 +1,21 @@
-//! Mobile UI: `nsh/ui/mobile`'s Rust components laying out the demo's
-//! content (as the TSX gallery's `demos/MobileUi.tsx`): a `ListView`
-//! recycles rows the demo renders, under a header of cards with a text
-//! field, a sheet, a select list, groups, steppers and their methods; a
-//! `Group` wraps each child in a row. The demo writes the content; the
-//! components only place it. Their colors come from the app's theme, so
-//! the text the demo puts inside them keeps the color they give it.
+//! Mobile UI: `nsh/ui`'s and `nsh/ui/mobile`'s Rust components laying out
+//! the demo's content (as the TSX gallery's `demos/MobileUi.tsx`): a
+//! `ListView` recycles rows the demo renders, under a header of cards with
+//! a text field, a sheet, a select list, groups, steppers and their
+//! methods; a `Group` wraps each child in a row. The demo writes the
+//! content; the components only place it. Their colors come from the app's
+//! theme, so the text the demo puts inside them keeps the color they give
+//! it.
 
 use std::rc::Rc;
 
 use nsh_core::ui::prelude::*;
-use nsh_ui_mobile::{
+use nsh_ui::{
     Button, ButtonEvent, ButtonProps, ButtonVariant, Group, GroupProps, ListView, ListViewProps,
-    ListViewVariant, SelectList, SelectListEvent, SelectListProps, Sheet, SheetEvent, SheetProps,
-    Stepper, StepperApi, StepperEvent, StepperProps, TextField, TextFieldEvent, TextFieldProps,
+    ListViewVariant, SelectList, SelectListEvent, SelectListProps, Stepper, StepperApi,
+    StepperEvent, StepperProps, TextField, TextFieldEvent, TextFieldProps,
 };
+use nsh_ui_mobile::{Sheet, SheetEvent, SheetProps};
 
 use crate::ui::{
     Badge, Card, IconName, MONO, Row, ToggleEvent, Tone, appear, caption, colors, hint, toggle,
@@ -42,7 +44,7 @@ fn stocks() -> Vec<Stock> {
         .collect()
 }
 
-/// A mobile UI button titled `title` (a value, or bound).
+/// An `nsh/ui` button titled `title` (a value, or bound).
 fn mobile_button(title: Prop<SharedString>, variant: ButtonVariant) -> ComponentElement<Button> {
     Button::element(ButtonProps {
         title,
@@ -125,7 +127,7 @@ fn Header(props: HeaderProps, cx: Scope<HeaderEvent>) -> impl IntoElement {
                             .flex_row()
                             .gap_2()
                             .child(Badge::new("Rust").tone(Tone::Accent))
-                            .child(Badge::new("nsh-ui-mobile")),
+                            .child(Badge::new("nsh-ui")),
                     )
                     .child(
                         text(

@@ -1,6 +1,6 @@
 // Stepper: its own value, a controlled one with a fractional step, and its ref.
 import { mount, signal, Text, View } from "nsh";
-import { Button, Group, Stepper, type StepperRef } from "nsh/ui/mobile";
+import { Button, Group, Stepper, type StepperRef } from "nsh/ui";
 import { ui } from "./palette";
 
 function Row(props: { label: string; children: any }) {

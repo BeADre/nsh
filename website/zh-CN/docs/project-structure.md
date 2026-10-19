@@ -72,7 +72,7 @@ mount(App);
 | `build` | number | `package`, `publish` | 构建号（`CFBundleVersion`，Android 的 `versionCode`）。签名包要求它在每次发布时递增。 |
 | `icon` | string | `package` | 一张正方形 PNG，最好是 1024×1024，路径相对于 `nsh.json`。 |
 | `tailwind` | object | 每次构建 | 扩展 `class` 字符串所依据的 Tailwind 主题（[Tailwind](./tailwind.md)）。 |
-| `theme` | string 或 object | 每次构建 | `nsh/ui/mobile` 组件的主题：相对于 `nsh.json` 的主题文件路径，或直接内联的主题（[组件](../components/index.md)）。 |
+| `theme` | string 或 object | 每次构建 | `nsh/ui` 和 `nsh/ui/mobile` 组件的主题：相对于 `nsh.json` 的主题文件路径，或直接内联的主题（[组件](../components/index.md)）。 |
 | `capabilities` | object | 每次构建 | 应用可以访问 VM 之外的哪些资源：网络主机、网页视图主机、状态栏（[沙箱与权限](./sandbox-and-capabilities.md)）。 |
 | `rust` | string 或 string[] | 每个命令 | 应用的 Rust crate 或 crate 列表，路径相对于 `nsh.json`：其中的组件和模块，TSX 按每个 crate 的 `#[native_module]` 名称导入（[用 Rust 开发](./rust.md#多个-crate)）。 |
 | `root` | string | `run`, `package` | Rust 应用的根组件，即它在 `rust` crate（列表时为第一个）中的路径（`App`、`shell::Gallery`）：对应用目录执行 `nsh run` 和 `nsh package` 时，在所有平台上直接挂载它，不使用 QuickJS；`nsh run App.tsx` 仍然运行 TSX 入口（[用 Rust 开发](./rust.md)）。 |
@@ -141,6 +141,7 @@ NSH 不需要 `node_modules`。取而代之的是，每个构建应用的命令�
 | `globals.d.ts` | `If` 和 `Each`；`console`、定时器、`requestAnimationFrame`、`fetch` 及其他[全局 API](../modules/globals.md) |
 | `assets.d.ts` | 导入图片或字体得到的值 |
 | `list.d.ts`、`animated.d.ts`、`device.d.ts` 等 | 每个模块一个文件（`nsh/list`、`nsh/animated`、`nsh/device` 等） |
+| `ui.d.ts` | `nsh/ui` |
 | `ui/mobile.d.ts` | `nsh/ui/mobile` |
 
 `lib` 是不含 `DOM` 的 `ES2023`：没有 `document` 或 `window`。这些文件会被重新生成（只在内容变化时），所以不要编辑，也不要提交；`.gitignore` 已经排除了 `.nsh/`。如果克隆项目后编辑器提示找不到 `nsh`，运行任意一个构建命令即可，例如 `nsh trace App.tsx`。
@@ -179,7 +180,8 @@ const open = async () => {
 | 模块 | 内容 |
 |---|---|
 | `nsh` | 响应式（`signal`、`computed`、`effect` 等）、`mount`、`split`、`context`；`View`、`Text`、`Scroll`、`Input`（[参考](../modules/nsh.md)） |
-| `nsh/ui/mobile` | 移动端 UI 组件集：组件、导航、弹窗、安全区域（[组件](../components/index.md)） |
+| `nsh/ui` | NSH 的 UI 组件集，各平台共用：组件、导航、弹窗、安全区域（[组件](../components/index.md)） |
+| `nsh/ui/mobile` | 手机和平板特有的部分：状态栏、底部弹出面板、操作菜单、键盘（[组件](../components/index.md)） |
 | `nsh/list` | `List`：虚拟化、可复用的列表 |
 | `nsh/animated` | 原生动画 |
 | `nsh/canvas` | 2D 绘图 |

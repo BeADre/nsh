@@ -1,6 +1,6 @@
 // Card: elevated and outlined, with a header and a footer slot.
 import { mount, Scroll, signal, Text, View } from "nsh";
-import { Button, Card } from "nsh/ui/mobile";
+import { Button, Card } from "nsh/ui";
 import { ui } from "./palette";
 
 function App() {

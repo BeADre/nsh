@@ -11,14 +11,14 @@ demo: ui-card
 it. The header, the content and the footer are your JSX; the card adds the surface, the padding and the divider.
 
 ```tsx
-import { Card } from "nsh/ui/mobile";
+import { Card } from "nsh/ui";
 ```
 
 ## Usage
 
 ```tsx
 import { mount, Text, View } from "nsh";
-import { Button, Card } from "nsh/ui/mobile";
+import { Button, Card } from "nsh/ui";
 
 function App() {
   return (

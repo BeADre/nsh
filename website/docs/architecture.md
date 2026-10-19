@@ -27,7 +27,7 @@ animations stay smooth while JS is busy, why the main thread never waits for you
    children are set once; expressions that can change (they call a function or read a property) become bindings the
    renderer follows. Components become plain function calls with a props object whose changing props are getters.
 3. **rolldown** bundles your modules into one ES module. Imports of NSH's modules (`nsh`, `nsh/list`,
-   `nsh/ui/mobile`, ...) stay imports: those modules are native, served by the runtime. **The bundle contains only your
+   `nsh/ui`, ...) stay imports: those modules are native, served by the runtime. **The bundle contains only your
    app's code**; the counter example is under 1 KB of JS.
 4. The bundle is compiled to **bytecode** (`bundle.nshc`), which loads faster than source, and a **source map**
    is composed across all steps so stack traces point at your `.tsx` lines.
@@ -52,7 +52,7 @@ Everything about your app's logic happens here:
 - **The renderer** your compiled JSX calls is native. It creates nodes and turns every change into an **op** pushed
   straight into a native queue: no JSON, no messages per prop.
 - **The core** keeps a shadow tree of all nodes. When a JS turn ends, it takes all queued ops at once and **commits**:
-  renders the Rust components (`nsh/ui/mobile`), rebuilds changed texts, lays out with **Taffy** (flexbox and grid, with a
+  renders the Rust components (`nsh/ui`, `nsh/ui/mobile`), rebuilds changed texts, lays out with **Taffy** (flexbox and grid, with a
   column default and no shrinking), diffs frames and styles, and produces one **MountBatch**: the list of operations the native
   views need.
 
@@ -131,7 +131,8 @@ the names show up in logs and docs:
 | Crate | What it is |
 |---|---|
 | `nsh-core` | The platform-independent core: shadow tree, styles, Taffy layout, text merging, list virtualization, mount items; CSS values and Tailwind; the Rust components' framework and theme. |
-| `nsh-ui-mobile` | The components and modules of `nsh/ui/mobile` (`Button`, `Card`, `SafeAreaView`, `Alert`, ...), written in Rust. |
+| `nsh-ui` | The components and modules of `nsh/ui`, shared by every form factor (`Button`, `Card`, `SafeAreaView`, navigation, `Alert`, ...), written in Rust. |
+| `nsh-ui-mobile` | The components and modules of `nsh/ui/mobile` for phones and tablets (`StatusBar`, `Sheet`, `ActionSheet`, `Keyboard`, ...), written in Rust. |
 | `nsh-animation` | The native animation graph: values, interpolation, timing / spring / decay. |
 | `nsh-js` | The QuickJS host and NSH's runtime: the reactive graph, the renderer, every native module, the global APIs, hot module replacement, limits; and the TypeScript declarations of all of it. |
 | `nsh-engine` | The engine thread: drives `nsh-js` and `nsh-core` and hands one batch per frame to the platform. |

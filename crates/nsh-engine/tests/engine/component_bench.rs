@@ -34,16 +34,21 @@ fn bytecode(entry: &str) -> Vec<u8> {
         entry,
         minify: false,
         split: false,
-        ui_sets: vec![nsh_ui_mobile::registry()],
+        ui_sets: vec![nsh_ui::registry(), nsh_ui_mobile::registry()],
     })
     .unwrap();
-    nsh_js::compile_bytecode_with(&bundle.code, true, &[nsh_ui_mobile::registry()]).unwrap()
+    nsh_js::compile_bytecode_with(
+        &bundle.code,
+        true,
+        &[nsh_ui::registry(), nsh_ui_mobile::registry()],
+    )
+    .unwrap()
 }
 
 impl App {
     fn new() -> Self {
         let host = Host::with_options(nsh_js::HostOptions {
-            ui_sets: vec![nsh_ui_mobile::registry()],
+            ui_sets: vec![nsh_ui::registry(), nsh_ui_mobile::registry()],
             ..Default::default()
         })
         .unwrap();
@@ -53,7 +58,10 @@ impl App {
             ..Default::default()
         });
         let mut core = Core::new(ApproxTextEngine, Size::new(390.0, 844.0));
-        core.set_components(nsh_ui_mobile::registry());
+        core.set_components(nsh_core::ui::Registry::merged(&[
+            nsh_ui::registry(),
+            nsh_ui_mobile::registry(),
+        ]));
         Self {
             host,
             core,

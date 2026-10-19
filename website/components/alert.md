@@ -11,14 +11,14 @@ promise that resolves with the index of the button the user pressed. Unlike the 
 has the platform's own look.
 
 ```tsx
-import { Alert } from "nsh/ui/mobile";
+import { Alert } from "nsh/ui";
 ```
 
 ## Usage
 
 ```tsx
 import { mount, signal, Text, View } from "nsh";
-import { Alert, Button } from "nsh/ui/mobile";
+import { Alert, Button } from "nsh/ui";
 
 function App() {
   const answer = signal("–");

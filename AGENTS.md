@@ -12,7 +12,8 @@ Android views (`nsh-platform-android`), macOS with AppKit views (`nsh-platform-m
 with Direct2D (`nsh-platform-windows`), Linux with GTK 4 widgets (`nsh-platform-linux`). The GPUI backend
 (`nsh-platform-gpui`) draws on macOS, Windows and Linux and embeds in GPUI / GPUI Kit apps; the web platform
 (`nsh-platform-web`) renders apps as HTML in a browser page, and `nsh package --target web` publishes them as static
-sites. The only UI set is `nsh/ui/mobile` (it renders on every platform); a desktop set is planned.
+sites. The UI is `nsh/ui`, the components every form factor shares (they render on every platform), and `nsh/ui/mobile`,
+what only phones and tablets have; a desktop set (`nsh/ui/desktop`) is planned.
 
 This file is the short version. The details are in `docs/dev/` (read the page of the area you change first) and in
 the module docs of the code (`//!`, Javadoc), which are the reference for how a module works inside.
@@ -31,8 +32,11 @@ crates/
   nsh-macros/          `#[component]`, derives of Rust components (`Props`, `PropEnum`, `Event`, `JsObject`), `#[methods]`, `#[module]`, `#[class]`,
                        `#[native_module("…")]` (an app crate's UI set, which `rust_app.rs`'s generated code calls), `Styled`'s spacing methods;
                        `HostProps` (the host elements' props: decoding, defaults and TS), `JsOps` (recorded operations: canvas)
-  nsh-ui-mobile/       The components and modules of `nsh/ui/mobile` (Button, SafeAreaView, StatusBar, Alert, ...), written in Rust; their JS
-                       face is made from their specs (nsh-js `components.rs`), their TypeScript declarations generated
+  nsh-ui/              The components and modules of `nsh/ui`, those every form factor shares (Button, TextField, SafeAreaView,
+                       Alert, ...; navigation is nsh-js's `navigation.rs`), written in Rust; their JS face is made from their
+                       specs (nsh-js `components.rs`), their TypeScript declarations generated
+  nsh-ui-mobile/       The components and modules of `nsh/ui/mobile`, those only phones and tablets have (StatusBar, Sheet,
+                       ActionSheet, KeyboardAvoidingView, Keyboard), written as `nsh-ui`'s are
   nsh-animation/       Native animation graph (pure Rust): value / interpolate / math nodes, timing / spring / decay drivers
   nsh-js/              QuickJS host and NSH's runtime: console / timers, bytecode compilation and loading, limits (`sandbox.rs`);
                        the native modules apps import (`modules.rs`: module table and loader; docs/dev/js-modules.md), the
@@ -115,8 +119,8 @@ examples/             Example apps (gallery: a demo index, one module per demo; 
 ```
 
 Dependency direction: `nsh-core` ← `nsh-js` ← `nsh-engine` (also ← `nsh-package`) ← `nsh-platform-*` ←
-`nsh-ios-host` / `nsh-ios-app` / `nsh-linux-host` / `nsh-linux-app` / `nsh-macos-host` / `nsh-macos-app` / `nsh-windows-host` / `nsh-windows-app` / `nsh-gpui-host` / `nsh-gpui-app`; `nsh-cli` depends on `nsh-bundler`, `nsh-js` and `nsh-engine`; `nsh-ui-mobile` depends
-on `nsh-core` only and is used by the bundler (declarations), the platforms and the CLI (registry). `nsh-core` must not depend
+`nsh-ios-host` / `nsh-ios-app` / `nsh-linux-host` / `nsh-linux-app` / `nsh-macos-host` / `nsh-macos-app` / `nsh-windows-host` / `nsh-windows-app` / `nsh-gpui-host` / `nsh-gpui-app`; `nsh-cli` depends on `nsh-bundler`, `nsh-js` and `nsh-engine`; `nsh-ui` and `nsh-ui-mobile` depend
+on `nsh-core` only and are used by the bundler (declarations), the platforms and the CLI (registry). `nsh-core` must not depend
 on any platform or JS crate.
 
 ## Documentation
@@ -140,7 +144,7 @@ on any platform or JS crate.
 | the GPUI backend (`nsh-platform-gpui`, macOS / Windows / Linux) | `docs/dev/gpui.md` |
 | a hot path | `docs/dev/performance.md` (baselines) |
 | anything platform-specific | `docs/dev/pitfalls.md` (verified constraints, by area) |
-| components (`nsh/ui/mobile`) | `docs/dev/components.md`, `crates/nsh-ui-mobile/README.md` |
+| components (`nsh/ui`, `nsh/ui/mobile`) | `docs/dev/components.md`, `crates/nsh-ui/README.md` |
 | Rust classes TS uses (`#[class]`), module functions' kinds, callbacks, how calls and Rust components' props cross (typed) | `docs/dev/rust-classes.md`, `docs/dev/components.md` |
 
 Keep them current: a change that alters documented behavior updates its page (or the module doc) in the same commit,
@@ -224,14 +228,18 @@ repository's `target/`; dependencies only it uses are declared in `crates/gpui/C
 ## Rules
 
 - **Two module layers.** `nsh` / `nsh/<module>` (native, `crates/nsh-js`) are the primitives and the environment
-  every UI set builds on; `nsh/ui/<set>` is a whole UI for one form factor (`nsh/ui/mobile`; a desktop set will be
-  separate, never an abstraction over both). Shared vs one form factor decides the layer, not JS vs native. Platform-only APIs go to
+  the UI builds on; `nsh/ui` (`crates/nsh-ui`) is the shared UI set: the components and navigation every form factor
+  has, which adapt their styling, never their structure, to the form factor. `nsh/ui/<form factor>` holds only what
+  one form factor has (`nsh/ui/mobile`: the status bar, sheets, the software keyboard; a desktop set,
+  `nsh/ui/desktop`, will be its own). Each export has one home (two sets registering one component panic,
+  `Registry::merged`); apps import from both. Shared vs one form factor decides the layer, not JS vs native.
+  Platform-only APIs go to
   `nsh/ios` / `nsh/android`, platform-only props into `ios={{…}}` / `android={{…}}` / `desktop={{…}}`. `nsh` has no
   catch-all re-exports; moved APIs get no compatibility re-exports.
 - **Primitives only.** The runtime adds capabilities, not widgets: components are drawn with the primitives in a UI
   set and look the same on every platform; no platform-styled widgets. React Native is a reference for which
   capabilities exist, not an API to be compatible with.
-- **Components are Rust.** A UI set's components live in its crate (`crates/nsh-ui-mobile`), run in the core and
+- **Components are Rust.** A UI set's components live in its crate (`crates/nsh-ui`, `crates/nsh-ui-mobile`), run in the core and
   render primitives with typed styles (GPUI-style `Styled` methods, never class strings) and theme colors (gpui-kit's
   fields); props and events are derived types, their JS face is made from the specs (`nsh-js` `components.rs`) and
   their TypeScript declarations generated from them (`nsh_core::ui::declarations`), never hand-written per component. JS allocates even node ids,
@@ -262,7 +270,7 @@ repository's `target/`; dependencies only it uses are declared in `crates/gpui/C
 - TSX tags are PascalCase, everywhere (examples, docs, tests): every tag names a binding in scope, only `<If>` and
   `<Each>` are globals that need no import. The primitives have one home each: `View`, `Text`, `Scroll`, `Input` from
   `nsh`, `Image` from `nsh/image`, `List` from `nsh/list`, `Canvas` from `nsh/canvas`, `WebView` from `nsh/webview`,
-  `Video` from `nsh/video`, `Modal` from `nsh/ui/mobile`, `InputAccessoryView` from `nsh/ios`; the compiler makes
+  `Video` from `nsh/video`, `Modal` from `nsh/ui`, `InputAccessoryView` from `nsh/ios`; the compiler makes
   their tags in place (`jsx::PRIMITIVES`). Lowercase tags are compile errors: TypeScript checks a lowercase tag
   against one global type per name, so generic components (`List`, `Each`) and local ones would lose their types.
 - Workspace lints: `missing_docs = warn`, `unreachable_pub = deny`, `private_interfaces = deny`. New crates must set `[lints] workspace = true`.
@@ -288,7 +296,7 @@ Details and examples: "Commits and pull requests" in `CONTRIBUTING.md`.
   workflow. A request to release or push changes does not authorize a direct push to `main`.
 
 - Subjects and PR titles are `<area>: <What the change does>`: the area in lower case (a crate without `nsh-`:
-  `core`, `js`, `engine`, `bundler`, `cli`, `ui-mobile`, ...; one platform: `ios`, `android`, `macos`, `windows`,
+  `core`, `js`, `engine`, `bundler`, `cli`, `ui`, `ui-mobile`, ...; one platform: `ios`, `android`, `macos`, `windows`,
   `linux`; `desktop` for macOS, Windows and Linux together, `mobile` for iOS and Android together; `runtime`, a module;
   `tailwind`, `text`, `docs`, `examples`, `gallery`). One area only, never several separated by commas: for a change
   that spans parts, judge it as a whole and name the part it is mostly about (a feature the core adds and the platforms

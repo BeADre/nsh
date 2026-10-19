@@ -14,7 +14,7 @@ use crate::common::shows;
 fn components_render_and_answer_presses() {
     let (engine, rx, mut screen) = crate::common::open("Components");
     for label in [
-        "nsh/ui/mobile",
+        "nsh/ui",
         "0 taps",
         "Primary",
         "Card with slots",

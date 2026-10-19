@@ -8,7 +8,7 @@ group: platforms
 # macOS
 
 NSH apps also run as native Mac apps. The macOS backend renders them with AppKit views and Core Animation and lays out
-text with CoreText; the core, the reactive graph, the renderer, Taffy layout and the `nsh/ui/mobile` components are the
+text with CoreText; the core, the reactive graph, the renderer, Taffy layout and the `nsh/ui` and `nsh/ui/mobile` components are the
 same as on iOS and Android, so one bundle runs everywhere. On macOS, `Platform.OS` is `"macos"` and the
 `desktop={{…}}` props apply. The window's title, a title bar of the app's own, the menu bar and context menus come from
 [`nsh/desktop`](../modules/nsh-desktop.md).

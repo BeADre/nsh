@@ -15,8 +15,8 @@ The environment an app runs in changes while it runs: the window resizes (rotati
 | `windowSize()` | `nsh/device` | `{ width, height }` of the surface, in points. |
 | `colorScheme()` | `nsh/device` | `"light"` or `"dark"`: the system's, or the app's own (`setColorScheme`). |
 | `fontScale()` | `nsh/device` | The user's preferred text size relative to the default (1 is the default). |
-| `safeArea()` | `nsh/ui/mobile` | Insets of the surface not covered by system UI: `{ top, right, bottom, left }`. |
-| `useSafeAreaInsets()` | `nsh/ui/mobile` | The insets where the calling component renders (a screen, a modal). |
+| `safeArea()` | `nsh/ui` | Insets of the surface not covered by system UI: `{ top, right, bottom, left }`. |
+| `useSafeAreaInsets()` | `nsh/ui` | The insets where the calling component renders (a screen, a modal). |
 | `keyboard()` | `nsh/ui/mobile` | `{ height, duration }` of the software keyboard. |
 | `I18nManager.isRTL` | `nsh/device` | Whether the app lays out right to left. |
 | `reduceMotion()`, `screenReaderEnabled()` | `nsh/accessibility` | See [Accessibility](./accessibility.md). |
@@ -24,7 +24,7 @@ The environment an app runs in changes while it runs: the window resizes (rotati
 ```tsx
 import { mount, Text, View } from "nsh";
 import { colorScheme, fontScale, windowSize } from "nsh/device";
-import { safeArea } from "nsh/ui/mobile";
+import { safeArea } from "nsh/ui";
 
 function App() {
   return (
@@ -89,7 +89,7 @@ const palette = computed(() =>
 </View>
 ```
 
-The components of `nsh/ui/mobile` take their colors from the component theme, which has light and dark values (`nsh.json` `"theme"`), so they switch with the system as well. To match the status bar to your background, see [`StatusBar`](../components/status-bar.md).
+The components of `nsh/ui` and `nsh/ui/mobile` take their colors from the component theme, which has light and dark values (`nsh.json` `"theme"`), so they switch with the system as well. To match the status bar to your background, see [`StatusBar`](../components/status-bar.md).
 
 ### An app with its own appearance
 
@@ -131,11 +131,11 @@ Notches, the home indicator, the status bar, Android's navigation bar and the Ma
 
 - `safeArea()` gives the surface's insets.
 - `useSafeAreaInsets()` gives the insets **where the component renders**: inside a navigation [screen](./navigation.md#safe-areas-under-the-header) they are measured below its header, inside a [modal](./navigation.md#modals) they are the modal's. Prefer it in components that may be shown in several places.
-- `SafeAreaView` from `nsh/ui/mobile` is a view padded by those insets (all edges by default, or `edges={["top", "bottom"]}`), on top of its own padding.
+- `SafeAreaView` from `nsh/ui` is a view padded by those insets (all edges by default, or `edges={["top", "bottom"]}`), on top of its own padding.
 
 ```tsx
 import { View } from "nsh";
-import { SafeAreaView, useSafeAreaInsets } from "nsh/ui/mobile";
+import { SafeAreaView, useSafeAreaInsets } from "nsh/ui";
 
 function Screen() {
   return (

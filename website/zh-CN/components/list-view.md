@@ -10,7 +10,7 @@ demo: ui-list-view
 `ListView` 是一个由你渲染各行的滚动列表。和 [List](../elements/list.md) 一样，它只创建屏幕附近的行，并在滚动时复用单元格，因此一个上千项的列表，开销与可见行数大致相当。ListView 在此之上提供外观：每行的内边距、行间分隔线，以及可选的 inset 样式。
 
 ```tsx
-import { ListView } from "nsh/ui/mobile";
+import { ListView } from "nsh/ui";
 ```
 
 ## 用法
@@ -19,7 +19,7 @@ import { ListView } from "nsh/ui/mobile";
 
 ```tsx
 import { mount, Text, View } from "nsh";
-import { ListView } from "nsh/ui/mobile";
+import { ListView } from "nsh/ui";
 
 const people = Array.from({ length: 1000 }, (_, i) => ({ id: i, name: `Person ${i + 1}` }));
 

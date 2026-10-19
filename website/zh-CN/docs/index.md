@@ -108,7 +108,7 @@ let info = try await app.loadPackage(at: downloadedFile, trust: trust)   // 先�
 - **原生视图。** 嵌入原生地图、WebView 或视频播放器没有层级问题，无障碍使用平台自己的树，文本输入是系统的输入。
 - **细粒度响应式。** 与 Solid 类似的[信号](./reactivity.md)，在原生层实现。组件只运行一次，只有读取了变化信号的表达式会重新执行。
 - **样式与 Tailwind**，在原生层解析：flexbox、CSS grid、阴影、渐变、滤镜、过渡（[样式](./styling.md)、[Tailwind](./tailwind.md)）。
-- **移动端 UI 组件集**（`nsh/ui/mobile`），组件用 Rust 编写、由 NSH 绘制，在每个平台上外观一致：[Button](../components/button.md)、[Card](../components/card.md)、[ListView](../components/list-view.md)、[导航](../components/navigation.md) 等。桌面布局用基础元素加上 `desktop={{…}}` 属性和 `Platform.select` 搭建（[平台特定代码](./platform-specific.md)），桌面 UI 套件也在路上。
+- **UI 组件集**，组件用 Rust 编写、由 NSH 绘制，在每个平台上外观一致：`nsh/ui` 供各种设备形态共用（[Button](../components/button.md)、[Card](../components/card.md)、[ListView](../components/list-view.md)、[导航](../components/navigation.md) 等），`nsh/ui/mobile` 提供手机和平板特有的部分（状态栏、底部弹出面板、键盘）。桌面布局用基础元素加上 `desktop={{…}}` 属性和 `Platform.select` 搭建（[平台特定代码](./platform-specific.md)）。
 - **单一可执行文件的工具链。** 一个 `nsh` 可执行文件负责构建模块、生成类型声明、以热模块替换的方式提供开发服务、打包和签名。
 
 ## 运行平台

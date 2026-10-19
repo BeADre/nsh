@@ -35,7 +35,7 @@ Shows a short message at the bottom of the screen (Android's toast). `duration` 
 ```ts
 import { Platform } from "nsh/device";
 import { Toast } from "nsh/android";
-import { Alert } from "nsh/ui/mobile";
+import { Alert } from "nsh/ui";
 
 const notify = (message: string) =>
   Platform.OS === "android" ? Toast.show(message) : Alert.alert("Done", message);
@@ -60,7 +60,7 @@ The system back button and back gesture. Modals and navigation stacks handle the
 ```tsx
 import { cleanup, signal } from "nsh";
 import { BackHandler } from "nsh/android";
-import { Alert } from "nsh/ui/mobile";
+import { Alert } from "nsh/ui";
 
 function Editor() {
   const dirty = signal(false);

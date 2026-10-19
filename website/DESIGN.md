@@ -159,7 +159,8 @@ logs it).
   colours from `demos/palette.ts` (`ui()`, over `colorScheme()`) inside JSX,
   so they switch live. The playground inlines that file into a demo that
   imports it; its Dark switch follows the page until changed.
-  `demos/nsh.json` gives `nsh/ui/mobile` both appearances
+  `demos/nsh.json` gives the components of `nsh/ui` and
+  `nsh/ui/mobile` both appearances
   (`demos/graphite-theme.json`). Never custom Tailwind colour names: the
   playground compiles without `nsh.json`.
 - A demo is shown in a **frame** (`.phone`, `frameBar()` in

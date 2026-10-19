@@ -12,14 +12,14 @@ rows from your array of strings, so a list of thousands of options costs about a
 JS runs while scrolling.
 
 ```tsx
-import { SelectList } from "nsh/ui/mobile";
+import { SelectList } from "nsh/ui";
 ```
 
 ## Usage
 
 ```tsx
 import { mount, signal, Text, View } from "nsh";
-import { SelectList } from "nsh/ui/mobile";
+import { SelectList } from "nsh/ui";
 
 const languages = ["English", "Deutsch", "Español", "Français", "日本語", "中文"];
 

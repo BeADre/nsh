@@ -39,7 +39,7 @@ How conflicts resolve:
 3. **`style` wins over classes.**
 4. `!` makes a class important: `!p-0`.
 
-Components from `nsh/ui/mobile` accept `class` and `classList` too; your classes are merged after the component's own styles and win at equal rank.
+Components from `nsh/ui` and `nsh/ui/mobile` accept `class` and `classList` too; your classes are merged after the component's own styles and win at equal rank.
 
 ## Variants
 
@@ -135,7 +135,7 @@ With this theme, `bg-brand-500`, `text-brand` (the `DEFAULT` shade), `border-ink
 
 Unknown keys and invalid values are build errors (`nsh.json: tailwind: unknown theme key 'colours'`). The theme is compiled into the bundle and applied before the first frame.
 
-The theme only shapes your own classes. The components of `nsh/ui/mobile` take their colors from the component theme, `"theme"` in `nsh.json` ([Components](../components/index.md)).
+The theme only shapes your own classes. The components of `nsh/ui` and `nsh/ui/mobile` take their colors from the component theme, `"theme"` in `nsh.json` ([Components](../components/index.md)).
 
 ## The class check
 

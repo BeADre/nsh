@@ -31,8 +31,8 @@ export const SECTIONS: Section[] = [
     id: 'components',
     label: { en: 'Components', 'zh-CN': '组件' },
     blurb: {
-      en: 'nsh/ui/mobile: buttons, cards, sheets and the rest, written in Rust and drawn by nsh, so they look the same on every platform.',
-      'zh-CN': 'nsh/ui/mobile：按钮、卡片、弹层等组件，用 Rust 编写、由 nsh 绘制，在每个平台上表现一致。',
+      en: 'nsh/ui: buttons, cards, lists, navigation and more on every platform; nsh/ui/mobile: the status bar, sheets and the keyboard. Written in Rust and drawn by NSH, so they look the same everywhere.',
+      'zh-CN': 'nsh/ui：各平台共用的按钮、卡片、列表、导航等组件；nsh/ui/mobile：状态栏、底部面板和键盘。用 Rust 编写、由 NSH 绘制，在每个平台上表现一致。',
     },
   },
   {

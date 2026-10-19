@@ -39,7 +39,7 @@ demo: guide-tailwind
 3. **`style` 优先于类名。**
 4. `!` 让一个类变为 important：`!p-0`。
 
-`nsh/ui/mobile` 的组件同样接受 `class` 和 `classList`；你的类会合并在组件自身样式之后，同等优先级时以你的为准。
+`nsh/ui` 和 `nsh/ui/mobile` 的组件同样接受 `class` 和 `classList`；你的类会合并在组件自身样式之后，同等优先级时以你的为准。
 
 ## 变体
 
@@ -134,7 +134,7 @@ demo: guide-tailwind
 
 未知的键和无效的值会导致构建错误（`nsh.json: tailwind: unknown theme key 'colours'`）。主题会编译进 bundle，并在第一帧之前生效。
 
-这个主题只影响你自己的类名。`nsh/ui/mobile` 的组件从组件主题，即 `nsh.json` 中的 `"theme"` 获取颜色（[组件](../components/index.md)）。
+这个主题只影响你自己的类名。`nsh/ui` 和 `nsh/ui/mobile` 的组件从组件主题，即 `nsh.json` 中的 `"theme"` 获取颜色（[组件](../components/index.md)）。
 
 ## 类名检查
 

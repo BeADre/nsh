@@ -1,6 +1,6 @@
 # Component benchmarks
 
-The same screens with the Rust `Button` of `nsh/ui/mobile` and with `TsButton.tsx`, the TSX Button it replaced
+The same screens with the Rust `Button` of `nsh/ui` and with `TsButton.tsx`, the TSX Button it replaced
 (restyled to draw exactly like the Rust one with the default theme):
 
 - `GridRust.tsx` / `GridTs.tsx`: 200 Buttons in a scroll view; the first press target updates every title.

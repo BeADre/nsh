@@ -9,14 +9,14 @@ order: 13
 `Alert.alert` 显示平台自带的警告对话框：iOS 上是 `UIAlertController`，Android 上是 `AlertDialog`。它返回一个 Promise，解析为用户所按按钮的序号。与这个 UI 集中的其他组件不同，警告框使用的是平台自身的外观。
 
 ```tsx
-import { Alert } from "nsh/ui/mobile";
+import { Alert } from "nsh/ui";
 ```
 
 ## 用法
 
 ```tsx
 import { mount, signal, Text, View } from "nsh";
-import { Alert, Button } from "nsh/ui/mobile";
+import { Alert, Button } from "nsh/ui";
 
 function App() {
   const answer = signal("–");

@@ -10,14 +10,14 @@ demo: ui-text-field
 `TextField` 是一个单行文本输入框：上方可以有标签，聚焦时边框变色，并带有清除按钮。它基于 [`<Input>`](../elements/input.md) 元素构建。
 
 ```tsx
-import { TextField } from "nsh/ui/mobile";
+import { TextField } from "nsh/ui";
 ```
 
 ## 用法
 
 ```tsx
 import { mount, signal, Text, View } from "nsh";
-import { TextField } from "nsh/ui/mobile";
+import { TextField } from "nsh/ui";
 
 function App() {
   const name = signal("");

@@ -10,14 +10,14 @@ demo: ui-group
 `Group` 把若干行放进一个圆角框里，行与行之间以细线分隔，就像设置页中的一个分区。每个 JSX 子元素成为一行。可以在框上方加一句简短的标题说明，在下方加一段解释文字。
 
 ```tsx
-import { Group } from "nsh/ui/mobile";
+import { Group } from "nsh/ui";
 ```
 
 ## 用法
 
 ```tsx
 import { mount, signal, Text, View } from "nsh";
-import { Group } from "nsh/ui/mobile";
+import { Group } from "nsh/ui";
 
 function App() {
   const sounds = signal(true);

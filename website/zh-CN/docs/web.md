@@ -59,7 +59,7 @@ nsh package App.tsx --target web --run     # 并在本机提供服务（打开�
 | `index.html` | 应用的页面：以应用名作为标题，带图标、按 `appearance` 设定的颜色、加载指示，以及应用无法加载或启动时的提示 |
 | `manifest.webmanifest` | 浏览器安装应用时使用的名称、id、图标和颜色 |
 | `nsh.<digest>.js` | DOM 运行时，已压缩（79 KB，brotli 后 22.5 KB） |
-| `nsh.<digest>.wasm` | 引擎、核心、移动端组件和不含编译器的 QuickJS（约 3.5 MB，gzip 后 1.2 MB，brotli 后 0.93 MB） |
+| `nsh.<digest>.wasm` | 引擎、核心、UI 组件集的组件和不含编译器的 QuickJS（约 3.5 MB，gzip 后 1.2 MB，brotli 后 0.93 MB） |
 | `app.<digest>.nshc` | 应用本身，构建方式与 `nsh build --release --split` 相同，并编译成 QuickJS 字节码：浏览器里不再编译，启动更快 |
 | `harden.<digest>.nshc` | [沙箱](./sandbox-and-capabilities.md)的加固脚本，同样编译成字节码（1.4 KB） |
 | `chunks/<name>.<digest>.nshc` | `import()` 加载的代码，同样是字节码，第一次导入时才下载（[拆分 bundle](#拆分-bundle)） |
@@ -147,7 +147,7 @@ cargo xtask web --out target/play     # 输出到其他目录
 
 [在线试用](/zh-CN/playground)页面可以在浏览器里编辑并运行应用：页面用 NSH 自己的 JSX 编译器（编进 `nsh-playground.wasm`，不需要 rolldown）编译 TSX，每次停止输入后立即运行。本站每个演示都有「在线编辑」链接；「分享」会把代码直接放进链接里，不经过任何服务器存储。
 
-在线试用的应用只有一个模块：可以导入 NSH 的模块（`nsh`、`nsh/*`、`nsh/ui/mobile`），但不能导入其他文件或包。`console.log` 的输出和错误显示在手机下方。
+在线试用的应用只有一个模块：可以导入 NSH 的模块（`nsh`、`nsh/*`、`nsh/ui`、`nsh/ui/mobile`），但不能导入其他文件或包。`console.log` 的输出和错误显示在手机下方。
 
 编译器也是一个 Rust 函数：`nsh_bundler::compile_module(name, source, ui_sets)`，不开启该 crate 的 `bundle` 特性也能使用。
 

@@ -1,6 +1,6 @@
 // Button: the four variants, a disabled button and press counting.
 import { mount, signal, Text, View } from "nsh";
-import { Button } from "nsh/ui/mobile";
+import { Button } from "nsh/ui";
 import { ui } from "./palette";
 
 function App() {

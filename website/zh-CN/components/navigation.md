@@ -7,10 +7,10 @@ demo: ui-navigation
 
 # 导航
 
-`nsh/ui/mobile` 提供原生导航：由 `createNavigator` 创建的导航器驱动的、由多个 `Screen` 组成的 `Stack`，以及用于在所有内容之上展示内容的 `Modal`。在 iOS 上，栈就是 `UINavigationController`，带原生标题栏和侧滑返回；在 Android 上，它是带工具栏和预测性返回的页面栈。
+`nsh/ui` 提供原生导航：由 `createNavigator` 创建的导航器驱动的、由多个 `Screen` 组成的 `Stack`，以及用于在所有内容之上展示内容的 `Modal`。在 iOS 上，栈就是 `UINavigationController`，带原生标题栏和侧滑返回；在 Android 上，它是带工具栏和预测性返回的页面栈。
 
 ```tsx
-import { createNavigator, Modal, Screen, Stack } from "nsh/ui/mobile";
+import { createNavigator, Modal, Screen, Stack } from "nsh/ui";
 ```
 
 本页是 API 参考。完整的上手讲解见[导航指南](../docs/navigation.md)。
@@ -19,7 +19,7 @@ import { createNavigator, Modal, Screen, Stack } from "nsh/ui/mobile";
 
 ```tsx
 import { mount, View } from "nsh";
-import { Button, createNavigator, Screen, Stack } from "nsh/ui/mobile";
+import { Button, createNavigator, Screen, Stack } from "nsh/ui";
 
 type Route = { name: "home" } | { name: "detail"; id: number };
 
@@ -161,7 +161,7 @@ const depth = () => nav.routes().length;
 
 ```tsx
 import { Input, signal } from "nsh";
-import { Alert, Screen } from "nsh/ui/mobile";
+import { Alert, Screen } from "nsh/ui";
 
 function EditNote() {
   const text = signal("");
@@ -193,7 +193,7 @@ function EditNote() {
 
 ```tsx
 import { signal, Text, View } from "nsh";
-import { Button, Modal, SafeAreaView } from "nsh/ui/mobile";
+import { Button, Modal, SafeAreaView } from "nsh/ui";
 
 function Settings() {
   const open = signal(false);
@@ -251,5 +251,5 @@ Modal 会把自己的安全区边距提供给其内容，因此其中的 [SafeAr
 
 - [导航指南](../docs/navigation.md)。
 - [SafeAreaView](./safe-area-view.md)：标题栏下方和 Modal 中的安全区边距。
-- [Sheet](./sheet.md)：由 NSH 绘制的底部面板，两个平台外观一致。
+- [Sheet](./sheet.md)：由 NSH 绘制的底部面板，来自 `nsh/ui/mobile`。
 - [Alert](./alert.md)：离开页面前请用户确认。

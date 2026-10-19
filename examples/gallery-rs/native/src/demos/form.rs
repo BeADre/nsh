@@ -14,9 +14,8 @@ use nsh_core::{
         prelude::*,
     },
 };
-use nsh_ui_mobile::{
-    KeyboardAvoidingView, KeyboardAvoidingViewProps, SafeAreaView, SafeAreaViewProps,
-};
+use nsh_ui::{SafeAreaView, SafeAreaViewProps};
+use nsh_ui_mobile::{KeyboardAvoidingView, KeyboardAvoidingViewProps};
 
 use crate::{
     nav,

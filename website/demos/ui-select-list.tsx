@@ -1,6 +1,6 @@
 // SelectList: 500 options, one chosen; controlled and uncontrolled.
 import { mount, signal, Text, View } from "nsh";
-import { Button, SelectList } from "nsh/ui/mobile";
+import { Button, SelectList } from "nsh/ui";
 import { ui } from "./palette";
 
 const cities = Array.from({ length: 500 }, (_, i) => `City ${i + 1}`);

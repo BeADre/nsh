@@ -10,14 +10,14 @@ demo: ui-card
 `Card` 是一个圆角表面，用来把相关内容归在一起。内容上方可以有页眉，下方可以有页脚。页眉、内容和页脚都是你的 JSX；卡片负责提供表面、内边距和分隔线。
 
 ```tsx
-import { Card } from "nsh/ui/mobile";
+import { Card } from "nsh/ui";
 ```
 
 ## 用法
 
 ```tsx
 import { mount, Text, View } from "nsh";
-import { Button, Card } from "nsh/ui/mobile";
+import { Button, Card } from "nsh/ui";
 
 function App() {
   return (

@@ -379,7 +379,7 @@ pub(crate) fn insets_context(ctx: *mut JsContext) -> JsValue {
 }
 
 /// The values registries re-export as they are (`Registry::reexport`):
-/// the environment's accessors and hooks the mobile UI exports.
+/// the environment's accessors and hooks the UI sets export.
 pub(crate) const REEXPORTS: &[Item] = &[
     (
         "safeArea",

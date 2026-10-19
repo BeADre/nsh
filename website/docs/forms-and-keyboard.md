@@ -10,7 +10,7 @@ demo: guide-forms
 
 Text entry is the `<Input>` element: a UITextField or UITextView on iOS, an EditText on Android. Typing, the caret, selection, autocorrection and autofill are the platform's own; your app gets the text through events and can control it. NSH also keeps focused inputs above the software keyboard on its own, and gives you the keyboard's height as a reactive value for the cases it cannot handle by itself.
 
-For a labeled field with a clear button in the mobile UI set's look, see [`TextField`](../components/text-field.md). This page covers the underlying element.
+For a labeled field with a clear button in the look of NSH's UI set, see [`TextField`](../components/text-field.md). This page covers the underlying element.
 
 ## Controlled and uncontrolled inputs
 
@@ -237,7 +237,8 @@ A message bar pinned to the bottom of a screen is not in a scroll view, so nothi
 
 ```tsx
 import { Input, Scroll, signal, View } from "nsh";
-import { keyboard, KeyboardAvoidingView, useSafeAreaInsets } from "nsh/ui/mobile";
+import { useSafeAreaInsets } from "nsh/ui";
+import { keyboard, KeyboardAvoidingView } from "nsh/ui/mobile";
 
 function ChatScreen() {
   const insets = useSafeAreaInsets();

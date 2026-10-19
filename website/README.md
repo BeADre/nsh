@@ -142,8 +142,8 @@ bun run play       # = cargo xtask web: nsh.wasm, nsh.js, index.html, demos/*.ns
 
 Run it again after changing a demo or the runtime. Embedded demos follow
 the page's theme (`?theme=`, then a message on each change) and take their
-colours from `demos/palette.ts`; `demos/nsh.json` gives `nsh/ui/mobile`
-components the matching light and dark theme (`demos/graphite-theme.json`).
+colours from `demos/palette.ts`; `demos/nsh.json` gives `nsh/ui` and
+`nsh/ui/mobile` components the matching light and dark theme (`demos/graphite-theme.json`).
 The playground compiles in the browser, without that theme. The
 player is built separately from the site. Whether it exists is decided
 at build time: without `public/play/index.html`, pages show the demo's source

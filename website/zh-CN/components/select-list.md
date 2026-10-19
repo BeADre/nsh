@@ -10,14 +10,14 @@ demo: ui-select-list
 `SelectList` 显示一个可滚动的文本选项列表，并用勾选标记标出当前选中的一项。行由核心根据你传入的字符串数组渲染，因此即使有上千个选项，开销也与可见的几行相当，滚动时不会运行任何 JS。
 
 ```tsx
-import { SelectList } from "nsh/ui/mobile";
+import { SelectList } from "nsh/ui";
 ```
 
 ## 用法
 
 ```tsx
 import { mount, signal, Text, View } from "nsh";
-import { SelectList } from "nsh/ui/mobile";
+import { SelectList } from "nsh/ui";
 
 const languages = ["English", "Deutsch", "Español", "Français", "日本語", "中文"];
 

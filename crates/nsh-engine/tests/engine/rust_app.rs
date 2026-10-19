@@ -214,13 +214,13 @@ fn rust_components_navigate_with_native_stacks() {
     assert!(deleted, "the popped screen goes");
 }
 
-/// Rust content in a Rust component of the mobile UI: a card's header
+/// Rust content in a Rust component of `nsh/ui`: a card's header
 /// and body.
 #[component]
 fn WithCard() -> impl IntoElement {
     let taps = signal(0);
     view().flex_1().child(
-        nsh_ui_mobile::Card::element(nsh_ui_mobile::CardProps::default())
+        nsh_ui::Card::element(nsh_ui::CardProps::default())
             .fill("header", text("card header"))
             .child(
                 text(move || format!("card body {}", taps.get()))
@@ -445,11 +445,11 @@ fn ButtonRows() -> impl IntoElement {
         .child(text(move || format!("pressed {:?}", pressed.get())))
         .child(
             virtual_list(20, move |at| {
-                nsh_ui_mobile::Button::element(nsh_ui_mobile::ButtonProps {
+                nsh_ui::Button::element(nsh_ui::ButtonProps {
                     title: Prop::bind(move || format!("row {}", at.index()).into()),
                     ..Default::default()
                 })
-                .on_event(move |_: &nsh_ui_mobile::ButtonEvent| pressed.set(Some(at.index())))
+                .on_event(move |_: &nsh_ui::ButtonEvent| pressed.set(Some(at.index())))
             })
             .flex_1(),
         )

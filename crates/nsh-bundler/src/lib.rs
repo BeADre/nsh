@@ -55,15 +55,15 @@ mod tests {
         let code = super::compile_module(
             "App.tsx",
             "import { mount, signal, View } from \"nsh\";\n\
-             import { Button } from \"nsh/ui/mobile\";\n\
+             import { Button } from \"nsh/ui\";\n\
              const n: number = 1;\n\
              function App() { const c = signal(n); return <View><Button title=\"x\" onPress={() => c.set(2)} /></View>; }\n\
              mount(App);\n",
-            &[nsh_ui_mobile::registry()],
+            &[nsh_ui::registry(), nsh_ui_mobile::registry()],
         )
         .unwrap();
         assert!(code.contains("from \"nsh:rt\""), "{code}");
-        assert!(code.contains("from \"nsh/ui/mobile\""), "{code}");
+        assert!(code.contains("from \"nsh/ui\""), "{code}");
         assert!(!code.contains(": number"), "types are removed: {code}");
         assert!(!code.contains("<View"), "JSX is compiled: {code}");
     }

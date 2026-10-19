@@ -485,7 +485,7 @@ fn same(a: &Option<Arc<ClassList>>, b: &Option<Arc<ClassList>>) -> bool {
 }
 
 impl<M: TextEngine> Core<M> {
-    /// The components this core can render (from `nsh-ui-mobile` and the
+    /// The components this core can render (from `nsh-ui`, `nsh-ui-mobile` and the
     /// like); set before the first op.
     pub fn set_components(&mut self, registry: Registry) {
         self.components.registry = registry;

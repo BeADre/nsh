@@ -22,7 +22,8 @@ Keyboard.dismiss(): void
 
 ```tsx
 import { mount, signal, View } from "nsh";
-import { Button, Keyboard, TextField } from "nsh/ui/mobile";
+import { Button, TextField } from "nsh/ui";
+import { Keyboard } from "nsh/ui/mobile";
 
 function App() {
   const name = signal("");
@@ -50,7 +51,8 @@ keyboard: Accessor<{ height: number; duration: number }>
 
 ```tsx
 import { Input, View } from "nsh";
-import { keyboard, useSafeAreaInsets } from "nsh/ui/mobile";
+import { useSafeAreaInsets } from "nsh/ui";
+import { keyboard } from "nsh/ui/mobile";
 
 function MessageBar() {
   const insets = useSafeAreaInsets();

@@ -1,5 +1,6 @@
 import { type JSX, mount, Scroll, signal, Text, View } from "nsh";
-import { createNavigator, Screen, Stack, StatusBar, useSafeAreaInsets } from "nsh/ui/mobile";
+import { createNavigator, Screen, Stack, useSafeAreaInsets } from "nsh/ui";
+import { StatusBar } from "nsh/ui/mobile";
 import { FlightPlan } from "./cards/FlightPlan";
 import { HopLog } from "./cards/HopLog";
 import { Mass } from "./cards/Mass";

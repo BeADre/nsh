@@ -27,8 +27,8 @@ pub struct BundleOptions {
     /// otherwise the bundle holds the whole app, dynamically imported
     /// modules included.
     pub split: bool,
-    /// The UI sets the hosts serve (`nsh_ui_mobile::registry()`, the app's
-    /// own): their modules stay imports.
+    /// The UI sets the hosts serve (`nsh_ui::registry()`,
+    /// `nsh_ui_mobile::registry()`, the app's own): their modules stay imports.
     pub ui_sets: Vec<nsh_core::ui::Registry>,
 }
 
@@ -89,7 +89,7 @@ pub struct Bundle {
     /// (`asset:/<path>` URIs refer to them).
     pub assets: Vec<PathBuf>,
     /// The native modules the app imports (`nsh`, `nsh/list`,
-    /// `nsh/ui/mobile`, an app's own UI set), sorted: what a host must
+    /// `nsh/ui`, `nsh/ui/mobile`, an app's own UI set), sorted: what a host must
     /// serve to run it.
     pub natives: Vec<String>,
     /// What the app declares it may reach (`nsh.json` `capabilities`);

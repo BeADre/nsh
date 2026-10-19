@@ -7,7 +7,7 @@ use nsh_core::{
     Dialog, DialogButton, DialogButtonStyle, ModalPresentation,
     ui::{AnyElement, Os, Screen, prelude::*},
 };
-use nsh_ui_mobile::{SafeAreaView, SafeAreaViewProps};
+use nsh_ui::{SafeAreaView, SafeAreaViewProps};
 
 use crate::{
     nav,

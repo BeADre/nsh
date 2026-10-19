@@ -265,7 +265,7 @@ fn bodies(ui_sets: &[Registry]) -> Vec<(String, String)> {
         exports(&mut body, m.exports);
         files.push((path_of(m.name), body));
     }
-    // The registries that are modules of their own (`nsh/ui/mobile`, `nsh/image`).
+    // The registries that are modules of their own (`nsh/ui`, `nsh/image`).
     for registry in &registries {
         let Some(specifier) = registry.specifier() else {
             continue;
@@ -457,7 +457,7 @@ fn relative(from: &str, to: &str) -> String {
 }
 
 /// The files of `.nsh/types` for apps whose hosts serve `ui_sets`
-/// (`nsh/ui/mobile`, ...), as (path relative to it, contents): one per
+/// (`nsh/ui`, ...), as (path relative to it, contents): one per
 /// module apps import, `nsh/types.d.ts` (the element types `nsh` exports),
 /// `nsh/jsx-runtime.d.ts` (where TypeScript finds the JSX namespace:
 /// `jsxImportSource: "nsh"`) and `nsh/globals.d.ts`.
@@ -614,7 +614,7 @@ mod tests {
     /// A name a file imports is declared in one file only.
     #[test]
     fn imports_are_unambiguous() {
-        let files = bodies(&[nsh_ui_mobile::registry()]);
+        let files = bodies(&[nsh_ui::registry(), nsh_ui_mobile::registry()]);
         let mut owners: BTreeMap<String, Vec<&str>> = BTreeMap::new();
         for (path, body) in &files {
             for name in exported_names(body) {
@@ -753,17 +753,20 @@ mod tests {
     }
 
     /// What each module exports at run time is what its declarations say
-    /// (with a set of classes besides the UI set).
+    /// (with a set of classes besides the UI sets).
     #[test]
     fn declarations_match_the_modules() {
-        let ui = nsh_ui_mobile::registry();
-        let classes = crate::classes::tests::registry();
+        let sets = vec![
+            nsh_ui::registry(),
+            nsh_ui_mobile::registry(),
+            crate::classes::tests::registry(),
+        ];
         let host = crate::Host::with_options(crate::HostOptions {
-            ui_sets: vec![ui.clone(), classes.clone()],
+            ui_sets: sets.clone(),
             ..crate::HostOptions::default()
         })
         .unwrap();
-        let files = bodies(&[ui, classes]);
+        let files = bodies(&sets);
         assert!(
             files.iter().any(|(path, body)| path == "test/classes.d.ts"
                 && body.contains("export declare class Tally {")),

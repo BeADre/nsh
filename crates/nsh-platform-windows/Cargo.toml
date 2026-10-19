@@ -27,6 +27,7 @@ log.workspace = true
 nsh-core.workspace = true
 nsh-animation.workspace = true
 nsh-engine.workspace = true
+nsh-ui.workspace = true
 nsh-ui-mobile.workspace = true
 windows.workspace = true
 windows-core.workspace = true

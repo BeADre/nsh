@@ -1,8 +1,8 @@
 # Components
 
-The components of a UI set (`Button`, `Card`, ... of `nsh/ui/mobile`) are written in Rust and run by the core on the
-engine thread. JS only describes the UI: a component is one node in the JSX tree, its props go to Rust, its events come
-back. One implementation draws the same on iOS and Android, is laid out in the same Taffy pass as everything else
+The components of a UI set (`Button`, `Card`, ... of `nsh/ui`; `StatusBar`, `Sheet`, ... of `nsh/ui/mobile`) are
+written in Rust and run by the core on the engine thread. JS only describes the UI: a component is one node in the JSX
+tree, its props go to Rust, its events come back. One implementation draws the same on every platform, is laid out in the same Taffy pass as everything else
 (no measuring round trip) and keeps its interaction native.
 
 | Where | What |
@@ -10,15 +10,18 @@ back. One implementation draws the same on iOS and Android, is laid out in the s
 | `crates/nsh-core/src/ui/` | The API (`nsh_core::ui`, `prelude`): `Component`, `Module`, `Class` (`class.rs`, `callback.rs`; direct JS values: `js.rs`), elements, `Styled`, `Theme`, `Registry`, the status bar's layers (`status_bar.rs`), the declarations generator `typescript` |
 | `crates/nsh-macros` | `#[component]`, `#[derive(Props)]`, `#[derive(PropEnum)]`, `#[derive(Event)]`, `#[derive(JsObject)]`; `#[methods]`, `#[module]`, `#[class]`; `#[native_module("…")]` (an app crate's set: `docs/dev/tooling.md`); `style_helpers!` (the spacing methods of `Styled`) |
 | `crates/nsh-core/src/core/components.rs` | The core side: instances, children and slots, events; `core/views.rs`: views, their bindings' patches and regions |
-| `crates/nsh-ui-mobile` | The mobile set's components, one file each (`README.md`: how to write one) |
+| `crates/nsh-ui` | The shared set's components (`nsh/ui`), one file each (`README.md`: how to write one) |
+| `crates/nsh-ui-mobile` | The mobile set's components (`nsh/ui/mobile`): what only phones and tablets have |
 | `crates/nsh-js/src/components.rs` | The JS face of components and modules, made from their specs when a bundle imports the set; `classes.rs`: classes' (on the web classes' machinery), synchronous functions', callbacks |
-| `crates/nsh-js/src/declarations.rs` | `nsh/ui/mobile.d.ts`: the declarations generated from `nsh_ui_mobile::registry()` (`nsh_core::ui::declarations`) with the re-exports and the navigation |
-| `nsh_engine::EngineConfig::ui_sets` | The registries a surface serves (the platforms' `set_ui_sets`, by default `nsh_ui_mobile::registry()`; an app's own set: `docs/dev/tooling.md`) |
+| `crates/nsh-js/src/declarations.rs` | `nsh/ui.d.ts`, `nsh/ui/mobile.d.ts`: the declarations generated from each set's registry (`nsh_core::ui::declarations`) with the re-exports and the navigation |
+| `nsh_engine::EngineConfig::ui_sets` | The registries a surface serves (the platforms' `set_ui_sets`, by default `nsh_ui::registry()` and `nsh_ui_mobile::registry()`; an app's own set: `docs/dev/tooling.md`) |
 
-A desktop set is planned as a crate of its own (`nsh-ui-desktop`), not an abstraction over both; like every UI set it runs
-on every backend (macOS, Windows, Linux, and GPUI, a separate platform backend in development, `gpui.md`). It does not exist
-yet: on macOS, Windows and Linux apps use `nsh/ui/mobile`, whose components render there as on phones, or their own
-layouts from the primitives.
+The sets split by form factor, each export with one home: `nsh-ui` has what every form factor shares (the
+components adapt their styling, never their structure, to the form factor), `nsh-ui-mobile` only what phones and
+tablets have. A desktop set is planned as a crate of its own (`nsh-ui-desktop`) beside them, holding only what
+desktops have; like every UI set it runs on every backend (macOS, Windows, Linux, and GPUI, `gpui.md`). Until then,
+apps on macOS, Windows and Linux use `nsh/ui` (and `nsh/ui/mobile`, whose components render there as on phones), or
+their own layouts from the primitives.
 
 ## The API
 
@@ -61,12 +64,12 @@ nothing is diffed. Releasing the host disposes the owner: its bindings, effects,
 child components go with it. The design and its reasons: `reactive-components.md`.
 
 - **Names come from the type**: `Registry::register::<Button>()` registers it under `std::any::type_name`
-  (`nsh_ui_mobile::button::Button`: the key the JS face sets as the host's `component` prop and the core finds it
+  (`nsh_ui::button::Button`: the key the JS face sets as the host's `component` prop and the core finds it
   by, only compared within one binary) and exports it as the type's own name (`Button`; a generic type's without
   its arguments). A second registration of a type, two types of the same name (two versions of a crate) or two
   components of one set with the same export panic at registration (`Registry::merged` likewise for the sets a
   host serves, also for modules of the same name); components of different sets may share an export. A test
-  pins `nsh/ui/mobile`'s exports (`nsh-ui-mobile` `the_exports_are_pinned`). A module's JS name is its type's
+  pins each set's exports (`nsh-ui` and `nsh-ui-mobile` `the_exports_are_pinned`). A module's JS name is its type's
   too (`#[module] impl Alert`: `Alert`).
 - **Props** are a struct, **events** an enum; the derives produce a decoder per prop (`PropSpec::decode`: the JS
   value into the field's Rust type, when JS sets it), the conversion of an event's data to JS (`Event::data_js`),
@@ -250,9 +253,9 @@ Parameters are `Arg`s: the `JsValue` types, instances (`Instance<T>`) and `Callb
 or a task, instances and functions ride in its closure as they are (`docs/dev/rust-classes.md`, "How calls
 cross"). A panic in an op rejects it (its actions dropped). `Registry::module::<M>()` registers it; `components.rs` builds
 the object. A module with a component's name is merged into it (`StatusBar` is a component with static
-functions). `Registry::reexport` re-exports runtime values (`safeArea`, `keyboard`, `useSafeAreaInsets`: `nsh-js`
-`env.rs`) under the set's module, and `Registry::native_values` names the values `nsh-js` makes for the set (the
-mobile UI's navigation: `navigation.rs`).
+functions). `Registry::reexport` re-exports runtime values (`safeArea`, `useSafeAreaInsets` in `nsh/ui`,
+`keyboard` in `nsh/ui/mobile`: `nsh-js` `env.rs`) under the set's module, and `Registry::native_values` names the values `nsh-js` makes for the set (`nsh/ui`'s
+navigation: `navigation.rs`).
 
 The runtime has modules of its own the same way (`crates/nsh-core/src/runtime/`, `runtime::registries()`): one
 `Registry` per JS module (`Registry::runtime("nsh/android")`); a call carries what it runs, so a runtime module's
@@ -414,7 +417,7 @@ looks like its host (`embedding.md`, "GPUI and GPUI Kit apps").
 ## The host node and ids
 
 In JS a component is a view (the host element `view`) with a `component` prop naming it (its registered name,
-`nsh_ui_mobile::button::Button`): its **host**. `Core::apply` sees the prop, creates an instance and from then on
+`nsh_ui::button::Button`): its **host**. `Core::apply` sees the prop, creates an instance and from then on
 intercepts the ops on the host (`intercept`): the host is the root of the component's view, the elements below the
 root become nodes the core creates itself. Apps without components pay one check per op. The root can be any
 element: at the view's first mount, before the host's native view is sent, the core gives the host the root's kind
@@ -513,7 +516,7 @@ what changed.
 
 `nsh-js` `components.rs` makes each component's and module's JS from its spec (`ComponentSpec`, `ModuleSpec`) when a
 bundle first imports the set, and `classes.rs` each class's from its `ClassDef`. `nsh_core::ui::declarations(registry,
-omit)` writes their declarations (into the set's module file, `nsh/ui/mobile.d.ts`; `nsh-js` `declarations.rs` adds
+omit)` writes their declarations (into the set's module file, `nsh/ui.d.ts`; `nsh-js` `declarations.rs` adds
 the re-exports and native values it makes): the named types the props, events, methods and functions use (`export
 type BarStyle = ...` for a `PropEnum`, `export interface AlertButton` for a `JsObject`, each once, with its doc
 comment; `JsValue::ts_type(&mut TsTypes)` declares them), the props interfaces, the components, the module objects

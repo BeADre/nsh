@@ -1,5 +1,5 @@
 import { type JSX } from "nsh";
-import { createNavigator } from "nsh/ui/mobile";
+import { createNavigator } from "nsh/ui";
 import type { IconName } from "./icons";
 
 /** A demo of the index. */

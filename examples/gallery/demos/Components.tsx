@@ -3,7 +3,8 @@ import { AccessibilityInfo, reduceMotion, screenReaderEnabled } from "nsh/access
 import { LayoutAnimation } from "nsh/animated";
 import { PixelRatio, Platform } from "nsh/device";
 import { InputAccessoryView } from "nsh/ios";
-import { Button, Card, KeyboardAvoidingView, Modal, SafeAreaView, Screen } from "nsh/ui/mobile";
+import { Button, Card, Modal, SafeAreaView, Screen } from "nsh/ui";
+import { KeyboardAvoidingView } from "nsh/ui/mobile";
 import { Icon, type IconName } from "../icons";
 import { nav } from "../nav";
 import {
@@ -377,11 +378,11 @@ function PlatformInfo() {
   );
 }
 
-/** The components of nsh/ui/mobile (Rust, `nsh-ui-mobile`). */
+/** The components of nsh/ui (Rust, `nsh-ui`). */
 function MobileComponents() {
   const presses = signal(0);
   return (
-    <UiCard icon="mobile" title="nsh/ui/mobile" subtitle="Rust components, the app's theme" right={<Badge label={`${presses()} ${presses() === 1 ? hint("tap", "click") : hint("taps", "clicks")}`} tone={presses() ? "accent" : "neutral"} />}>
+    <UiCard icon="mobile" title="nsh/ui" subtitle="Rust components, the app's theme" right={<Badge label={`${presses()} ${presses() === 1 ? hint("tap", "click") : hint("taps", "clicks")}`} tone={presses() ? "accent" : "neutral"} />}>
       <Button title="Primary" onPress={() => presses.set(presses() + 1)} />
       <View style={{ flexDirection: "row", gap: 8 }}>
         <View style={{ flex: 1 }}>

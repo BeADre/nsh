@@ -1,5 +1,5 @@
 // The nsh app examples/embed-gpui runs, several times at once, inside a GPUI
-// Kit window. It sets no theme of its own: the components of nsh/ui/mobile
+// Kit window. It sets no theme of its own: the components of nsh/ui
 // take the host's (`AppView::set_theme`), in its light or dark mode
 // (`AppView::set_appearance`), and change with it. "Extended hours" is the
 // host's own GPUI Kit switch, a native component it registers.
@@ -7,7 +7,7 @@
 import { mount, signal, Text, View } from "nsh";
 import { colorScheme } from "nsh/device";
 import { nativeComponent } from "nsh/native";
-import { Button, Card, Group, Stepper, TextField } from "nsh/ui/mobile";
+import { Button, Card, Group, Stepper, TextField } from "nsh/ui";
 
 /** The host app's switch: a GPUI Kit widget it registers (`host.switch`). */
 const HostSwitch = nativeComponent<{ label: string; checked: boolean }, { change: { checked: boolean } }>("host.switch", {

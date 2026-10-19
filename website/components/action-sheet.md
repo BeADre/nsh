@@ -17,7 +17,8 @@ import { ActionSheet } from "nsh/ui/mobile";
 
 ```tsx
 import { mount, signal, Text, View } from "nsh";
-import { ActionSheet, Button } from "nsh/ui/mobile";
+import { Button } from "nsh/ui";
+import { ActionSheet } from "nsh/ui/mobile";
 
 function App() {
   const chosen = signal("–");

@@ -8,7 +8,7 @@ group: start
 # Building with Rust
 
 Native Shell apps are written in TSX, in Rust, or in both. All three run on the same engine: the reactive graph, the
-renderer, Taffy layout and the `nsh/ui/mobile` components are Rust in every case, and every platform renders with its
+renderer, Taffy layout and the `nsh/ui` and `nsh/ui/mobile` components are Rust in every case, and every platform renders with its
 own UI. What differs is the language of your own code, and with it whether the app carries a JavaScript VM.
 
 | | TSX | Rust | Rust with TSX |
@@ -46,7 +46,7 @@ nsh package --target web       # or ios, ios-simulator, android, macos, linux, w
 
 ```rust
 use nsh_core::ui::prelude::*;
-use nsh_ui_mobile::{Button, ButtonEvent, ButtonProps};
+use nsh_ui::{Button, ButtonEvent, ButtonProps};
 
 /// The components available to TSX through `app/native`.
 #[native_module("app/native")]
@@ -200,7 +200,7 @@ impl Portfolio {
 
 ```tsx
 import { mount, signal, View, Text } from "nsh";
-import { Button } from "nsh/ui/mobile";
+import { Button } from "nsh/ui";
 import { Chart, Ledger, Portfolio } from "app/native";   // Rust
 
 const ledger = new Ledger();   // its state lives in Rust

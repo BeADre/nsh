@@ -10,7 +10,7 @@ group: platforms
 The GPUI backend draws NSH apps with [GPUI](https://gpui-kit.com) (GPUI Fast), the GPU-accelerated UI framework that
 GPUI Kit is built on, on macOS, Windows and Linux alike. Its main use is embedding: an `AppView` is a GPUI view, so a
 GPUI or GPUI Kit app shows NSH modules anywhere in its own element tree. The core, the reactive graph, the renderer,
-Taffy layout and the `nsh/ui/mobile` components are the same as on every other platform, so one bundle runs
+Taffy layout and the `nsh/ui` and `nsh/ui/mobile` components are the same as on every other platform, so one bundle runs
 everywhere. `Platform.OS` is the OS it runs on (`"macos"`, `"windows"` or `"linux"`) and the `desktop={{…}}` props
 apply.
 
@@ -120,7 +120,7 @@ so only load it from your own app's files.
   256 MB heap); the development host and the release runner run apps with `Limits::standalone_desktop()`.
 - `AppView::connect_dev_server(url, cx)` (feature `dev`) loads the app from `nsh dev` and reloads it as you edit,
   with the error overlay over the view; `AppView::on_error` keeps hearing the app's errors.
-- `set_ui_sets(sets)` replaces the default `nsh/ui/mobile` set, for apps with Rust components of their own.
+- `set_ui_sets(sets)` replaces the default UI sets (`nsh/ui` and `nsh/ui/mobile`), for apps with Rust components of their own.
 
 ## Differences
 

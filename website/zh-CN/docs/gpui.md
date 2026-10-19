@@ -9,7 +9,7 @@ group: platforms
 
 GPUI 后端用 [GPUI](https://gpui-kit.com)（GPUI Fast）绘制 NSH 应用。GPUI 是 GPUI Kit 所基于的 GPU 加速 UI 框架，在 macOS、
 Windows 和 Linux 上表现一致。它的主要用途是嵌入：`AppView` 是一个 GPUI 视图，GPUI 或 GPUI Kit 应用可以在自己元素树的任意位置
-显示 NSH 模块。核心、响应式图、渲染器、Taffy 布局和 `nsh/ui/mobile` 组件与其他所有平台完全相同，因此同一个 bundle 可以在所有
+显示 NSH 模块。核心、响应式图、渲染器、Taffy 布局以及 `nsh/ui`、`nsh/ui/mobile` 组件与其他所有平台完全相同，因此同一个 bundle 可以在所有
 平台上运行。`Platform.OS` 是它所运行的操作系统（`"macos"`、`"windows"` 或 `"linux"`），并会应用 `desktop={{…}}` 属性。
 
 [macOS](./macos.md)（AppKit）、[Windows](./windows.md)（Win32）和 [Linux](./linux.md)（GTK）后端的元素和模块它都具备；
@@ -104,7 +104,7 @@ gpui_platform::application().run(|cx| {
 - `AppView::register_component(name, factory)` 在加载前注册你自己的原生组件（[原生组件](./native-components.md)）。
 - `AppOptions::limits`（或 `AppView::set_limits`，作用于之后加载的应用）设置 VM 限制：JS 堆、栈、时间预算和节点配额（[沙箱与能力](./sandbox-and-capabilities.md)）。嵌入的应用默认是 `Limits::default()`（256 MB 堆）；开发宿主和发布版运行器用 `Limits::standalone_desktop()` 运行应用。
 - `AppView::connect_dev_server(url, cx)`（feature `dev`）从 `nsh dev` 加载应用，边改边重新加载，错误浮层显示在视图上；`AppView::on_error` 照样收到应用的错误。
-- `set_ui_sets(sets)` 替换默认的 `nsh/ui/mobile` 套件，用于带有自己 Rust 组件的应用。
+- `set_ui_sets(sets)` 替换默认的 UI 套件（`nsh/ui` 和 `nsh/ui/mobile`），用于带有自己 Rust 组件的应用。
 
 ## 差异
 

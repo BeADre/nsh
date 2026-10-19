@@ -12,14 +12,14 @@ Holding a button keeps stepping. The timer for the repeat runs in the core, so J
 new value.
 
 ```tsx
-import { Stepper, type StepperRef } from "nsh/ui/mobile";
+import { Stepper, type StepperRef } from "nsh/ui";
 ```
 
 ## Usage
 
 ```tsx
 import { mount, signal, Text, View } from "nsh";
-import { Stepper } from "nsh/ui/mobile";
+import { Stepper } from "nsh/ui";
 
 function App() {
   const guests = signal(2);
@@ -68,7 +68,7 @@ Pass a `ref` to get a `StepperRef`, which reads and sets the value from your cod
 
 ```tsx
 import { mount, View } from "nsh";
-import { Button, Stepper, type StepperRef } from "nsh/ui/mobile";
+import { Button, Stepper, type StepperRef } from "nsh/ui";
 
 function App() {
   let stepper!: StepperRef;

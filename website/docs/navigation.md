@@ -7,11 +7,11 @@ group: ui
 
 # Navigation
 
-`nsh/ui/mobile` provides a native navigation stack and native modals. A `Stack` is a UINavigationController on iOS, with its header, swipe back and large titles, and a stack with a toolbar and predictive back on Android. You keep the list of routes in a navigator; the stack renders each route as a screen and keeps it mounted, with its state, while it is in the stack.
+`nsh/ui` provides a native navigation stack and native modals. A `Stack` is a UINavigationController on iOS, with its header, swipe back and large titles, and a stack with a toolbar and predictive back on Android. You keep the list of routes in a navigator; the stack renders each route as a screen and keeps it mounted, with its state, while it is in the stack.
 
 ```tsx
 import { mount, Scroll, Text, View } from "nsh";
-import { createNavigator, Screen, Stack } from "nsh/ui/mobile";
+import { createNavigator, Screen, Stack } from "nsh/ui";
 
 type Route = { name: "inbox" } | { name: "message"; id: number };
 
@@ -83,7 +83,7 @@ A route carries what the screen needs. The gallery app pushes routes that hold t
 
 ```ts
 import { type JSX } from "nsh";
-import { createNavigator } from "nsh/ui/mobile";
+import { createNavigator } from "nsh/ui";
 
 export type Route = { name: "home" } | { name: "page"; page: () => JSX.Element };
 export const nav = createNavigator<Route>({ name: "home" });
@@ -178,7 +178,7 @@ To ask before discarding unsaved changes, set `preventBack` while there is somet
 
 ```tsx
 import { Input, signal } from "nsh";
-import { Alert, Screen } from "nsh/ui/mobile";
+import { Alert, Screen } from "nsh/ui";
 
 function EditNote() {
   const text = signal("");
@@ -210,7 +210,7 @@ With `preventBack` on, the swipe back is disabled and the back buttons (in the h
 
 ```tsx
 import { signal, Text, View } from "nsh";
-import { Modal, SafeAreaView } from "nsh/ui/mobile";
+import { Modal, SafeAreaView } from "nsh/ui";
 
 function Settings() {
   const open = signal(false);
@@ -296,7 +296,7 @@ function Editor() {
 
 ## Tabs and other layouts
 
-`nsh/ui/mobile` has no tab bar component. A tab bar is a row of pressable views and a signal holding the selected tab; render the selected tab's content with a function child or [`<If>`](../elements/control-flow.md). To keep each tab's state while switching, give each tab its own `Stack` and navigator and keep all of them mounted, hiding the inactive ones with `display: "none"`.
+`nsh/ui` has no tab bar component. A tab bar is a row of pressable views and a signal holding the selected tab; render the selected tab's content with a function child or [`<If>`](../elements/control-flow.md). To keep each tab's state while switching, give each tab its own `Stack` and navigator and keep all of them mounted, hiding the inactive ones with `display: "none"`.
 
 ## Related
 

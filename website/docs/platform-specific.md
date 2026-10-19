@@ -7,7 +7,7 @@ group: platforms
 
 # Platform-specific code
 
-One NSH bundle runs on iOS, Android, macOS, Windows and Linux (and in Mac Catalyst), and in browsers through the [web runtime](./web.md). Most of an app needs no platform checks at all: elements, styles, layout, components and modules behave the same everywhere, and the components of `nsh/ui/mobile` are drawn by NSH rather than borrowed from each platform, so they look the same everywhere. When something really is specific to one platform, NSH gives it a clear place, so platform code stays visible and contained:
+One NSH bundle runs on iOS, Android, macOS, Windows and Linux (and in Mac Catalyst), and in browsers through the [web runtime](./web.md). Most of an app needs no platform checks at all: elements, styles, layout, components and modules behave the same everywhere, and the components of `nsh/ui` and `nsh/ui/mobile` are drawn by NSH rather than borrowed from each platform, so they look the same everywhere. When something really is specific to one platform, NSH gives it a clear place, so platform code stays visible and contained:
 
 | Where | For |
 |---|---|
@@ -84,7 +84,7 @@ Cross-platform props whose effect differs slightly are not grouped: `Alert.alert
 import { cleanup } from "nsh";
 import { BackHandler, Toast } from "nsh/android";
 import { Platform } from "nsh/device";
-import { Alert } from "nsh/ui/mobile";
+import { Alert } from "nsh/ui";
 
 function saved() {
   if (Platform.OS === "android") Toast.show("Saved");

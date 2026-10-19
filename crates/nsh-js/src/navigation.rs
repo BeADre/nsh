@@ -1,5 +1,5 @@
 //! Navigation: `createNavigator`, `Stack`, `Screen` and `Modal` (the
-//! mobile UI exports them: `Registry::native_values`).
+//! shared UI, `nsh/ui`, exports them: `Registry::native_values`).
 //!
 //! A stack renders each route of its navigator with the app's function into
 //! a native screen (UINavigationController on iOS, a stack with a toolbar
@@ -64,7 +64,7 @@ fn free(ctx: *mut JsContext, v: JsValue) {
     unsafe { qjs::JS_FreeValue(ctx, v) };
 }
 
-/// The mobile UI's navigation (its `Registry::native_values`).
+/// The shared UI's navigation (`nsh/ui`'s `Registry::native_values`).
 pub(crate) const EXPORTS: &[Item] = &[
     (
         "createNavigator",

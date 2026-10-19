@@ -1,6 +1,6 @@
 // ListView: 1,000 recycled rows the app renders; plain or inset, with or without dividers.
 import { mount, signal, Text, View } from "nsh";
-import { Button, ListView } from "nsh/ui/mobile";
+import { Button, ListView } from "nsh/ui";
 import { ui } from "./palette";
 
 const people = Array.from({ length: 1000 }, (_, i) => ({

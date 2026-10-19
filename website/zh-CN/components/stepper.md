@@ -10,14 +10,14 @@ demo: ui-stepper
 `Stepper` 在 − 和 + 两个按钮之间显示一个数字。每按一次，数字按 `step` 变化，并保持在 `min` 与 `max` 之间。按住按钮会连续步进。连续步进的计时器在核心中运行，JS 只会收到携带每个新值的 `onChange`。
 
 ```tsx
-import { Stepper, type StepperRef } from "nsh/ui/mobile";
+import { Stepper, type StepperRef } from "nsh/ui";
 ```
 
 ## 用法
 
 ```tsx
 import { mount, signal, Text, View } from "nsh";
-import { Stepper } from "nsh/ui/mobile";
+import { Stepper } from "nsh/ui";
 
 function App() {
   const guests = signal(2);
@@ -63,7 +63,7 @@ mount(App);
 
 ```tsx
 import { mount, View } from "nsh";
-import { Button, Stepper, type StepperRef } from "nsh/ui/mobile";
+import { Button, Stepper, type StepperRef } from "nsh/ui";
 
 function App() {
   let stepper!: StepperRef;

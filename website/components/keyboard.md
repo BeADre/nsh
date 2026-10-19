@@ -23,7 +23,8 @@ Unfocuses the focused input, which hides the keyboard. It does nothing if no inp
 
 ```tsx
 import { mount, signal, View } from "nsh";
-import { Button, Keyboard, TextField } from "nsh/ui/mobile";
+import { Button, TextField } from "nsh/ui";
+import { Keyboard } from "nsh/ui/mobile";
 
 function App() {
   const name = signal("");
@@ -54,7 +55,8 @@ reads it runs again when the keyboard shows, hides or changes height.
 
 ```tsx
 import { Input, View } from "nsh";
-import { keyboard, useSafeAreaInsets } from "nsh/ui/mobile";
+import { useSafeAreaInsets } from "nsh/ui";
+import { keyboard } from "nsh/ui/mobile";
 
 function MessageBar() {
   const insets = useSafeAreaInsets();

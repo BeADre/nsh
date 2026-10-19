@@ -2,7 +2,8 @@ import { computed, Input, Scroll, signal, Text, View, type YNode } from "nsh";
 import { LayoutAnimation } from "nsh/animated";
 import { Platform } from "nsh/device";
 import { List } from "nsh/list";
-import { keyboard, KeyboardAvoidingView, useSafeAreaInsets } from "nsh/ui/mobile";
+import { useSafeAreaInsets } from "nsh/ui";
+import { keyboard, KeyboardAvoidingView } from "nsh/ui/mobile";
 import { Icon, type IconName } from "../icons";
 import { Appear, Badge, bindRefresh, Button, colors, columnsFor, desktop, finish, hint, IconTile, Meter, mono, Press, radius, RoundButton, Section, Segmented, type Tone, toneColor, toneTint } from "../ui";
 

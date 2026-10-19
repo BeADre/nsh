@@ -1,7 +1,8 @@
 import { cleanup, computed, effect, Scroll, signal, Text, untracked, View } from "nsh";
 import { createNativeValue } from "nsh/animated";
 import { Canvas } from "nsh/canvas";
-import { Modal, Screen, Sheet, useSafeAreaInsets } from "nsh/ui/mobile";
+import { Modal, Screen, useSafeAreaInsets } from "nsh/ui";
+import { Sheet } from "nsh/ui/mobile";
 import { Icon } from "../../icons";
 import { Button, colors, finish, header, Press, Stat } from "../../ui";
 import { Depth, OrderBook } from "./Book";

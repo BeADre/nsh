@@ -35,7 +35,7 @@ const Toast: {
 ```ts
 import { Platform } from "nsh/device";
 import { Toast } from "nsh/android";
-import { Alert } from "nsh/ui/mobile";
+import { Alert } from "nsh/ui";
 
 const notify = (message: string) =>
   Platform.OS === "android" ? Toast.show(message) : Alert.alert("Done", message);
@@ -60,7 +60,7 @@ const BackHandler: {
 ```tsx
 import { cleanup, signal } from "nsh";
 import { BackHandler } from "nsh/android";
-import { Alert } from "nsh/ui/mobile";
+import { Alert } from "nsh/ui";
 
 function Editor() {
   const dirty = signal(false);

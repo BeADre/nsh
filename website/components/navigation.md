@@ -7,12 +7,12 @@ demo: ui-navigation
 
 # Navigation
 
-`nsh/ui/mobile` provides native navigation: a `Stack` of `Screen`s driven by a navigator you create with
+`nsh/ui` provides native navigation: a `Stack` of `Screen`s driven by a navigator you create with
 `createNavigator`, and `Modal` for content presented over everything else. A stack is `UINavigationController` on iOS,
 with the native header and swipe back. On Android it is a stack of screens with a toolbar and predictive back.
 
 ```tsx
-import { createNavigator, Modal, Screen, Stack } from "nsh/ui/mobile";
+import { createNavigator, Modal, Screen, Stack } from "nsh/ui";
 ```
 
 This page is the API reference. For a walkthrough, see the [Navigation guide](../docs/navigation.md).
@@ -21,7 +21,7 @@ This page is the API reference. For a walkthrough, see the [Navigation guide](..
 
 ```tsx
 import { mount, View } from "nsh";
-import { Button, createNavigator, Screen, Stack } from "nsh/ui/mobile";
+import { Button, createNavigator, Screen, Stack } from "nsh/ui";
 
 type Route = { name: "home" } | { name: "detail"; id: number };
 
@@ -173,7 +173,7 @@ then pop yourself:
 
 ```tsx
 import { Input, signal } from "nsh";
-import { Alert, Screen } from "nsh/ui/mobile";
+import { Alert, Screen } from "nsh/ui";
 
 function EditNote() {
   const text = signal("");
@@ -207,7 +207,7 @@ called and you set `visible` to false.
 
 ```tsx
 import { signal, Text, View } from "nsh";
-import { Button, Modal, SafeAreaView } from "nsh/ui/mobile";
+import { Button, Modal, SafeAreaView } from "nsh/ui";
 
 function Settings() {
   const open = signal(false);
@@ -269,5 +269,5 @@ See [Modal](../elements/modal.md) for more about the element.
 
 - [Navigation guide](../docs/navigation.md).
 - [SafeAreaView](./safe-area-view.md): insets below headers and in modals.
-- [Sheet](./sheet.md): a bottom sheet drawn by NSH, the same on both platforms.
+- [Sheet](./sheet.md): a bottom sheet drawn by NSH, from `nsh/ui/mobile`.
 - [Alert](./alert.md): confirming before leaving a screen.

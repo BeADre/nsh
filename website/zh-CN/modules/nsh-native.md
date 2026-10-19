@@ -64,7 +64,7 @@ map.command("zoomTo", { level: 3 });
 ```tsx
 import { mount, signal, type YNode } from "nsh";
 import { nativeComponent } from "nsh/native";
-import { SafeAreaView } from "nsh/ui/mobile";
+import { SafeAreaView } from "nsh/ui";
 
 const Badge = nativeComponent<{ text: string; color?: string }, { tap: { count: number } }>("embed.badge", {
   props: ["text", "color"],

@@ -17,7 +17,7 @@ rules NSH follows, what they mean for the code you write, and how to measure.
 
 QuickJS is an interpreter: small, quick to start, and much slower than native code for heavy work. So in NSH, **only
 your app's code is JS**. The reactive graph (signals, computed values, effects), the renderer your compiled JSX calls,
-the layout engine, the components of `nsh/ui/mobile`, list virtualization, animation and every module you import are
+the layout engine, the components of `nsh/ui` and `nsh/ui/mobile`, list virtualization, animation and every module you import are
 Rust. Parsing, diffing, layout and string processing happen natively.
 
 The effect is measurable. The same counter app on NSH's earlier JS runtime and on the native runtime (release builds):
@@ -30,7 +30,7 @@ The effect is measurable. The same counter app on NSH's earlier JS runtime and o
 | Commit of one tap | ~22 µs | ~15 µs |
 | Scrolling a 1000-row list, JS per rebinding frame | ~150 µs | ~77 µs |
 
-The same holds for components: a `Button` from `nsh/ui/mobile` (Rust) against an equivalent TSX button, 200 of them:
+The same holds for components: a `Button` from `nsh/ui` (Rust) against an equivalent TSX button, 200 of them:
 
 | | Rust `Button`: JS / core | TSX button: JS / core |
 |---|---|---|
@@ -213,7 +213,7 @@ From NSH's own baselines (Apple silicon unless noted):
 - Animations: native values, not signals written every frame.
 - Scroll effects: `scrollValue`, not `onScroll`.
 - Handlers: no heavy work per keystroke or per scroll event; cache in `computed`.
-- Components: prefer the Rust components of `nsh/ui/mobile` where they fit; they cost less JS than equivalents written
+- Components: prefer the Rust components of `nsh/ui` and `nsh/ui/mobile` where they fit; they cost less JS than equivalents written
   in TSX.
 
 ## See also

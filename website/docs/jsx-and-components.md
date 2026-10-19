@@ -22,7 +22,7 @@ Every tag is PascalCase and names something in scope. The **host elements**, eac
 | `<Scroll>` | `nsh` | `UIScrollView` / `ScrollView` | [Scroll](../elements/scroll.md) |
 | `<Input>` | `nsh` | `UITextField` / `UITextView` / `EditText` | [Input](../elements/input.md) |
 | `<List>` | `nsh/list` | A virtualized, recycling list | [List](../elements/list.md) |
-| `<Canvas>`, `<WebView>`, `<Video>`, `<Modal>` | `nsh/canvas`, `nsh/webview`, `nsh/video`, `nsh/ui/mobile` | A drawing, a web page, a video player, a presented layer | [Elements](../elements/index.md) |
+| `<Canvas>`, `<WebView>`, `<Video>`, `<Modal>` | `nsh/canvas`, `nsh/webview`, `nsh/video`, `nsh/ui` | A drawing, a web page, a video player, a presented layer | [Elements](../elements/index.md) |
 | `<If>`, `<Each>` | nothing: globals | Control flow, no view of its own | [Control flow](../elements/control-flow.md) |
 
 ```tsx
@@ -201,7 +201,7 @@ function Search() {
 <Scroll ref={(node) => (scroller = node)} />
 ```
 
-The ref is set when the element is created, before the component returns, so it is available in [effects](./reactivity.md#effect) and event handlers. Calls are sent to the view in order with the changes made before them. Components from `nsh/ui/mobile` accept `ref` too.
+The ref is set when the element is created, before the component returns, so it is available in [effects](./reactivity.md#effect) and event handlers. Calls are sent to the view in order with the changes made before them. Components from `nsh/ui` and `nsh/ui/mobile` accept `ref` too.
 
 ## Spreading props
 
@@ -232,7 +232,7 @@ function Field(props: InputProps & { label: string }) {
 A tag names a binding in scope, as usual: `<Badge />`, `<Theme.Provider>`, an imported `<Button>`. A tag that names nothing in scope is a build error, except `<If>` and `<Each>`, which are globals.
 
 ```tsx
-import { Button } from "nsh/ui/mobile";
+import { Button } from "nsh/ui";
 
 <Button title="Save" onPress={save} />
 ```
@@ -257,4 +257,4 @@ mount(() => (
 
 - [Reactivity](./reactivity.md): signals, effects, context.
 - [Elements](../elements/index.md): every host element and its props.
-- [Components](../components/index.md): the ready-made components of `nsh/ui/mobile`.
+- [Components](../components/index.md): the ready-made components of `nsh/ui` and `nsh/ui/mobile`.

@@ -7,17 +7,17 @@ demo: ui-button
 
 # Button
 
-`Button` 是带文字标签的按压目标。它以主题色填充，按下时颜色加深，并通过 `onPress` 报告按压。在 iOS 和 Android 上外观一致。
+`Button` 是带文字标签的按压目标。它以主题色填充，按下时颜色加深，并通过 `onPress` 报告按压。在每个平台上外观一致。
 
 ```tsx
-import { Button } from "nsh/ui/mobile";
+import { Button } from "nsh/ui";
 ```
 
 ## 用法
 
 ```tsx
 import { mount, signal, Text, View } from "nsh";
-import { Button } from "nsh/ui/mobile";
+import { Button } from "nsh/ui";
 
 function App() {
   const count = signal(0);

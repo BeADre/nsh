@@ -197,7 +197,7 @@ pub(crate) static GROUPS: &[Group] = &[
         demos: &[
             Demo {
                 name: "Mobile UI",
-                detail: "nsh/ui/mobile in Rust: a ListView and a Group of the app's rows",
+                detail: "nsh/ui in Rust: a ListView and a Group of the app's rows",
                 icon: IconName::Mobile,
                 content: || mobile_ui::MobileUi::element(()).into_element(),
             },

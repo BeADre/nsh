@@ -91,7 +91,7 @@ server client, log forwarding, the error overlay: `dev.rs`). The host turns on `
   they would run inside `ExitProcess`, after the graphics DLLs are gone, and the process would end with a stray exit
   code. The UI thread sets per-monitor DPI awareness and `OleInitialize`s (clipboard, drag and drop, WIC).
 - **Embedding**: `AppView` (`app.rs`) is one surface as a window: a child of the embedding app's window, or top-level;
-  the host's message loop runs it. `set_ui_sets` replaces the default `nsh/ui/mobile` set for apps with Rust
+  the host's message loop runs it. `set_ui_sets` replaces the default sets (`nsh/ui`, `nsh/ui/mobile`) for apps with Rust
   components of their own.
 
 ## How each area maps to Windows

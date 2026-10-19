@@ -11,7 +11,7 @@ use nsh_core::{
     ui::{Root, prelude::*},
 };
 use nsh_engine::{App, Engine, EngineConfig, Environment};
-use nsh_ui_mobile::{ListView, ListViewProps, Stepper, StepperApi, StepperProps};
+use nsh_ui::{ListView, ListViewProps, Stepper, StepperApi, StepperProps};
 
 use crate::ChannelSink;
 
@@ -298,11 +298,15 @@ fn start_js(app: &str) -> (Engine, Receiver<MountBatch>) {
         entry,
         minify: false,
         split: false,
-        ui_sets: vec![nsh_ui_mobile::registry()],
+        ui_sets: vec![nsh_ui::registry(), nsh_ui_mobile::registry()],
     })
     .unwrap();
-    let bytecode =
-        nsh_js::compile_bytecode_with(&bundle.code, false, &[nsh_ui_mobile::registry()]).unwrap();
+    let bytecode = nsh_js::compile_bytecode_with(
+        &bundle.code,
+        false,
+        &[nsh_ui::registry(), nsh_ui_mobile::registry()],
+    )
+    .unwrap();
     let (tx, rx) = crossbeam_channel::unbounded();
     let config = EngineConfig {
         // SAFETY: compiled just now by this runtime.
@@ -314,7 +318,7 @@ fn start_js(app: &str) -> (Engine, Receiver<MountBatch>) {
         environment: Environment::default(),
         header_heights: (44.0, 96.0),
         limits: nsh_engine::Limits::default(),
-        ui_sets: vec![nsh_ui_mobile::registry()],
+        ui_sets: vec![nsh_ui::registry(), nsh_ui_mobile::registry()],
         runtime: None,
     };
     (
@@ -324,7 +328,7 @@ fn start_js(app: &str) -> (Engine, Receiver<MountBatch>) {
 }
 
 const APP_LIST_VIEW: &str = r#"import { mount, signal, Text, View } from "nsh";
-import { ListView } from "nsh/ui/mobile";
+import { ListView } from "nsh/ui";
 
 const ends = signal(0);
 const rows = Array.from({ length: 100 }, (_, i) => `row ${i}`);

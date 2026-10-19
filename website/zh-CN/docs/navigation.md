@@ -7,11 +7,11 @@ group: ui
 
 # 导航
 
-`nsh/ui/mobile` 提供原生的导航栈和原生的模态视图。`Stack` 在 iOS 上是 UINavigationController，带有它的标题栏、侧滑返回和大标题；在 Android 上是带工具栏、支持预测性返回的页面栈。路由列表保存在 navigator 中；栈把每个路由渲染为一个页面，只要路由还在栈里，页面就保持挂载，状态也随之保留。
+`nsh/ui` 提供原生的导航栈和原生的模态视图。`Stack` 在 iOS 上是 UINavigationController，带有它的标题栏、侧滑返回和大标题；在 Android 上是带工具栏、支持预测性返回的页面栈。路由列表保存在 navigator 中；栈把每个路由渲染为一个页面，只要路由还在栈里，页面就保持挂载，状态也随之保留。
 
 ```tsx
 import { mount, Scroll, Text, View } from "nsh";
-import { createNavigator, Screen, Stack } from "nsh/ui/mobile";
+import { createNavigator, Screen, Stack } from "nsh/ui";
 
 type Route = { name: "inbox" } | { name: "message"; id: number };
 
@@ -83,7 +83,7 @@ mount(App);
 
 ```ts
 import { type JSX } from "nsh";
-import { createNavigator } from "nsh/ui/mobile";
+import { createNavigator } from "nsh/ui";
 
 export type Route = { name: "home" } | { name: "page"; page: () => JSX.Element };
 export const nav = createNavigator<Route>({ name: "home" });
@@ -178,7 +178,7 @@ function Compose() {
 
 ```tsx
 import { Input, signal } from "nsh";
-import { Alert, Screen } from "nsh/ui/mobile";
+import { Alert, Screen } from "nsh/ui";
 
 function EditNote() {
   const text = signal("");
@@ -210,7 +210,7 @@ function EditNote() {
 
 ```tsx
 import { signal, Text, View } from "nsh";
-import { Modal, SafeAreaView } from "nsh/ui/mobile";
+import { Modal, SafeAreaView } from "nsh/ui";
 
 function Settings() {
   const open = signal(false);
@@ -294,7 +294,7 @@ function Editor() {
 
 ## 标签页与其他布局
 
-`nsh/ui/mobile` 没有标签栏组件。标签栏就是一排可按压的视图加一个保存当前标签的 signal；用函数子元素或 [`<If>`](../elements/control-flow.md) 渲染选中标签的内容。要在切换时保留每个标签的状态，给每个标签一个独立的 `Stack` 和 navigator，并让它们都保持挂载，用 `display: "none"` 隐藏未选中的标签。
+`nsh/ui` 没有标签栏组件。标签栏就是一排可按压的视图加一个保存当前标签的 signal；用函数子元素或 [`<If>`](../elements/control-flow.md) 渲染选中标签的内容。要在切换时保留每个标签的状态，给每个标签一个独立的 `Stack` 和 navigator，并让它们都保持挂载，用 `display: "none"` 隐藏未选中的标签。
 
 ## 相关内容
 

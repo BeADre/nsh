@@ -1,7 +1,8 @@
 import { mount, Scroll, signal, Text, untracked, View } from "nsh";
 import { Platform, windowSize } from "nsh/device";
 import { Image } from "nsh/image";
-import { Screen, Stack, StatusBar } from "nsh/ui/mobile";
+import { Screen, Stack } from "nsh/ui";
+import { StatusBar } from "nsh/ui/mobile";
 import { Icon } from "./icons";
 import logo from "./logo@2x.png";
 import { type DemoEntry, nav } from "./nav";
@@ -47,7 +48,7 @@ const groups: { title: string; demos: DemoEntry[] }[] = [
   {
     title: "Platform",
     demos: [
-      { name: "Mobile UI", detail: "nsh/ui/mobile in Rust: a ListView and a Group of the app's rows", icon: "mobile", screen: lazy(() => import("./demos/MobileUi").then((m) => m.MobileUi)) },
+      { name: "Mobile UI", detail: "nsh/ui in Rust: a ListView and a Group of the app's rows", icon: "mobile", screen: lazy(() => import("./demos/MobileUi").then((m) => m.MobileUi)) },
       { name: "Components", detail: "Press feedback, sheet, layout animation, input accessory, modal options", icon: "components", screen: lazy(() => import("./demos/Components").then((m) => m.Components)) },
       { name: "Web and video", detail: "WKWebView / WebView, AVPlayer / MediaPlayer", icon: "media", screen: lazy(() => import("./demos/Media").then((m) => m.Media)) },
       { name: "System", detail: "Status bar, alerts, action sheets, environment, timers, fetch", icon: "system", screen: lazy(() => import("./demos/System").then((m) => m.System)) },

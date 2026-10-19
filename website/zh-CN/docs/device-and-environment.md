@@ -15,8 +15,8 @@ demo: guide-device
 | `windowSize()` | `nsh/device` | surface 的 `{ width, height }`，单位为点。 |
 | `colorScheme()` | `nsh/device` | `"light"` 或 `"dark"`。 |
 | `fontScale()` | `nsh/device` | 用户偏好的文字大小相对于默认值的比例（1 为默认）。 |
-| `safeArea()` | `nsh/ui/mobile` | surface 中未被系统 UI 遮挡的 inset：`{ top, right, bottom, left }`。 |
-| `useSafeAreaInsets()` | `nsh/ui/mobile` | 调用组件渲染位置（页面、模态视图）的 inset。 |
+| `safeArea()` | `nsh/ui` | surface 中未被系统 UI 遮挡的 inset：`{ top, right, bottom, left }`。 |
+| `useSafeAreaInsets()` | `nsh/ui` | 调用组件渲染位置（页面、模态视图）的 inset。 |
 | `keyboard()` | `nsh/ui/mobile` | 软键盘的 `{ height, duration }`。 |
 | `I18nManager.isRTL` | `nsh/device` | 应用是否从右到左布局。 |
 | `reduceMotion()`、`screenReaderEnabled()` | `nsh/accessibility` | 见[无障碍](./accessibility.md)。 |
@@ -24,7 +24,7 @@ demo: guide-device
 ```tsx
 import { mount, Text, View } from "nsh";
 import { colorScheme, fontScale, windowSize } from "nsh/device";
-import { safeArea } from "nsh/ui/mobile";
+import { safeArea } from "nsh/ui";
 
 function App() {
   return (
@@ -89,7 +89,7 @@ const palette = computed(() =>
 </View>
 ```
 
-`nsh/ui/mobile` 的组件从组件主题中取色，主题为每种颜色提供浅色和深色两个值（`nsh.json` 的 `"theme"`），所以它们也会随系统切换。要让状态栏与背景相配，见 [`StatusBar`](../components/status-bar.md)。
+`nsh/ui` 和 `nsh/ui/mobile` 的组件从组件主题中取色，主题为每种颜色提供浅色和深色两个值（`nsh.json` 的 `"theme"`），所以它们也会随系统切换。要让状态栏与背景相配，见 [`StatusBar`](../components/status-bar.md)。
 
 > [!TIP]
 > 开发时两种外观都要测试：`xcrun simctl ui booted appearance dark` 可以切换 iOS 模拟器，Android 的快捷设置里有深色主题开关。变化会立即传到应用中，无需重新加载。
@@ -115,11 +115,11 @@ const palette = computed(() =>
 
 - `safeArea()` 给出整个 surface 的 inset。
 - `useSafeAreaInsets()` 给出**组件渲染位置**的 inset：在导航[页面](./navigation.md#标题栏下的安全区域)中从标题栏下方算起，在[模态视图](./navigation.md#模态视图)中是模态视图自己的。可能出现在多个地方的组件应该优先用它。
-- `nsh/ui/mobile` 中的 `SafeAreaView` 是一个按这些 inset 添加内边距的视图（默认四边都加，或用 `edges={["top", "bottom"]}` 指定），叠加在它自己的内边距之上。
+- `nsh/ui` 中的 `SafeAreaView` 是一个按这些 inset 添加内边距的视图（默认四边都加，或用 `edges={["top", "bottom"]}` 指定），叠加在它自己的内边距之上。
 
 ```tsx
 import { View } from "nsh";
-import { SafeAreaView, useSafeAreaInsets } from "nsh/ui/mobile";
+import { SafeAreaView, useSafeAreaInsets } from "nsh/ui";
 
 function Screen() {
   return (

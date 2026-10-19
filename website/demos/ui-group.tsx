@@ -1,6 +1,6 @@
 // Group: settings-style rows; each child becomes a row with a divider.
 import { mount, signal, Text, View } from "nsh";
-import { Group, Stepper } from "nsh/ui/mobile";
+import { Group, Stepper } from "nsh/ui";
 import { ui } from "./palette";
 
 function Row(props: { label: string; value: string; onPress?: () => void }) {

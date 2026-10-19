@@ -1,4 +1,4 @@
-//! Components: the mobile UI's buttons and cards, native press feedback, a
+//! Components: `nsh/ui`'s buttons and cards, native press feedback, a
 //! sheet opened by a pressable with press styles, layout animation, an
 //! input's accessory bar, the keyboard avoiding view, modal options and
 //! the environment (as the TSX gallery's `demos/Components.tsx`).
@@ -12,10 +12,11 @@ use nsh_core::{
         prelude::*,
     },
 };
-use nsh_ui_mobile::{
-    AvoidBehavior, Button, ButtonEvent, ButtonProps, ButtonVariant, Card, CardProps, CardVariant,
-    KeyboardAvoidingView, KeyboardAvoidingViewProps, SafeAreaView, SafeAreaViewProps,
+use nsh_ui::{
+    Button, ButtonEvent, ButtonProps, ButtonVariant, Card, CardProps, CardVariant, SafeAreaView,
+    SafeAreaViewProps,
 };
+use nsh_ui_mobile::{AvoidBehavior, KeyboardAvoidingView, KeyboardAvoidingViewProps};
 
 use crate::{
     nav,
@@ -89,8 +90,7 @@ fn title_block(badge: impl Into<SharedString>, title: &str) -> View {
         )
 }
 
-/// The components of `nsh/ui/mobile` (Rust, `nsh-ui-mobile`) in a Rust
-/// view.
+/// The components of `nsh/ui` (Rust, `nsh-ui`) in a Rust view.
 #[component]
 fn MobileComponents() -> impl IntoElement {
     let presses = signal(0_u32);
@@ -105,7 +105,7 @@ fn MobileComponents() -> impl IntoElement {
     };
     ui::Card::new()
         .icon(IconName::Mobile)
-        .title("nsh/ui/mobile")
+        .title("nsh/ui")
         .subtitle("Rust components, the app's theme")
         .right(
             Badge::new(move || {

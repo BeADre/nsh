@@ -1,26 +1,32 @@
 ---
-title: 移动端 UI
-description: nsh/ui/mobile UI 套件：其中的组件与模块，以及如何通过 nsh.json 设置主题。
+title: UI 组件
+description: nsh/ui 和 nsh/ui/mobile 的组件与模块，以及如何通过 nsh.json 设置主题。
 order: 1
 ---
 
-# 移动端 UI
+# UI 组件
 
-`nsh/ui/mobile` 是 NSH 面向手机和平板的 UI 套件，包含按钮、卡片、列表、文本输入框、底部面板、安全区域、键盘、状态栏、系统对话框和导航。按需导入即可：
+NSH 的组件分布在两个模块中，每个导出只有一个来源：
+
+- **`nsh/ui`** 包含所有平台共用的组件：按钮、卡片、列表、文本输入框、安全区域、警告框和导航。它们在每个平台上的结构都相同。
+- **`nsh/ui/mobile`** 包含手机和平板额外提供的部分：状态栏、底部面板、操作表和软键盘。
+
+每个宿主都同时提供这两个模块。按需导入即可：
 
 ```tsx
-import { Button, Card, Group, Sheet, Stack, Screen, createNavigator } from "nsh/ui/mobile";
+import { Button, Card, Group, Stack, Screen, createNavigator } from "nsh/ui";
+import { Sheet } from "nsh/ui/mobile";
 ```
 
-它构建在[宿主元素](../elements/index.md)（`<View>`、`<Text>`、`<Input>` 等）之上。宿主元素是所有 UI 套件共用的基础构件，而这里的组件是用这些元素搭出来的、开箱即用的移动端外观。
+它构建在[宿主元素](../elements/index.md)（`<View>`、`<Text>`、`<Input>` 等）之上。宿主元素是所有 UI 套件共用的基础构件，而这里的组件是用这些元素搭出来的、开箱即用的外观。
 
 ## 组件的工作方式
 
 这些组件用 Rust 编写，而不是 JavaScript。在应用里，`<Button>` 依然只是一个 JSX 节点：它的 props 传给原生核心，由核心用宿主元素渲染出按钮，并与界面其余部分在同一轮布局中完成排版；它的事件再回到你的处理函数。由此带来几点实际影响：
 
-- **iOS 和 Android 外观一致。** 组件用 NSH 自己的视图绘制，而不是 UIKit 或 Android 控件，所以 `Button` 在两个平台上看起来一样。例外是 [Alert](./alert.md) 和 [ActionSheet](./action-sheet.md)，它们显示的是平台的系统对话框。
+- **各平台外观一致。** 组件用 NSH 自己的视图绘制，而不是平台自带的控件，所以 `Button` 在 NSH 运行的每个平台上看起来都一样。例外是 [Alert](./alert.md) 和 [ActionSheet](./action-sheet.md)，它们显示的是平台的系统对话框。
 - **交互保持原生。** 按压反馈、[Sheet](./sheet.md) 的拖动、长按 [Stepper](./stepper.md) 按钮时的连续步进，都在核心或 UI 线程上运行。JS 只接收事件（`onPress`、`onChange`、`onClose` 等）。
-- **类型由源码生成。** `.nsh/types/nsh/ui/mobile.d.ts` 中的 TypeScript 声明是从 Rust 的 props 生成的，编辑器能显示每个 prop 及其文档。
+- **类型由源码生成。** `.nsh/types/nsh/ui.d.ts` 和 `.nsh/types/nsh/ui/mobile.d.ts` 中的 TypeScript 声明是从 Rust 的 props 生成的，编辑器能显示每个 prop 及其文档。
 - **你的内容仍归你所有。** 插槽（`header`、`footer`）、子元素和列表行都是你的 JSX。组件只负责摆放，从不创建或修改它们，因此其中的 signal、事件处理函数和 ref 都照常工作。
 
 每个组件的根视图都接受 `class`、`classList`、`style`、`testID`、`onLayout` 和 `ref`（`ComponentHostProps`）。你的 `class` 在组件自身样式之后应用，因此会覆盖它们：
@@ -32,7 +38,9 @@ import { Button, Card, Group, Sheet, Stack, Screen, createNavigator } from "nsh/
 
 ## 组件
 
-| 组件 | 说明 |
+`nsh/ui`，用于所有平台：
+
+| 导出 | 说明 |
 |---|---|
 | [Button](./button.md) | 带文字标签的按压目标：`primary`、`secondary`、`danger` 或 `plain` |
 | [Card](./card.md) | 圆角卡片，可带页眉和页脚 |
@@ -40,22 +48,22 @@ import { Button, Card, Group, Sheet, Stack, Screen, createNavigator } from "nsh/
 | [ListView](./list-view.md) | 渲染你的行的虚拟化列表，plain 或 inset 样式 |
 | [SafeAreaView](./safe-area-view.md) | 按安全区域、页面标题栏或模态框的 inset 添加内边距的视图 |
 | [SelectList](./select-list.md) | 可滚动的选项列表，选中项带勾号 |
-| [Sheet](./sheet.md) | 覆盖在变暗背景上的底部面板，向下拖动即可关闭 |
-| [StatusBar](./status-bar.md) | 状态栏内容颜色与显隐，可通过渲染组件或调用函数设置 |
 | [Stepper](./stepper.md) | 带 − 和 + 按钮的数字；长按按钮会连续步进 |
 | [TextField](./text-field.md) | 带标签和清除按钮的文本输入框 |
-| [KeyboardAvoidingView](./keyboard-avoiding-view.md) | 让滚动视图之外的内容保持在软键盘上方 |
+| [Alert](./alert.md) | `Alert.alert(title, message?, buttons?, options?)`：系统警告框，返回被按下按钮的索引 |
+| [Navigation](./navigation.md) | `createNavigator`、`Stack`、`Screen` 和 `Modal`：原生导航栈与模态框 |
 
-模块与导航：
+`nsh/ui` 还从运行时重新导出了两个环境 accessor：`safeArea()` 和 `useSafeAreaInsets()`（见 [SafeAreaView](./safe-area-view.md)）。
+
+`nsh/ui/mobile`，用于手机和平板：
 
 | 导出 | 说明 |
 |---|---|
-| [Alert](./alert.md) | `Alert.alert(title, message?, buttons?, options?)`：系统警告框，返回被按下按钮的索引 |
+| [StatusBar](./status-bar.md) | 状态栏内容颜色与显隐，可通过渲染组件或调用函数设置 |
+| [Sheet](./sheet.md) | 覆盖在变暗背景上的底部面板，向下拖动即可关闭 |
 | [ActionSheet](./action-sheet.md) | `ActionSheet.show(options)`：系统操作表，返回所选操作的索引 |
+| [KeyboardAvoidingView](./keyboard-avoiding-view.md) | 让滚动视图之外的内容保持在软键盘上方 |
 | [Keyboard](./keyboard.md) | `Keyboard.dismiss()` 以及响应式的 `keyboard()` accessor |
-| [Navigation](./navigation.md) | `createNavigator`、`Stack`、`Screen` 和 `Modal`：原生导航栈与模态框 |
-
-该套件还从运行时重新导出了三个环境 accessor：`safeArea()`、`keyboard()` 和 `useSafeAreaInsets()`（见 [SafeAreaView](./safe-area-view.md) 和 [Keyboard](./keyboard.md)）。
 
 <a id="theming"></a>
 
@@ -107,7 +115,7 @@ import { Button, Card, Group, Sheet, Stack, Screen, createNavigator } from "nsh/
 - 只有 gpui-kit 桌面组件使用的键（侧边栏、标题栏等）会被忽略，因此 gpui-kit 的主题文件可以直接拿来用。
 - 打包器在构建时检查主题。文件缺失、JSON 无效、`mode` 未知或某个值不是颜色，都会以 `nsh.json: theme: …` 错误使构建失败。
 
-下表列出移动端组件用到的主题键及其默认的浅色和深色值：
+下表列出组件用到的主题键及其默认的浅色和深色值：
 
 | 键 | 浅色 | 深色 | 使用者 |
 |---|---|---|---|

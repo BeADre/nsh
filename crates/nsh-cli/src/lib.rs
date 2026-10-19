@@ -32,7 +32,7 @@ static UI_SETS: OnceLock<Vec<Registry>> = OnceLock::new();
 /// The UI sets the hosts serve: what bundles import natively, what bytecode
 /// links against, what `.nsh/types` declares.
 pub(crate) fn ui_sets() -> &'static [Registry] {
-    UI_SETS.get_or_init(|| vec![nsh_ui_mobile::registry()])
+    UI_SETS.get_or_init(|| vec![nsh_ui::registry(), nsh_ui_mobile::registry()])
 }
 
 #[derive(Parser)]
@@ -355,8 +355,8 @@ impl Command {
     }
 }
 
-/// Runs the command line with `ui_sets` (`nsh_ui_mobile::registry()` and
-/// the registries of an app's own crates); errors are printed.
+/// Runs the command line with `ui_sets` (`nsh_ui::registry()`,
+/// `nsh_ui_mobile::registry()` and the registries of an app's own crates); errors are printed.
 pub fn main_with(ui_sets: Vec<Registry>) -> ExitCode {
     let duplicate = duplicate_specifier(&ui_sets);
     let _ = UI_SETS.set(ui_sets);

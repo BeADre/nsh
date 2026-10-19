@@ -74,7 +74,7 @@ pub(crate) const PRIMITIVES: &[(&str, &str, Compiled)] = &[
     ("nsh/video", "Video", Compiled::Host("video")),
     ("nsh/list", "List", Compiled::List),
     ("nsh/canvas", "Canvas", Compiled::Component("canvas")),
-    ("nsh/ui/mobile", "Modal", Compiled::Component("modal")),
+    ("nsh/ui", "Modal", Compiled::Component("modal")),
     (
         "nsh/ios",
         "InputAccessoryView",
@@ -1163,7 +1163,7 @@ mod tests {
             source,
             None,
             None,
-            &crate::compile::NativeModules::new(&[nsh_ui_mobile::registry()]),
+            &crate::compile::NativeModules::new(&[nsh_ui::registry(), nsh_ui_mobile::registry()]),
         )
         .map(|(code, _)| code)
     }
@@ -1300,7 +1300,7 @@ mod tests {
         assert!(err.contains("write <Each> (a global: no import)"), "{err}");
         let err = error(r#"export const a = <button title="x" />;"#);
         assert!(
-            err.contains(r#"write <Button> and `import { Button } from "nsh/ui/mobile"`"#),
+            err.contains(r#"write <Button> and `import { Button } from "nsh/ui"`"#),
             "{err}"
         );
         let err = error(
@@ -1352,7 +1352,7 @@ mod tests {
         for (module, export, _) in PRIMITIVES {
             assert!(seen.insert(*export), "{export} twice");
             assert!(
-                nsh_core::js::NATIVE_MODULES.contains(module) || *module == "nsh/ui/mobile",
+                nsh_core::js::NATIVE_MODULES.contains(module) || *module == "nsh/ui",
                 "{module}"
             );
         }
@@ -1429,14 +1429,14 @@ mod tests {
     fn imports_tags_use_stay_and_type_only_ones_go() {
         let code = flat(
             &compile(
-                r#"import { Stepper, StepperRef, Card } from "nsh/ui/mobile";
+                r#"import { Stepper, StepperRef, Card } from "nsh/ui";
             let r: StepperRef | undefined;
             export const a = <Stepper ref={r} />;"#,
             )
             .unwrap(),
         );
         assert!(
-            code.contains(r#"import { Stepper } from "nsh/ui/mobile";"#),
+            code.contains(r#"import { Stepper } from "nsh/ui";"#),
             "{code}"
         );
         assert!(

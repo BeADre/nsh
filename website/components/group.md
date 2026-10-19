@@ -11,14 +11,14 @@ demo: ui-group
 becomes one row. You can add a short caption above the box and an explanation below it.
 
 ```tsx
-import { Group } from "nsh/ui/mobile";
+import { Group } from "nsh/ui";
 ```
 
 ## Usage
 
 ```tsx
 import { mount, signal, Text, View } from "nsh";
-import { Group } from "nsh/ui/mobile";
+import { Group } from "nsh/ui";
 
 function App() {
   const sounds = signal(true);

@@ -166,5 +166,5 @@ const I18nManager: {
 
 ## 相关内容
 
-- 安全区域和键盘（`safeArea()`、`keyboard()`、`useSafeAreaInsets()`）属于 [`nsh/ui/mobile`](../components/index.md)。
+- 安全区域（`safeArea()`、`useSafeAreaInsets()`）属于 [`nsh/ui`](../components/safe-area-view.md)，软键盘（`keyboard()`）属于 [`nsh/ui/mobile`](../components/keyboard.md)。
 - 屏幕阅读器和减弱动态效果的设置在 [`nsh/accessibility`](./nsh-accessibility.md) 中。

@@ -140,13 +140,13 @@ Measure with names kept (`CARGO_PROFILE_WEB_STRIP=false`) and `twiggy top` / `tw
 
 ### Apps with Rust components
 
-The prebuilt runtime serves `nsh/ui/mobile` only; an app with a Rust crate of its own (`nsh.json` `"rust"`,
+The prebuilt runtime serves NSH's sets (`nsh/ui`, `nsh/ui/mobile`); an app with a Rust crate of its own (`nsh.json` `"rust"`,
 `docs/dev/tooling.md`) gets one built with its set, as it gets its own native hosts. `runtime::web` asks the app
 (`rust_app::RustApp::web`), whose generated workspace (`.nsh/rust`) has a member `web`: a `cdylib` of
-`nsh-platform-web` and the app's crate whose code is `nsh_platform_web::ui_sets!(vec![nsh_ui_mobile::registry(),
-app_set()])`. The macro exports `nsh_app_init`, which `nsh.js` calls right after instantiating the module (there is
+`nsh-platform-web` and the app's crate whose code is `nsh_platform_web::ui_sets!(vec![nsh_ui::registry(),
+nsh_ui_mobile::registry(), app_set()])`. The macro exports `nsh_app_init`, which `nsh.js` calls right after instantiating the module (there is
 no `main` to call `set_ui_sets` in a wasm module, nor a `dlsym` as Android's `ui_sets!` uses); a module without it
-(the prebuilt runtime) keeps the mobile UI. The `nsh_*` exports come from `nsh-platform-web`'s rlib: a `cdylib`
+(the prebuilt runtime) keeps NSH's sets. The `nsh_*` exports come from `nsh-platform-web`'s rlib: a `cdylib`
 exports its dependencies' `#[no_mangle]` functions. The workspace has the same `web` profile as nsh's `Cargo.toml`, and
 the crate's `build.rs` passes the 8 MiB stack as a link argument of its own (nsh's `.cargo/config.toml` may not apply
 where the app builds, and target-wide `rustflags` would rebuild every dependency instead of sharing nsh's builds).
