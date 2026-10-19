@@ -900,7 +900,10 @@ fn describe(value: Value<'_>) -> String {
 /// (`web/`): the host's (console, timers, frames, below) and QuickJS-NG's
 /// that apps use. A test checks that each exists, and that every global
 /// the host adds is declared.
-pub(crate) const GLOBALS: &str = r#"declare var console: {
+pub(crate) const GLOBALS: &str = r#"/** The global object, as in browsers and workers (`self === globalThis`). */
+declare var self: typeof globalThis;
+
+declare var console: {
   log(...data: unknown[]): void;
   info(...data: unknown[]): void;
   debug(...data: unknown[]): void;
@@ -953,6 +956,9 @@ declare class DOMException extends Error {
 
 fn install(ctx: &Ctx<'_>, shared: &Rc<Shared>) -> rquickjs::Result<()> {
     let globals = ctx.globals();
+    // Libraries find the global object by `self` (code from strings, their
+    // fallback, is disabled: `sandbox::harden`).
+    globals.set("self", globals.clone())?;
     console::install(ctx)?;
     web::install(ctx.as_raw().as_ptr())?;
     crate::chunks::install(ctx.as_raw().as_ptr()).map_err(|_| rquickjs::Error::Exception)?;

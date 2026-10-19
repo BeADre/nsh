@@ -499,6 +499,11 @@ class Player {
       nsh: {
         now_ms: () => performance.now(),
         date_now_ms: () => Date.now(),
+        // `crypto.getRandomValues` of the app (at most 65536 bytes a call).
+        random_fill: (p, l) => {
+          const bytes = this.bytes(p, l);
+          for (let i = 0; i < l; i += 65536) crypto.getRandomValues(bytes.subarray(i, i + 65536));
+        },
         measure_text: (fp, fl, tp, tl) => {
           this.measure.font = this.str(fp, fl);
           return this.measure.measureText(this.str(tp, tl)).width;

@@ -1,4 +1,5 @@
-//! Web APIs installed by the host: encoding, URL, headers, abort and fetch.
+//! Web APIs installed by the host: encoding, URL, headers, abort, fetch and
+//! crypto.
 
 use nsh_core::Op;
 use nsh_js::{FetchEvent, FetchOp, Host, HttpBody, HttpHead, HttpRequest, NetworkQueue};
@@ -993,6 +994,60 @@ fn abandoned_responses_cancel_their_requests() {
     host.run_jobs();
     host.collect_garbage();
     assert_eq!(take(&host), vec![(id, FetchOp::Cancel)]);
+}
+
+#[test]
+fn self_is_the_global_object_in_hardened_apps() {
+    let host = Host::with_options(nsh_js::HostOptions {
+        harden: true,
+        ..nsh_js::HostOptions::default()
+    })
+    .unwrap();
+    // How libraries (lodash's `root`) find the global object without
+    // code from strings.
+    let out = run(
+        &host,
+        r#"
+        const freeSelf = typeof self == "object" && self && self.Object === Object && self;
+        let fallback;
+        try { fallback = Function("return this")(); } catch (e) { fallback = e instanceof TypeError; }
+        globalThis.out = [self === globalThis, freeSelf === globalThis, fallback];
+        "#,
+    );
+    assert_eq!(out, "[true,true,true]");
+}
+
+#[test]
+fn crypto_fills_integer_arrays_with_random_values() {
+    let host = Host::new().unwrap();
+    let out = run(
+        &host,
+        r#"
+        const log = [];
+        const a = new Uint8Array(64);
+        log.push(crypto.getRandomValues(a) === a, a.some((b) => b !== 0));
+        const sub = new Uint32Array(8).subarray(2, 4);
+        crypto.getRandomValues(sub);
+        log.push(sub.buffer.byteLength === 32, new Uint32Array(sub.buffer, 0, 2).every((v) => v === 0));
+        for (const T of [Int8Array, Uint8ClampedArray, Int16Array, Uint16Array, Int32Array, BigInt64Array, BigUint64Array]) {
+            crypto.getRandomValues(new T(4));
+        }
+        log.push(crypto.getRandomValues(new Uint8Array(65536)).length);
+        const name = (f) => { try { f(); return "none"; } catch (e) { return e instanceof DOMException ? e.name : e.constructor.name; } };
+        log.push(name(() => crypto.getRandomValues(new Uint8Array(65537))));
+        log.push(name(() => crypto.getRandomValues(new Float64Array(2))));
+        log.push(name(() => crypto.getRandomValues(new DataView(new ArrayBuffer(4)))));
+        log.push(name(() => crypto.getRandomValues([1, 2])));
+        const ids = new Set(Array.from({ length: 100 }, () => crypto.randomUUID()));
+        log.push(ids.size, [...ids].every((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id)));
+        log.push(Object.prototype.toString.call(crypto));
+        globalThis.out = log;
+        "#,
+    );
+    assert_eq!(
+        out,
+        r#"[true,true,true,true,65536,"QuotaExceededError","TypeMismatchError","TypeMismatchError","TypeError",100,true,"[object Crypto]"]"#
+    );
 }
 
 #[test]

@@ -1,12 +1,12 @@
 ---
 title: 全局 API
-description: 每个 NSH 应用无需 import 就能使用的全局对象——fetch、流、URL、文本编码、Blob 与 FormData、事件与中止信号、Intl、定时器和 console——都用 Rust 原生实现。
+description: 每个 NSH 应用无需 import 就能使用的全局对象——fetch、流、URL、文本编码、Blob 与 FormData、事件与中止信号、crypto、Intl、定时器和 console——都用 Rust 原生实现。
 order: 15
 ---
 
 # 全局 API
 
-除了 ECMAScript 标准库，NSH 应用的 JS 环境还提供一组标准全局对象：`fetch` 及其 `Headers`、`Request`、`Response`；Streams 标准；`URL` 和 `URLSearchParams`；`TextEncoder` / `TextDecoder`；`Blob`、`File` 和 `FormData`；`EventTarget`、`Event` 和 `AbortController`；定时器、`requestAnimationFrame` 和 `console`；以及用于数字与日期格式化的 `Intl`。它们都用 Rust 原生实现，遵循 WHATWG 标准，无需 import，因此大量基于这些标准的 JavaScript 库（HTTP 客户端、URL 与编码工具、流处理工具）可以直接使用。
+除了 ECMAScript 标准库，NSH 应用的 JS 环境还提供一组标准全局对象：`fetch` 及其 `Headers`、`Request`、`Response`；Streams 标准；`URL` 和 `URLSearchParams`；`TextEncoder` / `TextDecoder`；`Blob`、`File` 和 `FormData`；`EventTarget`、`Event` 和 `AbortController`；`crypto` 的随机数和 `self`；定时器、`requestAnimationFrame` 和 `console`；以及用于数字与日期格式化的 `Intl`。它们都用 Rust 原生实现，遵循 WHATWG 标准，无需 import，因此大量基于这些标准的 JavaScript 库（HTTP 客户端、URL 与编码工具、流处理工具）可以直接使用。
 
 本页列出了应用拥有的全部全局对象。界面用[元素](../elements/index.md)和[组件](../components/index.md)搭建，其余能力来自应用导入的[模块](./index.md)。
 
@@ -17,6 +17,7 @@ order: 15
 | [控制台与计时](#控制台与计时) | `console`、`performance` |
 | [定时器与帧](#定时器与帧) | `setTimeout`、`setInterval`、`clearTimeout`、`clearInterval`、`queueMicrotask`、`requestAnimationFrame`、`cancelAnimationFrame` |
 | [Base64 与错误](#base64-与错误) | `atob`、`btoa`、`DOMException` |
+| [全局对象与随机数](#全局对象与随机数) | `self`、`crypto.getRandomValues`、`crypto.randomUUID` |
 | [事件与中止信号](#事件与中止信号) | `EventTarget`、`Event`、`CustomEvent`、`AbortController`、`AbortSignal` |
 | [URL](#url) | `URL`、`URLSearchParams` |
 | [文本编码](#文本编码) | `TextEncoder`、`TextDecoder` |
@@ -99,6 +100,29 @@ class DOMException extends Error {
 ```
 
 `atob` / `btoa` 与浏览器一样，在二进制字符串和 Base64 之间转换。`DOMException` 是被中止的操作所 reject 的值：不带 reason 调用 `AbortController.abort()` 得到名为 `"AbortError"` 的 `DOMException`，`AbortSignal.timeout` 得到名为 `"TimeoutError"` 的。
+
+## 全局对象与随机数
+
+```ts
+/** 全局对象，与浏览器和 worker 中一样（`self === globalThis`）。 */
+var self: typeof globalThis;
+
+var crypto: {
+  /** 用随机值填充 `array`（整数类型，最多 65536 字节）并返回它。 */
+  getRandomValues<T extends Int8Array | Uint8Array | Uint8ClampedArray | Int16Array | Uint16Array | Int32Array | Uint32Array | BigInt64Array | BigUint64Array>(array: T): T;
+  /** 一个随机的第 4 版 UUID，小写。 */
+  randomUUID(): string;
+};
+```
+
+`self` 就是全局对象，因此通过 `self` 查找全局对象的库（lodash 的根对象、许多 UMD 构建）都能找到它。
+
+`crypto.getRandomValues` 和 `crypto.randomUUID` 遵循 Web Crypto，字节来自操作系统的安全随机源（在浏览器中来自页面的 `crypto`），因此 nanoid、`uuid` 等 ID 生成库可以直接使用。`getRandomValues` 原地填充数组并返回它；其他类型的数组（浮点数组、`DataView`）抛出名为 `"TypeMismatchError"` 的 `DOMException`，超过 65536 字节的抛出名为 `"QuotaExceededError"` 的，不是 `ArrayBufferView` 的值抛出 `TypeError`。
+
+```ts
+const bytes = crypto.getRandomValues(new Uint8Array(16));
+const id = crypto.randomUUID(); // "3b241101-e2bb-4255-8caf-4136c566a962"
+```
 
 ## 事件与中止信号
 

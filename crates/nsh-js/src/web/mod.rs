@@ -1,8 +1,8 @@
 //! The web platform APIs of TS apps, natively: events and abort signals,
-//! URLs, text encoding, blobs and form data, streams, and `fetch` with its
-//! `Headers`, `Request` and `Response`; and ECMAScript's `Intl`, which
-//! QuickJS lacks (`intl/`). They are JS globals only: Rust code uses
-//! crates of its choice.
+//! URLs, text encoding, blobs and form data, streams, `fetch` with its
+//! `Headers`, `Request` and `Response`, and `crypto`'s random values; and
+//! ECMAScript's `Intl`, which QuickJS lacks (`intl/`). They are JS globals
+//! only: Rust code uses crates of its choice.
 //!
 //! Every object of these classes is one QuickJS class (functions made in
 //! Rust, [`js::closure`], another, callable one) whose opaque is the Rust
@@ -16,6 +16,7 @@
 pub(crate) mod js;
 
 mod blob;
+mod crypto;
 mod encoding;
 mod event;
 mod fetch;
@@ -208,6 +209,7 @@ pub(crate) const TYPES: &[&str] = &[
     streams::writable::TYPES,
     streams::transform::TYPES,
     fetch::TYPES,
+    crypto::TYPES,
 ];
 
 /// The per-context state: the classes and the prototypes.
@@ -714,6 +716,9 @@ fn global_value(ctx: Ctx, name: &CStr) -> R<V> {
     if name == INTL {
         return intl::namespace(ctx);
     }
+    if name == crypto::NAME {
+        return crypto::namespace(ctx);
+    }
     if let Some(spec) = specs().find(|s| s.global && s.name == name) {
         return constructor(ctx, spec.class);
     }
@@ -736,7 +741,7 @@ fn global_names() -> impl Iterator<Item = &'static CStr> {
         .filter(|s| s.global)
         .map(|s| s.name)
         .chain(functions().map(|f| f.name))
-        .chain([INTL])
+        .chain([INTL, crypto::NAME])
 }
 
 /// Replaces the lazy accessors still in place with the values.

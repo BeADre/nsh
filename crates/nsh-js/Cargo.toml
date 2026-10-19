@@ -33,6 +33,8 @@ url.workspace = true
 rquickjs = { workspace = true, features = ["bindgen"] }
 # The heap's allocator: the system's `malloc` (as QuickJS's own).
 libc.workspace = true
+# `crypto.getRandomValues`' random source (WebAssembly asks the page).
+getrandom.workspace = true
 
 [dev-dependencies]
 nsh-ui-mobile.workspace = true

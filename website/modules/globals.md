@@ -1,12 +1,12 @@
 ---
 title: Global APIs
-description: The globals every NSH app has without an import — fetch, streams, URL, encoding, Blob and FormData, events and abort signals, Intl, timers and console — implemented natively in Rust.
+description: The globals every NSH app has without an import — fetch, streams, URL, encoding, Blob and FormData, events and abort signals, crypto, Intl, timers and console — implemented natively in Rust.
 order: 15
 ---
 
 # Global APIs
 
-Besides the ECMAScript standard library, an NSH app's JS environment has a set of standard globals: `fetch` with `Headers`, `Request` and `Response`; the Streams Standard; `URL` and `URLSearchParams`; `TextEncoder` / `TextDecoder`; `Blob`, `File` and `FormData`; `EventTarget`, `Event` and `AbortController`; timers, `requestAnimationFrame` and `console`; and `Intl` for number and date formatting. They are implemented natively in Rust, follow the WHATWG standards, and need no import, so the many JavaScript libraries built on these standards (HTTP clients, URL and encoding helpers, stream utilities) work unchanged.
+Besides the ECMAScript standard library, an NSH app's JS environment has a set of standard globals: `fetch` with `Headers`, `Request` and `Response`; the Streams Standard; `URL` and `URLSearchParams`; `TextEncoder` / `TextDecoder`; `Blob`, `File` and `FormData`; `EventTarget`, `Event` and `AbortController`; `crypto`'s random values and `self`; timers, `requestAnimationFrame` and `console`; and `Intl` for number and date formatting. They are implemented natively in Rust, follow the WHATWG standards, and need no import, so the many JavaScript libraries built on these standards (HTTP clients, URL and encoding helpers, stream utilities) work unchanged.
 
 This page lists every global an app has. UI is built with [elements](../elements/index.md) and [components](../components/index.md), and everything else an app uses comes from the [modules](./index.md) it imports.
 
@@ -17,6 +17,7 @@ The TypeScript declarations of all of these are generated into `.nsh/types/nsh/g
 | [Console and timing](#console-and-timing) | `console`, `performance` |
 | [Timers and frames](#timers-and-frames) | `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `queueMicrotask`, `requestAnimationFrame`, `cancelAnimationFrame` |
 | [Base64 and errors](#base64-and-errors) | `atob`, `btoa`, `DOMException` |
+| [The global object and random values](#the-global-object-and-random-values) | `self`, `crypto.getRandomValues`, `crypto.randomUUID` |
 | [Events and abort signals](#events-and-abort-signals) | `EventTarget`, `Event`, `CustomEvent`, `AbortController`, `AbortSignal` |
 | [URLs](#urls) | `URL`, `URLSearchParams` |
 | [Text encoding](#text-encoding) | `TextEncoder`, `TextDecoder` |
@@ -99,6 +100,29 @@ class DOMException extends Error {
 ```
 
 `atob` / `btoa` convert between binary strings and Base64 as in browsers. `DOMException` is what aborted operations reject with: an `AbortController.abort()` without a reason gives a `DOMException` named `"AbortError"`, and `AbortSignal.timeout` one named `"TimeoutError"`.
+
+## The global object and random values
+
+```ts
+/** The global object, as in browsers and workers (`self === globalThis`). */
+var self: typeof globalThis;
+
+var crypto: {
+  /** Fills `array` (of an integer type, at most 65536 bytes) with random values and returns it. */
+  getRandomValues<T extends Int8Array | Uint8Array | Uint8ClampedArray | Int16Array | Uint16Array | Int32Array | Uint32Array | BigInt64Array | BigUint64Array>(array: T): T;
+  /** A random version 4 UUID, in lower case. */
+  randomUUID(): string;
+};
+```
+
+`self` is the global object, so libraries that look for it by `self` (lodash's root object, many UMD builds) find it.
+
+`crypto.getRandomValues` and `crypto.randomUUID` follow Web Crypto and take their bytes from the operating system's secure random source (in a browser, the page's `crypto`), so ID generators such as nanoid and `uuid` work unchanged. `getRandomValues` fills the array in place and returns it; an array of another type (floats, a `DataView`) throws a `DOMException` named `"TypeMismatchError"`, one of more than 65536 bytes one named `"QuotaExceededError"`, and a value that is not an `ArrayBufferView` a `TypeError`.
+
+```ts
+const bytes = crypto.getRandomValues(new Uint8Array(16));
+const id = crypto.randomUUID(); // "3b241101-e2bb-4255-8caf-4136c566a962"
+```
 
 ## Events and abort signals
 
