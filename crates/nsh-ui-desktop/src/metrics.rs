@@ -70,6 +70,13 @@ impl ControlSize {
     }
 }
 
+/// The corner radius of a floating surface (a popover, a dialog): the
+/// theme's radius of large surfaces, scaled as controls are (reading
+/// subscribes to the theme).
+pub(crate) fn surface_radius() -> f32 {
+    theme().radius_lg * ControlSize::Md.height() / MOBILE_HEIGHT
+}
+
 /// How far a hovered control's background fades toward what is under it.
 pub(crate) const HOVER_OPACITY: f32 = 0.9;
 

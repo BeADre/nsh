@@ -1,13 +1,13 @@
 ---
 title: Desktop UI
-description: nsh/ui/desktop UI 集：NSH 的设计语言在指针和键盘下的密度，以及它的 Button 和 Popover。
+description: nsh/ui/desktop UI 集：NSH 的设计语言在指针和键盘下的密度，以及它的组件。
 order: 20
 ---
 
 # Desktop UI
 
 `nsh/ui/desktop` 是 NSH 面向 macOS、Windows、Linux 和 Web 窗口的 UI 集。它和 [Mobile UI](./index.md) 使用同一套设计语言、同一个主题，
-只是密度适合桌面：控件更矮，指针悬停时高亮，键盘把焦点移到控件上时显示焦点环。第一批组件是 `Button` 和 `Popover`，后续组件陆续加入。
+只是密度适合桌面：控件更矮，指针悬停时高亮，键盘把焦点移到控件上时显示焦点环。第一批组件是 `Button`、`Popover` 和 `Dialog`，后续组件陆续加入。
 
 ```tsx
 import { Button } from "nsh/ui/desktop";
@@ -118,3 +118,52 @@ mount(App);
 | 事件 | 参数 | 触发时机 |
 |---|---|---|
 | `onClose` | 无 | 点击浮层外部，或按 Escape。 |
+
+## Dialog
+
+`open` 为 true 时，`Dialog` 在窗口中央、变暗的背景之上显示一个面板：标题、说明、你的内容，以及 `footer` 里的操作按钮。
+点击背景或按 Escape 会通过 `onClose` 关闭它，在回调里把 `open` 设为 false。打开时它会轻微上浮并淡入，关闭时下沉并淡出。每次打开时都会重新创建内容。
+
+```tsx
+import { mount, signal, View } from "nsh";
+import { Button, Dialog } from "nsh/ui/desktop";
+
+function App() {
+  const open = signal(false);
+  const close = () => open.set(false);
+  return (
+    <View class="p-6">
+      <Button title="Delete project…" variant="danger" onPress={() => open.set(true)} />
+      <Dialog
+        open={open()}
+        onClose={close}
+        title="Delete “Website”?"
+        description="The project, its files and its history are deleted for everyone."
+        footer={
+          <View class="flex-row gap-2">
+            <Button title="Cancel" variant="secondary" onPress={close} />
+            <Button title="Delete" variant="danger" onPress={close} />
+          </View>
+        }
+      />
+    </View>
+  );
+}
+
+mount(App);
+```
+
+在 macOS 和 Web 上，Tab 只在对话框内的控件之间移动，对话框关闭后键盘焦点回到打开它之前所在的位置。
+
+| 属性 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `open` | `boolean` | `false` | 是否显示。 |
+| `title` | `string` | | 顶部的粗体标题。 |
+| `description` | `string` | | 标题下方的弱化说明文字。 |
+| `footer` | JSX | | 操作按钮，放在最后一行的末端（主要操作放最后）。 |
+| `width` | `number` | `440` | 面板宽度（点）；窗口更窄时随之变窄。 |
+| `children` | JSX | | 说明和操作按钮之间的内容，对话框打开时创建。 |
+
+| 事件 | 参数 | 触发时机 |
+|---|---|---|
+| `onClose` | 无 | 点击背景，或按 Escape。 |

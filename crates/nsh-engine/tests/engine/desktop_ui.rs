@@ -274,3 +274,67 @@ fn a_popover_opens_below_its_trigger_and_closes_on_a_press_outside_or_escape() {
             .any(|b| text_id(b, "closes 2").is_some())
     );
 }
+
+const DIALOG: &str = r#"import { mount, signal, Text, View } from "nsh";
+import { Button, Dialog } from "nsh/ui/desktop";
+
+const open = signal(true);
+const closes = signal(0);
+mount(() => (
+  <View>
+    <Dialog
+      open={open()}
+      onClose={() => { closes.update((c) => c + 1); open.set(false); }}
+      title="Delete it?"
+      description="It goes for everyone."
+      footer={<Button title="Delete" variant="danger" />}
+    >
+      <Text>Details</Text>
+    </Dialog>
+    <Text>{`closes ${closes()}`}</Text>
+  </View>
+));
+"#;
+
+#[test]
+fn a_dialog_shows_its_title_content_and_actions_and_closes_on_the_backdrop() {
+    let (engine, rx) = start(DIALOG);
+    let mut seen = Vec::new();
+    let mut modal = None;
+    let mut layers = Vec::new();
+    while let Ok(batch) = rx.recv_timeout(Duration::from_secs(1)) {
+        for item in &batch.items {
+            match item {
+                MountItem::Text { text, .. } => seen.push(text.text.clone()),
+                MountItem::Create {
+                    id,
+                    kind: nsh_core::ViewKind::Modal,
+                } => modal = Some(*id),
+                MountItem::Insert { parent, child, .. } if Some(*parent) == modal => {
+                    layers.push(*child);
+                }
+                _ => {}
+            }
+        }
+        if ["Delete it?", "It goes for everyone.", "Details", "Delete"]
+            .iter()
+            .all(|t| seen.iter().any(|s| s == t))
+        {
+            break;
+        }
+    }
+    // The content shows between the title and the actions: lazy children
+    // before the footer's slot.
+    for t in ["Delete it?", "It goes for everyone.", "Details", "Delete"] {
+        assert!(seen.iter().any(|s| s == t), "{t} in {seen:?}");
+    }
+    let backdrop = *layers.first().expect("the backdrop");
+    engine
+        .control()
+        .dispatch_event(backdrop, EventKind::Press, EventPayload::None);
+    assert!(
+        until_text(&rx, "closes 1")
+            .iter()
+            .any(|b| text_id(b, "closes 1").is_some())
+    );
+}

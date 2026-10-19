@@ -5,6 +5,8 @@ use nsh_core::{
     ui::{Align, Side, place, prelude::*, presence},
 };
 
+use crate::metrics::surface_radius;
+
 /// How far the surface stands off its trigger, and keeps from the window's
 /// edges, in points.
 const GAP: f32 = 6.0;
@@ -152,7 +154,7 @@ pub fn Popover(props: PopoverProps, cx: Scope<PopoverEvent>) -> impl IntoElement
                             }));
                         })
                         .p_1()
-                        .rounded(move || px(theme().radius))
+                        .rounded(move || px(surface_radius()))
                         .bg(move || theme().popover)
                         .text_color(move || theme().popover_foreground)
                         .border_1()

@@ -13,6 +13,7 @@
 //! bundler. See README.md for how to write one.
 
 mod button;
+mod dialog;
 mod metrics;
 mod popover;
 
@@ -25,6 +26,7 @@ use nsh_core::ui::{ComponentSpec, Registry};
 
 pub use crate::{
     button::{Button, ButtonEvent, ButtonProps, ButtonVariant},
+    dialog::{Dialog, DialogEvent, DialogProps},
     metrics::ControlSize,
     popover::{Popover, PopoverEvent, PopoverProps},
 };
@@ -35,7 +37,10 @@ pub const SPECIFIER: &str = "nsh/ui/desktop";
 /// Every component of the desktop set, for an engine to render.
 pub fn registry() -> Registry {
     let mut registry = Registry::ui_set(SPECIFIER);
-    registry.register::<Button>().register::<Popover>();
+    registry
+        .register::<Button>()
+        .register::<Dialog>()
+        .register::<Popover>();
     registry
 }
 
@@ -53,7 +58,7 @@ mod tests {
     fn the_exports_are_pinned() {
         let registry = super::registry();
         let components: Vec<_> = registry.specs().iter().map(|s| s.export.clone()).collect();
-        assert_eq!(components, ["Button", "Popover"]);
+        assert_eq!(components, ["Button", "Dialog", "Popover"]);
         assert!(registry.module_specs().is_empty());
     }
 }

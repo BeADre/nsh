@@ -1,6 +1,6 @@
 ---
 title: Desktop UI
-description: The nsh/ui/desktop UI set, NSH's design language at a pointer's and a keyboard's density, its Button and Popover.
+description: The nsh/ui/desktop UI set, NSH's design language at a pointer's and a keyboard's density, and its components.
 order: 20
 ---
 
@@ -8,8 +8,8 @@ order: 20
 
 `nsh/ui/desktop` is NSH's UI set for windows on macOS, Windows, Linux and the web. It draws the same design language
 as the [mobile UI](./index.md), with the same theme, at a desktop's density: shorter controls, a highlight under the
-pointer, and a focus ring when the keyboard moves to a control. Its first components are `Button` and `Popover`; more
-follow.
+pointer, and a focus ring when the keyboard moves to a control. Its first components are `Button`, `Popover` and
+`Dialog`; more follow.
 
 ```tsx
 import { Button } from "nsh/ui/desktop";
@@ -126,3 +126,55 @@ returns to the trigger when the popover closes.
 | Event | Payload | When |
 |---|---|---|
 | `onClose` | none | A click outside the surface, or Escape. |
+
+## Dialog
+
+`Dialog` shows a surface in the middle of the window over a dimmed backdrop while `open` is true: a title, a
+description, your content and the actions in `footer`. A click on the backdrop or Escape closes it through `onClose`;
+set `open` to false there. It rises a little and fades in as it opens, and sinks and fades out as it closes. The
+content is made each time it opens.
+
+```tsx
+import { mount, signal, View } from "nsh";
+import { Button, Dialog } from "nsh/ui/desktop";
+
+function App() {
+  const open = signal(false);
+  const close = () => open.set(false);
+  return (
+    <View class="p-6">
+      <Button title="Delete project…" variant="danger" onPress={() => open.set(true)} />
+      <Dialog
+        open={open()}
+        onClose={close}
+        title="Delete “Website”?"
+        description="The project, its files and its history are deleted for everyone."
+        footer={
+          <View class="flex-row gap-2">
+            <Button title="Cancel" variant="secondary" onPress={close} />
+            <Button title="Delete" variant="danger" onPress={close} />
+          </View>
+        }
+      />
+    </View>
+  );
+}
+
+mount(App);
+```
+
+On macOS and the web, Tab moves between the dialog's controls only, and the keyboard focus returns to what had it
+when the dialog closes.
+
+| Prop | Type | Default | Description |
+|---|---|---|---|
+| `open` | `boolean` | `false` | Shown. |
+| `title` | `string` | | At the top, in bold. |
+| `description` | `string` | | Below the title, muted. |
+| `footer` | JSX | | The actions, at the end of the last row (the main one last). |
+| `width` | `number` | `440` | The surface's width in points; a narrower window narrows it. |
+| `children` | JSX | | The content between the description and the actions, made when the dialog opens. |
+
+| Event | Payload | When |
+|---|---|---|
+| `onClose` | none | A click on the backdrop, or Escape. |
