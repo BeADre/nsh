@@ -16,9 +16,11 @@ mod button;
 mod checkbox;
 mod dialog;
 mod metrics;
+mod number_input;
 mod popover;
 mod select;
 mod switch;
+mod text_field;
 
 use std::sync::Arc;
 
@@ -32,9 +34,11 @@ pub use crate::{
     checkbox::{Checkbox, CheckboxEvent, CheckboxProps},
     dialog::{Dialog, DialogEvent, DialogProps},
     metrics::ControlSize,
+    number_input::{NumberInput, NumberInputEvent, NumberInputProps},
     popover::{Popover, PopoverEvent, PopoverProps},
     select::{Select, SelectEvent, SelectProps},
     switch::{Switch, SwitchEvent, SwitchProps},
+    text_field::{TextField, TextFieldEvent, TextFieldProps},
 };
 
 /// The JS module apps import the desktop UI as.
@@ -49,7 +53,9 @@ pub fn registry() -> Registry {
         .register::<Dialog>()
         .register::<Popover>()
         .register::<Select>()
-        .register::<Switch>();
+        .register::<NumberInput>()
+        .register::<Switch>()
+        .register::<TextField>();
     registry
 }
 
@@ -70,7 +76,14 @@ mod tests {
         assert_eq!(
             components,
             [
-                "Button", "Checkbox", "Dialog", "Popover", "Select", "Switch"
+                "Button",
+                "Checkbox",
+                "Dialog",
+                "NumberInput",
+                "Popover",
+                "Select",
+                "Switch",
+                "TextField",
             ]
         );
         assert!(registry.module_specs().is_empty());

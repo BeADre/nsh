@@ -309,3 +309,93 @@ its state.
 | Event | Payload | When |
 |---|---|---|
 | `onChange` | `boolean` | A click, or Return or Space with the keyboard focus: the new state. |
+
+## TextField
+
+`TextField` is a one-line text input with an optional `label` above it. Its border is the theme's `input.border`,
+darker under the pointer, and it shows the focus ring (the theme's `ring`, 2 pt wide, 2 pt away) while typing goes
+there, whether the field was focused by a click or by Tab. Return reports `onSubmit` and keeps the focus in the field.
+With `value` the app controls the text and updates it from `onChange`; with `defaultValue` (or neither) the field
+keeps its own.
+
+```tsx
+import { mount, signal, Text, View } from "nsh";
+import { TextField } from "nsh/ui/desktop";
+
+function App() {
+  const name = signal("");
+  return (
+    <View class="w-72 gap-3 p-6">
+      <TextField label="Name" placeholder="Your name" value={name()} onChange={(t) => name.set(t)} />
+      <TextField label="Password" secure size="sm" />
+      <Text>{`Hello, ${name()}`}</Text>
+    </View>
+  );
+}
+
+mount(App);
+```
+
+The field is as tall as its `size` (24, 32 or 40 pt) and as wide as its parent gives it (`class="w-64"` sets a
+width). The label uses the theme's `muted.foreground`, the text `foreground`, the placeholder `muted.foreground` and
+the field's background `background`.
+
+| Prop | Type | Default | Description |
+|---|---|---|---|
+| `label` | `string \| null` | | Shown above the field. |
+| `placeholder` | `string \| null` | | Shown while it is empty. |
+| `value` | `string \| null` | | The text, when the app controls it. |
+| `defaultValue` | `string` | `""` | The first text, when the field keeps its own. |
+| `secure` | `boolean` | `false` | Hides what is typed (passwords). |
+| `size` | `"sm" \| "md" \| "lg"` | `"md"` | The height, padding, text size and corners. |
+| `disabled` | `boolean` | `false` | Not editable, 50% opacity. |
+| `class`, `classList`, `style`, `testID`, `onLayout`, `ref` | | | Applied to the field's root view (the label and the box). |
+
+| Event | Payload | When |
+|---|---|---|
+| `onChange` | `string`: the new text | The text changed. |
+| `onSubmit` | `string`: the text | Return was pressed. |
+
+## NumberInput
+
+`NumberInput` is a number field between − and + buttons. A click on a button steps the value by `step`, and holding
+it keeps stepping until the button is released or the value reaches `min` or `max`; a button at its bound is dimmed.
+What is typed is read when Return is pressed or the field loses focus: rounded to the decimals of `step`, kept between
+`min` and `max`, and shown with those decimals (`0.50` for a step of 0.25). Text that is not a number gives the value
+back. Tab stops at the field; the buttons are for the pointer.
+
+```tsx
+import { mount, signal, Text, View } from "nsh";
+import { NumberInput } from "nsh/ui/desktop";
+
+function App() {
+  const quantity = signal(1);
+  return (
+    <View class="items-start gap-3 p-6">
+      <NumberInput value={quantity()} onChange={(v) => quantity.set(v)} min={1} max={99} />
+      <NumberInput defaultValue={0.5} step={0.25} max={2} size="sm" />
+      <Text>{`Quantity: ${quantity()}`}</Text>
+    </View>
+  );
+}
+
+mount(App);
+```
+
+It has the field look of `TextField` (border, hover, focus ring); the buttons get the theme's `accent.background`
+under the pointer and `secondary.active.background` while pressed.
+
+| Prop | Type | Default | Description |
+|---|---|---|---|
+| `value` | `number \| null` | | The value, when the app controls it. |
+| `defaultValue` | `number` | `0` | The first value, when the field keeps its own. |
+| `min` | `number` | `0` | The smallest value. |
+| `max` | `number` | `100` | The largest value. |
+| `step` | `number` | `1` | How much a button press changes the value; its decimals are the value's. |
+| `size` | `"sm" \| "md" \| "lg"` | `"md"` | The height, text size and corners. |
+| `disabled` | `boolean` | `false` | Not editable, no presses, 50% opacity. |
+| `class`, `classList`, `style`, `testID`, `onLayout`, `ref` | | | Applied to the field's root view. |
+
+| Event | Payload | When |
+|---|---|---|
+| `onChange` | `number`: the new value | A button stepped it, or what was typed was read and differs from it. |

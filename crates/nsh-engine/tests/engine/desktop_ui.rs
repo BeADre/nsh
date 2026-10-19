@@ -547,3 +547,153 @@ fn a_switch_springs_its_thumb_when_the_app_turns_it_on() {
             .any(|b| checked_state(b, wifi).map(|s| s.1) == Some(Some(Checked::True)))
     );
 }
+
+/// The inputs `batch` makes, in order.
+fn inputs(batch: &MountBatch) -> Vec<u32> {
+    batch
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            MountItem::Create {
+                id,
+                kind: nsh_core::ViewKind::Input,
+            } => Some(*id),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Whether a batch shows `wanted` before nothing comes for a second.
+fn shown(rx: &Receiver<MountBatch>, wanted: &str) -> bool {
+    until_text(rx, wanted)
+        .iter()
+        .any(|b| text_id(b, wanted).is_some())
+}
+
+const FIELDS: &str = r#"import { mount, signal, Text, View } from "nsh";
+import { TextField } from "nsh/ui/desktop";
+
+const name = signal("Ada");
+const submitted = signal("");
+mount(() => (
+  <View class="w-80 gap-2 p-4">
+    <TextField
+      label="Name"
+      value={name()}
+      onChange={(t) => name.set(t)}
+      onSubmit={(t) => submitted.set(t)}
+    />
+    <TextField placeholder="Search" size="sm" />
+    <Text>{`name ${name()}`}</Text>
+    <Text>{`submitted ${submitted()}`}</Text>
+  </View>
+));
+"#;
+
+#[test]
+fn a_desktop_text_field_is_dense_and_reports_typing_and_return() {
+    let (engine, rx) = start(FIELDS);
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    let fields = inputs(&first);
+    assert_eq!(fields.len(), 2);
+    // The labeled one: its box is next to the label, in the field's root.
+    let label = text_id(&first, "Name").expect("the label");
+    let field_box = |input: u32| parent_of(&first, input).expect("the field's box");
+    let (named, search) = match fields[..] {
+        [a, b] if parent_of(&first, field_box(a)) == parent_of(&first, label) => (a, b),
+        [a, b] => (b, a),
+        _ => unreachable!(),
+    };
+    assert_eq!(
+        parent_of(&first, field_box(named)),
+        parent_of(&first, label)
+    );
+    // The boxes around the inputs are the controls' heights.
+    let height = |input: u32| size_of(&first, field_box(input)).map(|s| s.1);
+    assert_eq!(height(named), Some(32.0), "md");
+    assert_eq!(height(search), Some(24.0), "sm");
+    let control = engine.control();
+    control.dispatch_event(
+        named,
+        EventKind::ChangeText,
+        EventPayload::Text {
+            text: "Ada L".into(),
+            count: 1,
+        },
+    );
+    assert!(shown(&rx, "name Ada L"), "onChange reached the app");
+    control.dispatch_event(
+        named,
+        EventKind::SubmitEditing,
+        EventPayload::Text {
+            text: "Ada L".into(),
+            count: 1,
+        },
+    );
+    assert!(shown(&rx, "submitted Ada L"), "onSubmit reached the app");
+}
+
+const NUMBERS: &str = r#"import { mount, signal, Text, View } from "nsh";
+import { NumberInput } from "nsh/ui/desktop";
+
+const n = signal(4);
+mount(() => (
+  <View class="items-start gap-2 p-4">
+    <NumberInput value={n()} onChange={(v) => n.set(v)} min={0} max={5} />
+    <Text>{`n ${n()}`}</Text>
+  </View>
+));
+"#;
+
+#[test]
+fn a_desktop_number_input_steps_within_its_range_and_reads_what_is_typed() {
+    let (engine, rx) = start(NUMBERS);
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    let field = inputs(&first)[0];
+    let field_box = parent_of(&first, field).expect("the field's box");
+    assert_eq!(size_of(&first, field_box).map(|s| s.1), Some(32.0));
+    let button = |label: &str| parent_of(&first, text_id(&first, label).expect(label)).unwrap();
+    let (minus, plus) = (button("−"), button("+"));
+    assert_eq!(parent_of(&first, minus), Some(field_box));
+    let control = engine.control();
+    let press = |button: u32| {
+        control.dispatch_event(button, EventKind::PressIn, EventPayload::None);
+        control.dispatch_event(button, EventKind::PressOut, EventPayload::None);
+    };
+    press(plus);
+    assert!(shown(&rx, "n 5"), "a step reached the app");
+    // At the bound it goes no further.
+    press(plus);
+    press(minus);
+    assert!(shown(&rx, "n 4"));
+    // What is typed is read on Return, fitted to the range.
+    for kind in [EventKind::ChangeText, EventKind::SubmitEditing] {
+        control.dispatch_event(
+            field,
+            kind,
+            EventPayload::Text {
+                text: "2.4".into(),
+                count: 1,
+            },
+        );
+    }
+    assert!(shown(&rx, "n 2"));
+    // And when the field loses focus; text that is no number changes
+    // nothing.
+    for (text, count) in [("abc", 2), ("9", 3)] {
+        control.dispatch_event(
+            field,
+            EventKind::ChangeText,
+            EventPayload::Text {
+                text: text.into(),
+                count,
+            },
+        );
+        control.dispatch_event(field, EventKind::Blur, EventPayload::None);
+    }
+    assert!(shown(&rx, "n 5"));
+}

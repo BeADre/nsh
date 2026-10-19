@@ -15,7 +15,9 @@ regions, slots, state, tasks, modules); this set adds what a desktop control is:
   `accent` for controls without one), `.active(|s| ..)` while pressed (the theme's `*_active` colors, as on mobile).
 - **The keyboard**: `.focus(|s| s.outline(RING_WIDTH).outline_color(move || theme().ring).outline_offset(RING_OFFSET))`.
   Pressables take focus from Tab only, never from a click, so a ring on `focus` shows exactly for keyboard focus;
-  Return and Space press the focused control natively.
+  Return and Space press the focused control natively. Fields (`text_field.rs`' `field_box`) ring while their input
+  has focus, from a click too, as browsers show `:focus-visible` on inputs; the buttons inside a field are
+  `focusable(false)`, so the field is one Tab stop.
 - **Shared, not copied**: what a control does (a value the app may control, a number in steps, a press that repeats)
   is `nsh_core::ui`'s (`controllable`, `NumberRange`, `press_repeat`), the same as the mobile set uses. A component
   never imports from `nsh-ui-mobile`; what both need moves to the core.

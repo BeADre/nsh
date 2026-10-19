@@ -80,6 +80,10 @@ pub(crate) fn surface_radius() -> f32 {
 /// How far a hovered control's background fades toward what is under it.
 pub(crate) const HOVER_OPACITY: f32 = 0.9;
 
+/// How strongly a hovered field's border takes the theme's `ring` color,
+/// short of the focus ring's full color.
+pub(crate) const FIELD_HOVER_OPACITY: f32 = 0.5;
+
 /// The focus ring's width and its gap from the control, in points.
 pub(crate) const RING_WIDTH: f32 = 2.0;
 pub(crate) const RING_OFFSET: f32 = 2.0;

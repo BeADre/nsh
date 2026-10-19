@@ -18,11 +18,11 @@ back. One implementation draws the same on iOS and Android, is laid out in the s
 | `nsh_engine::EngineConfig::ui_sets` | The registries a surface serves (the platforms' `set_ui_sets`: by default `nsh_ui_mobile::registry()` on iOS and Android, both sets on the desktops and the web; an app's own set: `docs/dev/tooling.md`) |
 
 The desktop set (`nsh/ui/desktop`, `crates/nsh-ui-desktop`) is a crate of its own, not an abstraction over both; like
-every UI set it runs on every backend (macOS, Windows, Linux, GPUI, the web). It is in its first components (`Button`, `Checkbox`, `Dialog`, `Popover`, `Select`, `Switch`);
+every UI set it runs on every backend (macOS, Windows, Linux, GPUI, the web). It is in its first components (`Button`, `Checkbox`, `Dialog`, `NumberInput`, `Popover`, `Select`, `Switch`, `TextField`);
 until it has what the desktop apps and the gallery use, the desktops' runtimes serve both sets and their apps use
 `nsh/ui/mobile` too. Its controls are shorter than the mobile set's (`ControlSize`: 24, 32 and 40 points for a pointer;
 the mobile set's are 44 for a finger), with corners scaled from the theme's radius by height, so both draw one shape;
-they highlight under the pointer (`hover`) and ring when the keyboard focuses them (`focus`: pressables take focus
+they highlight under the pointer (`hover`) and ring when the keyboard focuses them (fields while their input has focus, from a click too; `focus`: pressables take focus
 from Tab only, never from a click, so their `FOCUSED` state is keyboard focus; macOS and the web tab to pressables,
 Windows, Linux and GPUI to fields only so far).
 

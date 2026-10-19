@@ -291,3 +291,89 @@ mount(App);
 | 事件 | 参数 | 触发时机 |
 |---|---|---|
 | `onChange` | `boolean` | 点击，或获得键盘焦点时按 Return 或空格：新的开关状态。 |
+
+## TextField
+
+`TextField` 是单行文本输入框，可以在上方显示 `label`。边框使用主题的 `input.border`，指针悬停时稍微加深；输入焦点在它上面时
+（无论是点击还是 Tab 聚焦）显示焦点环（主题的 `ring`，宽 2 pt，间距 2 pt）。按 Return 会触发 `onSubmit`，焦点留在输入框里。
+传入 `value` 时由应用控制文字，并在 `onChange` 里更新它；传入 `defaultValue`（或都不传）时由输入框自己保存文字。
+
+```tsx
+import { mount, signal, Text, View } from "nsh";
+import { TextField } from "nsh/ui/desktop";
+
+function App() {
+  const name = signal("");
+  return (
+    <View class="w-72 gap-3 p-6">
+      <TextField label="Name" placeholder="Your name" value={name()} onChange={(t) => name.set(t)} />
+      <TextField label="Password" secure size="sm" />
+      <Text>{`Hello, ${name()}`}</Text>
+    </View>
+  );
+}
+
+mount(App);
+```
+
+输入框的高度由 `size` 决定（24、32 或 40 pt），宽度由父视图决定（用 `class="w-64"` 设置宽度）。标签使用主题的
+`muted.foreground`，文字使用 `foreground`，占位文字使用 `muted.foreground`，输入框背景使用 `background`。
+
+| 属性 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `label` | `string \| null` | | 显示在输入框上方。 |
+| `placeholder` | `string \| null` | | 内容为空时显示。 |
+| `value` | `string \| null` | | 由应用控制时的文字。 |
+| `defaultValue` | `string` | `""` | 由输入框自己保存时的初始文字。 |
+| `secure` | `boolean` | `false` | 隐藏输入的内容（密码）。 |
+| `size` | `"sm" \| "md" \| "lg"` | `"md"` | 高度、内边距、字号和圆角。 |
+| `disabled` | `boolean` | `false` | 不可编辑，50% 不透明度。 |
+| `class`、`classList`、`style`、`testID`、`onLayout`、`ref` | | | 作用于输入框的根视图（标签和输入框）。 |
+
+| 事件 | 参数 | 触发时机 |
+|---|---|---|
+| `onChange` | `string`：新的文字 | 文字改变。 |
+| `onSubmit` | `string`：当前文字 | 按下 Return。 |
+
+## NumberInput
+
+`NumberInput` 是一个数字输入框，两侧是 − 和 + 按钮。点击按钮按 `step` 增减数值，按住按钮会持续步进，直到松开或数值到达
+`min` 或 `max`；到达边界的按钮显示为淡化状态。输入的文字在按 Return 或输入框失去焦点时读取：按 `step` 的小数位取整，限制在
+`min` 和 `max` 之间，并以同样的小数位显示（步长为 0.25 时显示 `0.50`）。不是数字的文字会恢复为原来的数值。Tab 停在输入框上，
+两侧按钮供指针使用。
+
+```tsx
+import { mount, signal, Text, View } from "nsh";
+import { NumberInput } from "nsh/ui/desktop";
+
+function App() {
+  const quantity = signal(1);
+  return (
+    <View class="items-start gap-3 p-6">
+      <NumberInput value={quantity()} onChange={(v) => quantity.set(v)} min={1} max={99} />
+      <NumberInput defaultValue={0.5} step={0.25} max={2} size="sm" />
+      <Text>{`Quantity: ${quantity()}`}</Text>
+    </View>
+  );
+}
+
+mount(App);
+```
+
+它的外观和 `TextField` 一致（边框、悬停、焦点环）；按钮在指针悬停时显示主题的 `accent.background`，按下时显示
+`secondary.active.background`。
+
+| 属性 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `value` | `number \| null` | | 由应用控制时的数值。 |
+| `defaultValue` | `number` | `0` | 由输入框自己保存时的初始数值。 |
+| `min` | `number` | `0` | 最小值。 |
+| `max` | `number` | `100` | 最大值。 |
+| `step` | `number` | `1` | 每次按下按钮改变的量；数值使用它的小数位。 |
+| `size` | `"sm" \| "md" \| "lg"` | `"md"` | 高度、字号和圆角。 |
+| `disabled` | `boolean` | `false` | 不可编辑，不响应按压，50% 不透明度。 |
+| `class`、`classList`、`style`、`testID`、`onLayout`、`ref` | | | 作用于输入框的根视图。 |
+
+| 事件 | 参数 | 触发时机 |
+|---|---|---|
+| `onChange` | `number`：新的数值 | 按钮步进了数值，或读取的输入与当前数值不同。 |
