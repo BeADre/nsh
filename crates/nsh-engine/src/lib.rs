@@ -59,6 +59,11 @@ const ENGINE_STACK_SIZE: usize = 8 * 1024 * 1024;
 /// parent/child links reference each other) wait for the collector.
 const IDLE_GC_INTERVAL: Duration = Duration::from_secs(1);
 
+/// The shortest time between two deliveries of `onHoverMove`: a frame at
+/// 120 Hz. Mice report moves far more often (up to 1000 Hz), and a handler
+/// that redraws a crosshair needs no more than one per frame.
+const HOVER_MOVE_INTERVAL: Duration = Duration::from_millis(8);
+
 /// The app an engine runs.
 #[derive(Debug, Clone)]
 pub enum App {
@@ -334,8 +339,13 @@ impl Bundle {
 impl Bundle {
     /// The bundle of a verified package: its bytecode when it was compiled
     /// for this runtime (else its source), its source map and its declared
-    /// capabilities.
+    /// capabilities. What a newer signer wrote that this runtime does not
+    /// know (header fields, files, capabilities) is logged and left out: an
+    /// unknown capability is not granted.
     pub fn from_package(package: &nsh_package::VerifiedPackage) -> Result<Bundle, String> {
+        for ignored in &package.ignored {
+            log::warn!("package {}: ignored {ignored}", package.app.id);
+        }
         let bundle = match package.bytecode() {
             // SAFETY: verified: signed by a certified release key, hashed,
             // and compiled for this runtime.
@@ -346,11 +356,13 @@ impl Bundle {
             Some(map) => bundle.with_source_map(map.clone()),
             None => bundle,
         };
-        bundle.policy.declared = package
-            .capabilities
-            .as_ref()
-            .map(Capabilities::from_json)
-            .transpose()?;
+        if let Some(json) = &package.capabilities {
+            let (declared, dropped) = Capabilities::from_json_lenient(json)?;
+            for dropped in dropped {
+                log::warn!("package {}: not granted: {dropped}", package.app.id);
+            }
+            bundle.policy.declared = Some(declared);
+        }
         bundle.app_id = Some(package.app.id.clone());
         Ok(bundle)
     }
@@ -1069,6 +1081,8 @@ impl<M: TextEngine + 'static> Driver<M> {
             hot: Vec::new(),
             scroll_events: FxHashMap::default(),
             touch_move: None,
+            hover_moves: Vec::new(),
+            hover_moved: None,
             resized: None,
             net: Net {
                 network: config.network.clone(),
@@ -1157,6 +1171,7 @@ impl<M: TextEngine + 'static> Driver<M> {
             script.and_then(Script::next_timer),
             gc_deadline,
             self.state.next_scroll_event(),
+            self.state.next_hover_move(),
             task_timer,
         ]
         .into_iter()
@@ -1182,6 +1197,12 @@ impl<M: TextEngine + 'static> Driver<M> {
         let script = script.as_ref();
         let turn_start = state.trace.then(Instant::now);
         state.dispatch_touch_move(script);
+        if state
+            .next_hover_move()
+            .is_some_and(|due| due <= Instant::now())
+        {
+            state.dispatch_hover_moves(script);
+        }
         state.dispatch_scroll_events(script);
         let hot = std::mem::take(&mut state.hot);
         if let Some(script) = script {
@@ -1279,6 +1300,12 @@ struct State<M: TextEngine> {
     scroll_events: FxHashMap<NodeId, ScrollEvent>,
     /// Touch moves not delivered yet: those queued in one frame become one.
     touch_move: Option<(NodeId, Box<nsh_core::TouchEvent>)>,
+    /// `onHoverMove`s not delivered yet: the latest per view, in the order
+    /// they came; sent once per [`HOVER_MOVE_INTERVAL`] at most, and before
+    /// any other event.
+    hover_moves: Vec<(NodeId, nsh_core::HoverEvent)>,
+    /// When `hover_moves` were last delivered.
+    hover_moved: Option<Instant>,
     /// The viewport size a resize set this turn ([`MountSink::resized`]).
     resized: Option<Size>,
 }
@@ -1472,6 +1499,38 @@ impl<M: TextEngine> State<M> {
             && let Some(script) = script
         {
             script.dispatch_event(id, EventKind::Touch, &EventPayload::Touch(touch));
+        }
+    }
+
+    /// When the pending `onHoverMove`s are due.
+    fn next_hover_move(&self) -> Option<Instant> {
+        if self.hover_moves.is_empty() {
+            return None;
+        }
+        Some(
+            self.hover_moved
+                .map_or_else(Instant::now, |t| t + HOVER_MOVE_INTERVAL),
+        )
+    }
+
+    /// Delivers the pending `onHoverMove`s: to the Rust components whose
+    /// parts they are on, the others to JS.
+    fn dispatch_hover_moves(&mut self, script: Option<&Script>) {
+        if self.hover_moves.is_empty() {
+            return;
+        }
+        self.hover_moved = Some(Instant::now());
+        for (id, event) in std::mem::take(&mut self.hover_moves) {
+            let payload = EventPayload::Hover(event);
+            if self
+                .core
+                .component_event(id, EventKind::HoverMove, &payload)
+            {
+                continue;
+            }
+            if let Some(script) = script {
+                script.dispatch_event(id, EventKind::HoverMove, &payload);
+            }
         }
     }
 
@@ -1727,6 +1786,19 @@ fn handle<M: TextEngine>(script: Option<&Script>, state: &mut State<M>, message:
             if state.trace {
                 log::info!(target: "nsh::perf", "event {event:?} on view {id}");
             }
+            // Hover moves wait for the frame, the latest per view; any other
+            // event comes after the moves before it (a view hears where the
+            // mouse went before it hears it leave).
+            if let EventPayload::Hover(hover) = payload
+                && event == EventKind::HoverMove
+            {
+                match state.hover_moves.iter_mut().find(|(v, _)| *v == id) {
+                    Some((_, pending)) => *pending = hover,
+                    None => state.hover_moves.push((id, hover)),
+                }
+                return true;
+            }
+            state.dispatch_hover_moves(script);
             // The core tracks input text for layout and to recognize stale
             // values (from JS and from Rust components alike).
             if let (EventKind::ChangeText, EventPayload::Text { text, count }) = (event, &payload) {

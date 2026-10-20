@@ -42,12 +42,15 @@ keeps, and for good, whatever the version number says; earlier versions made no 
 5. **`nsh:rt` is append-only.** The JSX compiler may start emitting new functions; the ones it emitted before keep
    their signatures and semantics, because bundles built by older compilers call them as those compilers did.
 6. **Formats are read forever.** Readers of packages, certificates, revocation lists and `app.json` accept every
-   format an earlier release wrote. New fields are optional.
+   format an earlier release wrote. New fields are optional. The other direction holds for packages too: a runtime
+   ignores the header fields, files and capabilities a later release added (never granting what it does not know),
+   unless the header's `critical` names them, so a package published with a lower minimum runtime
+   (`nsh publish --min-runtime`) runs on the older runtimes it names ("Format evolution" in `nsh-package`).
 7. **The only exception is security**: a capability that cannot be kept safe may be closed. The pull request that
    closes it adds the entries it removes to `api/closed.txt`, each with its reason (`<entry> -- <reason>`, the entry
    as the `compat` tests report the break: `[<module>] <path>`, `<file>: <Name>` or `<file>: <Name>.<member>`; the
-   file's header has the details), and says why in its description
-   and the release notes. `api/closed.txt` is the only list of removals there will ever be.
+   file's header has the details), and says why in its description and the release notes. `api/closed.txt` is the
+   only list of removals there will ever be.
 
 ## How it is enforced
 
