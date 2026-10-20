@@ -136,9 +136,15 @@ fn items(runtime: &str, types: &[(String, String)]) -> BTreeSet<String> {
         if STYLES.contains(&name.as_str()) {
             out.extend(members.map(|m| format!("[styles] {m}")));
         } else if name.ends_with("Props") {
+            // An element's own props are not a platform's, though a name
+            // may start like one (`WebViewHostProps` is the WebView's).
+            let element = name
+                .strip_suffix("HostProps")
+                .or_else(|| name.strip_suffix("Props"))
+                .is_some_and(|e| PRIMITIVES.iter().any(|(_, p, _)| *p == e));
             let prefix = PLATFORMS
                 .iter()
-                .find(|(p, _)| name.starts_with(p))
+                .find(|(p, _)| !element && name.starts_with(p))
                 .map_or(String::new(), |(_, prop)| format!("{prop}."));
             for m in members {
                 let section = if is_handler(m) { "events" } else { "props" };

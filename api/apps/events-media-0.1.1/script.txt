@@ -42,3 +42,5 @@ covers [events] onLoadEnd
 covers [events] onError
 covers [events] onBuffer
 covers [events] onEnd
+covers [events] onMessage
+covers [events] onNavigationStateChange

@@ -12,11 +12,6 @@
 [events] onRequestClose
 [events] onShow
 [events] onSubmitEditing
-[events] web.onError
-[events] web.onLoad
-[events] web.onLoadStart
-[events] web.onMessage
-[events] web.onNavigationStateChange
 [globals] cancelAnimationFrame
 [globals] requestAnimationFrame
 [props] accessibilityActions
@@ -78,6 +73,8 @@
 [props] hitSlop
 [props] horizontal
 [props] importantForAccessibility
+[props] injectedJavaScript
+[props] injectedJavaScriptBeforeContentLoaded
 [props] inverted
 [props] ios.allowsBackForwardNavigationGestures
 [props] ios.headerBackTitle
@@ -86,6 +83,7 @@
 [props] ios.presentationStyle
 [props] ios.supportedOrientations
 [props] ios.textContentType
+[props] javaScriptEnabled
 [props] keyboardDismissMode
 [props] keyboardShouldPersistTaps
 [props] keyboardType
@@ -137,15 +135,10 @@
 [props] transparent
 [props] underlayColor
 [props] underlayOpacity
+[props] userAgent
 [props] value
 [props] viewabilityConfig
 [props] volume
 [props] web
-[props] web.injectedJavaScript
-[props] web.injectedJavaScriptBeforeContentLoaded
-[props] web.javaScriptEnabled
 [props] web.presentationStyle
-[props] web.scrollEnabled
-[props] web.source
-[props] web.userAgent
 [props] zoomScale
