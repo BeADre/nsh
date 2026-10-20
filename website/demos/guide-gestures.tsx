@@ -85,7 +85,7 @@ function App() {
           onPressOut={() => add("pressOut")}
           onPress={() => add("press")}
           onLongPress={() => add("longPress")}
-          activeOpacity={0.5}
+          activeStyle={{ opacity: 0.5 }}
           style={{
             flex: 1,
             padding: 14,
@@ -94,14 +94,14 @@ function App() {
             alignItems: "center",
           }}
         >
-          <Text style={{ color: ui().onPrimary, fontWeight: "600" }}>activeOpacity</Text>
+          <Text style={{ color: ui().onPrimary, fontWeight: "600" }}>activeStyle opacity</Text>
         </View>
         <View
           onPress={() => add("underlay")}
-          underlayColor={ui().border}
+          activeStyle={{ backgroundColor: ui().border, backgroundImage: "none" }}
           style={{ ...ui().raised, flex: 1, padding: 14, borderRadius: 12, alignItems: "center" }}
         >
-          <Text style={{ color: ui().text, fontWeight: "600" }}>underlayColor</Text>
+          <Text style={{ color: ui().text, fontWeight: "600" }}>activeStyle background</Text>
         </View>
         <View
           onPress={() => add("active:")}

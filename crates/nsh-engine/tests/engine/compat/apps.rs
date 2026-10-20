@@ -58,7 +58,7 @@
 //!   timestamp `16 * n` (ms);
 //! - `type <selector> <text>`: the user types `<text>` (the rest of the
 //!   line) into the input the selector names, one character at a time:
-//!   `onKeyPress` (`key`), `onChangeText` (the whole text) and
+//!   `onKeyPress` (`key`), `onChange` (the whole text) and
 //!   `onSelectionChange` (the caret after it) for each. It types after
 //!   the input's text: the value the app last set, or what earlier `type`
 //!   steps typed since;
@@ -316,7 +316,7 @@ impl Run {
             environment,
             header_heights: (44.0, 96.0),
             limits: nsh_engine::Limits::default(),
-            ui_sets: vec![nsh_ui_mobile::registry()],
+            ui_sets: vec![nsh_base::registry()],
             runtime: None,
             data_dir: None,
             storage: None,
@@ -599,8 +599,8 @@ pub(crate) fn run(code: String, script: &str, assets: &Path) -> Result<(), Failu
             "listens" => {
                 let (selector, event) = selector(arg);
                 let event = event.trim();
-                let kind = EventKind::from_prop(event)
-                    .ok_or_else(|| format!("`{line}`: `{event}` is no event"))?;
+                let kind =
+                    event_kind(event).ok_or_else(|| format!("`{line}`: `{event}` is no event"))?;
                 let listens =
                     |v: &Views| v.mounted(&selector).is_some_and(|(m, _)| m.listens(kind));
                 if !run.until(EXPECT_WAIT, listens) {
@@ -616,8 +616,8 @@ pub(crate) fn run(code: String, script: &str, assets: &Path) -> Result<(), Failu
                 let (selector, rest) = selector(arg);
                 let rest = rest.trim();
                 let (name, fields) = rest.split_once(' ').unwrap_or((rest, ""));
-                let kind = EventKind::from_prop(name)
-                    .ok_or_else(|| format!("`{line}`: `{name}` is no event"))?;
+                let kind =
+                    event_kind(name).ok_or_else(|| format!("`{line}`: `{name}` is no event"))?;
                 let fields = parse_fields(fields).map_err(|e| format!("`{line}`: {e}"))?;
                 run.settle(TAP_WAIT);
                 let Some(id) = run
@@ -867,6 +867,25 @@ fn parse_fields(text: &str) -> Result<Vec<(String, Field)>, String> {
     Ok(out)
 }
 
+/// The event a script's `on…` name reports: a host element's handler as
+/// apps write it (`onChange`), a handler of `nsh/base`'s `NavPage` and
+/// `Dialog` (the runtime's own listeners of the platform's events), or the
+/// platform protocol's name (`onChangeText`).
+fn event_kind(name: &str) -> Option<EventKind> {
+    EventKind::from_handler(name)
+        .or(match name {
+            // `NavPage`.
+            "onDismiss" => Some(EventKind::Dismiss),
+            "onBackPress" => Some(EventKind::BackRequest),
+            // `Dialog`.
+            "onCancel" | "onOpenChange" => Some(EventKind::RequestClose),
+            "onOpen" => Some(EventKind::Show),
+            "onClose" => Some(EventKind::Dismiss),
+            _ => None,
+        })
+        .or_else(|| EventKind::from_prop(name))
+}
+
 /// The payload of an `event` step, as the platforms make it for `kind`.
 fn event_payload(
     views: &Views,
@@ -919,7 +938,7 @@ fn event_payload(
         _ if fields.is_empty() => EventPayload::None,
         EventKind::ChangeText => {
             let Some(Field::Str(text)) = get("text") else {
-                return Err("onChangeText takes text=<string>".into());
+                return Err("onChange takes text=<string>".into());
             };
             let typed = device.typed.entry(id).or_default();
             typed.0 = text.clone();

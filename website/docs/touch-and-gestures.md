@@ -26,8 +26,8 @@ function App() {
       <View
         onPress={() => count.update((n) => n + 1)}
         onLongPress={() => count.set(0)}
-        activeOpacity={0.6}
-        accessibilityRole="button"
+        activeStyle={{ opacity: 0.6 }}
+        role="button"
         style={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10, backgroundColor: "#0969da" }}
       >
         <Text style={{ color: "#ffffff", fontWeight: "600" }}>Pressed {count()} times</Text>
@@ -58,32 +58,35 @@ How presses behave:
 
 ## Press feedback
 
-Press feedback is drawn by the platform the moment the finger touches down, with no round trip to JS. Choose one per view:
+Press feedback is the app's: styles the view takes while it is pressed, hovered, focused or disabled. They are applied natively the moment the state changes, with no round trip to JS. Each state has a style prop and a [Tailwind variant](./tailwind.md):
 
-| Prop | Type | Default | Description |
+| Prop | Class | Type | Description |
 |---|---|---|---|
-| `activeOpacity` | `number` | | The view's opacity while pressed. |
-| `underlayColor` | `ColorValue` | | The background while pressed; the children fade to `underlayOpacity`. |
-| `underlayOpacity` | `number` | `0.85` | The children's opacity while `underlayColor` shows. |
-| `android={{ ripple }}` | `{ color?, borderless?, radius?, foreground? }` | | Android's material ripple. Ignored on iOS. |
+| `activeStyle` | `active:` | `ViewStyle` | While pressed. |
+| `hoverStyle` | `hover:` | `ViewStyle` | While a pointer is over it (desktops, iPad pointers, browsers). |
+| `focusStyle` | `focus:` | `ViewStyle` | While it has focus. |
+| `disabledStyle` | `disabled:` | `ViewStyle` | While `disabled`. |
+| `android={{ ripple }}` | | `{ color?, borderless?, radius?, foreground? }` | Android's material ripple, in addition to the styles. |
+
+The state styles go over the view's own `style` and classes. Later states win (hover, focus, active), `disabledStyle` wins over all, and the others do not apply while the view is disabled.
 
 ```tsx
-<View onPress={open} activeOpacity={0.5}>…</View>
+<View onPress={open} activeStyle={{ opacity: 0.5 }}>…</View>
 
-<View onPress={open} underlayColor="#ddf4ff" style={{ padding: 16 }}>…</View>
+<View onPress={open} activeStyle={{ backgroundColor: "#ddf4ff" }} style={{ padding: 16 }}>…</View>
 
 <View
   onPress={open}
-  activeOpacity={0.6}
+  activeStyle={{ opacity: 0.6 }}
   android={{ ripple: { color: "rgba(9,105,218,0.3)" } }}
 >
   …
 </View>
 ```
 
-A borderless ripple spreads outside the view, which suits icon buttons: `android={{ ripple: { borderless: true, radius: 24 } }}`. Combining `activeOpacity` with a ripple is common: iOS uses the opacity, Android the ripple. See [Platform-specific code](./platform-specific.md).
+A borderless ripple spreads outside the view, which suits icon buttons: `android={{ ripple: { borderless: true, radius: 24 } }}`. See [Platform-specific code](./platform-specific.md).
 
-The `active:` Tailwind variant is the third option. It applies classes while the view is pressed, and with a `transition` class the change animates:
+The same states as classes apply while the view is pressed, and with a `transition` class the change animates. `group-active:` styles the children of a pressed `group` view:
 
 ```tsx
 <View

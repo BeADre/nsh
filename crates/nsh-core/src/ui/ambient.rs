@@ -202,7 +202,7 @@ pub fn safe_area() -> EdgeInsets {
 }
 
 /// The software keyboard's height over the surface, 0 when hidden (TS:
-/// `keyboard().height`).
+/// `keyboardFrame().height`).
 pub fn keyboard_height() -> f32 {
     env(|e| e.keyboard_height)
 }
@@ -327,7 +327,7 @@ pub fn global<G: Default + 'static>() -> Signal<G> {
 }
 
 /// The insets of the screen or modal the component on `host` is on, below
-/// its header, else the safe area (TS: `useSafeAreaInsets()`).
+/// its header, else the safe area (TS: `safeAreaInsets()`).
 pub(crate) fn insets_of(host: NodeId) -> EdgeInsets {
     let existing = with_data(|d| d.ambient.insets.get(&host).copied());
     let signal = existing.unwrap_or_else(|| {

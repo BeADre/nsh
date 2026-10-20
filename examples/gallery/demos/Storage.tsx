@@ -1,6 +1,6 @@
 import { Input, signal, Text, View } from "nsh";
 import { Storage } from "nsh/storage";
-import { Alert } from "nsh/ui/mobile";
+import { AlertDialog } from "nsh/base";
 import { Icon } from "../icons";
 import { Badge, Button, Caption, Card, colors, DemoPage, Figure, finish, mono, radius, Row } from "../ui";
 
@@ -48,16 +48,16 @@ export function StorageDemo() {
   };
 
   const clearAll = async () => {
-    const i = await Alert.alert(
-      "Clear the storage?",
-      "Removes every key the gallery keeps, the launch count and the note among them.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Clear", style: "destructive" },
+    const action = await AlertDialog.show({
+      title: "Clear the storage?",
+      description: "Removes every key the gallery keeps, the launch count and the note among them.",
+      actions: [
+        { label: "Cancel", role: "cancel" },
+        { label: "Clear", role: "destructive", id: "clear" },
       ],
-      { cancelable: true },
-    );
-    if (i !== 1) return;
+      closeOnBackdropPress: true,
+    });
+    if (action !== "clear") return;
     await Storage.clear();
     launches.set(0);
     note.set("");
@@ -93,12 +93,10 @@ export function StorageDemo() {
           <Input
             multiline
             value={note()}
-            onChangeText={write}
+            onChange={write}
             placeholder="Write something, then come back to it"
-            placeholderTextColor={colors.faint}
-            selectionColor={colors.accent}
             accessibilityLabel="Note"
-            style={{ height: 120, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 12, fontSize: 15, color: colors.text }}
+            style={{ placeholderColor: colors.faint, selectionColor: colors.accent, height: 120, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 12, fontSize: 15, color: colors.text }}
           />
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 16 }}>

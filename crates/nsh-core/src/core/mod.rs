@@ -24,8 +24,8 @@ use crate::{
     },
     ops::{
         CellSlot, Command, EventKind, EventMask, EventPayload, HeaderSlot, ImageProp, ImageSource,
-        KeyboardDismissMode, ModalProp, NativeProp, NodeId, Op, PayloadValue, Prop, ROOT_ID,
-        ResizeMode, ScreenProp, ScrollProp, Tag,
+        KeyboardDismissMode, ModalAnimation, ModalProp, NativeProp, NodeId, Op, PayloadValue, Prop,
+        ROOT_ID, ResizeMode, ScreenAnimation, ScreenProp, ScrollProp, Tag,
     },
     props::{AccessibilityProp, EdgeInsets, GestureValues, LayoutAnimation, ViewProps},
     style::{EllipsizeMode, Style, StylePatch, TextAlign, TextStyle, ViewStyle},
@@ -367,8 +367,9 @@ struct Node {
     states: u8,
     /// States the platform reports for the view.
     tracked: u8,
-    /// `underlayColor` and `underlayOpacity`.
-    underlay: Option<Box<(crate::Color, f32)>>,
+    /// What only some nodes have: state styles, the styles of a page's
+    /// header or a list's content ([`classes::NodeParts`]).
+    parts: Option<Box<classes::NodeParts>>,
     /// A child's classes read their position among siblings.
     positional_children: bool,
     /// The inset padding and margin components set: added to the style's.
@@ -475,7 +476,7 @@ impl Node {
             class_props: None,
             states: 0,
             tracked: 0,
-            underlay: None,
+            parts: None,
             positional_children: false,
             insets: None,
             events: EventMask::default(),
@@ -2195,31 +2196,37 @@ impl<M: TextEngine> Core<M> {
                     flags |= dirty::VIEW;
                 }
             }
-            Prop::UnderlayColor(color) => {
-                let opacity = node
-                    .underlay
-                    .as_ref()
-                    .map_or(crate::ops::UNDERLAY_OPACITY, |u| u.1);
-                let underlay = color.map(|c| Box::new((c, opacity)));
-                if node.underlay != underlay {
-                    node.underlay = underlay;
-                    self.underlay_changed(key);
-                }
+            Prop::ActiveStyle(patch) => {
+                self.set_part_style(key, classes::Part::Active, patch);
+                return Ok(());
             }
-            Prop::UnderlayOpacity(opacity) => {
-                if let Some(u) = node.underlay.as_mut()
-                    && u.1 != opacity
-                {
-                    u.1 = opacity;
-                    self.underlay_changed(key);
-                }
+            Prop::HoverStyle(patch) => {
+                self.set_part_style(key, classes::Part::Hover, patch);
+                return Ok(());
             }
-            Prop::ActiveOpacity(value) => {
-                let props = node.props.get_or_insert_default();
-                if props.active_opacity != value {
-                    props.active_opacity = value;
-                    flags |= dirty::VIEW_PROPS;
-                }
+            Prop::FocusStyle(patch) => {
+                self.set_part_style(key, classes::Part::Focus, patch);
+                return Ok(());
+            }
+            Prop::DisabledStyle(patch) => {
+                self.set_part_style(key, classes::Part::Disabled, patch);
+                return Ok(());
+            }
+            Prop::SelectedStyle(patch) => {
+                self.set_part_style(key, classes::Part::Selected, patch);
+                return Ok(());
+            }
+            Prop::HeaderStyle(patch) => {
+                self.set_part_style(key, classes::Part::Header, patch);
+                return Ok(());
+            }
+            Prop::HeaderClass(names) => {
+                self.set_part_class(key, classes::Part::Header, &names);
+                return Ok(());
+            }
+            Prop::ListContentClass(names) => {
+                self.set_part_class(key, classes::Part::Content, &names);
+                return Ok(());
             }
             Prop::TestId(value) => {
                 let props = node.props.get_or_insert_default();
@@ -2265,6 +2272,8 @@ impl<M: TextEngine> Core<M> {
                     AccessibilityProp::LiveRegion(v) => a.live_region = v,
                     AccessibilityProp::Actions(v) => a.actions = v,
                 }
+                let selected =
+                    (a.state.selected != before.state.selected).then_some(a.state.selected);
                 if *a != before {
                     flags |= if label_only {
                         dirty::LABEL
@@ -2272,11 +2281,29 @@ impl<M: TextEngine> Core<M> {
                         dirty::VIEW_PROPS
                     };
                 }
+                if let Some(selected) = selected {
+                    if flags != 0 {
+                        self.mark(key, flags);
+                    }
+                    self.set_selected(key, selected);
+                    return Ok(());
+                }
             }
             Prop::KeyboardDismissMode(mode) => {
                 if let Some(scroll) = node.scroll.as_mut() {
                     scroll.keyboard_dismiss = mode;
                     flags |= dirty::SCROLL;
+                }
+            }
+            // `animation` on a dialog: the value pages and dialogs share.
+            Prop::Screen(ScreenProp::Animation(a)) if node.kind == Kind::Modal => {
+                if let Some(root) = node.root.as_mut() {
+                    root.modal.animation = match a {
+                        ScreenAnimation::Default => ModalAnimation::Slide,
+                        ScreenAnimation::Fade => ModalAnimation::Fade,
+                        ScreenAnimation::None => ModalAnimation::None,
+                    };
+                    flags |= dirty::MODAL;
                 }
             }
             Prop::Screen(prop) => {
@@ -2287,13 +2314,10 @@ impl<M: TextEngine> Core<M> {
                         ScreenProp::HeaderShown(v) => c.header_shown = v,
                         ScreenProp::HeaderLargeTitle(v) => c.large_title = v,
                         ScreenProp::HeaderTransparent(v) => c.header_transparent = v,
-                        ScreenProp::HeaderTintColor(v) => c.tint_color = v,
-                        ScreenProp::HeaderBackgroundColor(v) => c.background_color = v,
-                        ScreenProp::HeaderTitleColor(v) => c.title_color = v,
                         ScreenProp::HeaderBackTitle(v) => c.back_title = v,
                         ScreenProp::HeaderBackVisible(v) => c.back_visible = v,
-                        ScreenProp::GestureEnabled(v) => c.gesture_enabled = v,
-                        ScreenProp::PreventBack(v) => c.prevent_back = v,
+                        ScreenProp::PopOnSwipe(v) => c.gesture_enabled = v,
+                        ScreenProp::PopOnBack(v) => c.prevent_back = !v,
                         ScreenProp::Animation(v) => c.animation = v,
                     }
                     // Header changes move the content.
@@ -2323,10 +2347,11 @@ impl<M: TextEngine> Core<M> {
                     match prop {
                         ModalProp::Animation(v) => c.animation = v,
                         ModalProp::Presentation(v) => c.presentation = v,
-                        ModalProp::Transparent(v) => c.transparent = v,
                         ModalProp::StatusBarTranslucent(v) => c.status_bar_translucent = v,
                         ModalProp::Orientations(v) => c.orientations = v,
-                        ModalProp::Dismissible(v) => c.dismissible = v,
+                        ModalProp::CloseOnEscape(v) => c.close_on_escape = v,
+                        ModalProp::CloseOnBackdropPress(v) => c.close_on_backdrop_press = v,
+                        ModalProp::CloseOnSwipe(v) => c.close_on_swipe = v,
                     }
                     flags |= dirty::MODAL;
                 }
@@ -2455,12 +2480,8 @@ impl<M: TextEngine> Core<M> {
                         c.max_length = len;
                         false
                     }
-                    Prop::Editable(on) => {
-                        c.editable = on;
-                        false
-                    }
-                    Prop::BlurOnSubmit(on) => {
-                        c.blur_on_submit = on;
+                    Prop::Readonly(on) => {
+                        c.editable = !on;
                         false
                     }
                     Prop::SubmitBehavior(behavior) => {
@@ -3145,10 +3166,8 @@ impl<M: TextEngine> Core<M> {
             if flags & dirty::MODAL != 0
                 && let Some(root) = &node.root
             {
-                self.mount.push(MountItem::ModalConfig {
-                    id,
-                    config: root.modal,
-                });
+                let config = root.modal;
+                self.mount.push(MountItem::ModalConfig { id, config });
             }
             if let Some(input) = &node.input {
                 if flags & dirty::INPUT != 0 {
@@ -3157,9 +3176,20 @@ impl<M: TextEngine> Core<M> {
                         .accessory_id
                         .as_deref()
                         .and_then(|name| self.accessories.get(name).copied());
+                    // An explicit prop (Rust), then the style key, then
+                    // the classes (`placeholder:text-*`, `caret-*`,
+                    // `selection:text-*`).
+                    config.placeholder_color = config
+                        .placeholder_color
+                        .or(node.text_style.placeholder_color);
+                    config.selection_color =
+                        config.selection_color.or(node.text_style.selection_color);
                     if let Some(c) = node.class_props.as_deref() {
                         config.placeholder_color = config.placeholder_color.or(c.placeholder_color);
-                        config.selection_color = config.selection_color.or(c.caret_color);
+                        config.selection_color = config
+                            .selection_color
+                            .or(c.selection_color)
+                            .or(c.caret_color);
                     }
                     config.style = scaled(
                         self.inherited_text_style(key).inherit(&node.text_style),
@@ -3336,7 +3366,11 @@ impl<M: TextEngine> Core<M> {
                 .paragraph
                 .selectable
                 .or(class.and_then(|c| c.selectable)),
-            selection_color: node.paragraph.selection_color,
+            selection_color: node
+                .paragraph
+                .selection_color
+                .or(node.text_style.selection_color)
+                .or(class.and_then(|c| c.selection_color)),
             ..AttributedText::default()
         };
         let base = inherited.inherit(&node.text_style);
@@ -3631,7 +3665,58 @@ impl<M: TextEngine> Core<M> {
         }
     }
 
+    /// The platform draws a header of its own above screens (iOS,
+    /// Android); without one ([`crate::NO_NATIVE_HEADER`]) a screen's
+    /// `header` slot is placed at its top.
+    fn native_header(&self) -> bool {
+        self.header_heights != crate::NO_NATIVE_HEADER
+    }
+
+    /// The size of screen `key`: its stack's (`None` outside a stack).
+    fn screen_size(&self, key: Key) -> Option<Size> {
+        let parent = self.nodes[key as usize].parent;
+        let p = self.nodes.get(parent as usize)?;
+        let stack_layout = p.layout.filter(|_| p.kind == Kind::Stack)?;
+        let s = self.layout.layout(stack_layout).ok()?.size;
+        Some(Size::new(s.width, s.height))
+    }
+
+    /// The `header` slot item of screen `key`, once created.
+    fn header_slot(&self, key: Key) -> Option<Key> {
+        self.nodes[key as usize]
+            .children
+            .iter()
+            .copied()
+            .find(|&c| {
+                let n = &self.nodes[c as usize];
+                n.kind == Kind::HeaderItem
+                    && n.created
+                    && n.root
+                        .as_ref()
+                        .is_some_and(|r| r.slot == HeaderSlot::Header)
+            })
+    }
+
+    /// Without a native header: the height of screen `key`'s `header` slot,
+    /// laid out first (as wide as the screen), 0 without one.
+    fn drawn_header(&mut self, key: Key) -> f32 {
+        let Some(item) = self.header_slot(key) else {
+            return 0.0;
+        };
+        self.layout_detached(item);
+        self.nodes[item as usize]
+            .layout
+            .and_then(|l| self.layout.layout(l).ok())
+            .map_or(0.0, |l| l.size.height)
+    }
+
     fn layout_detached(&mut self, key: Key) {
+        let native_header = self.native_header();
+        let drawn_header = if !native_header && self.nodes[key as usize].kind == Kind::Screen {
+            self.drawn_header(key)
+        } else {
+            0.0
+        };
         let node = &self.nodes[key as usize];
         let (Some(layout), kind, parent) = (node.layout, node.kind, node.parent) else {
             return;
@@ -3639,16 +3724,16 @@ impl<M: TextEngine> Core<M> {
         let root = node.root.as_ref().expect("root state");
         let (size, header, available) = match kind {
             Kind::Screen => {
-                let p = &self.nodes[parent as usize];
-                let Some(stack_layout) = p.layout.filter(|_| p.kind == Kind::Stack) else {
+                let Some(size) = self.screen_size(key) else {
                     return;
                 };
-                let s = self.layout.layout(stack_layout).expect("taffy layout").size;
                 let c = &root.screen;
                 let measured = root
                     .header
                     .filter(|_| !c.large_title && !c.header_transparent);
-                let header = if !c.header_shown {
+                let header = if !native_header {
+                    drawn_header
+                } else if !c.header_shown {
                     0.0
                 } else if let Some(measured) = measured {
                     measured
@@ -3660,8 +3745,22 @@ impl<M: TextEngine> Core<M> {
                     };
                     bar + self.top_overlap(parent)
                 };
-                let size = Size::new(s.width, s.height);
                 (size, header, definite(size))
+            }
+            // A screen's `header` without a native header: as wide as the
+            // screen, as tall as its content.
+            Kind::HeaderItem if !native_header && root.slot == HeaderSlot::Header => {
+                let Some(screen) = self.screen_size(parent) else {
+                    return;
+                };
+                (
+                    Size::new(screen.width, 0.0),
+                    0.0,
+                    taffy::Size {
+                        width: AvailableSpace::Definite(screen.width),
+                        height: AvailableSpace::MaxContent,
+                    },
+                )
             }
             Kind::Modal => {
                 let size = root.reported.unwrap_or(self.viewport);
@@ -3689,15 +3788,21 @@ impl<M: TextEngine> Core<M> {
         if !changed && !self.layout.dirty(layout).unwrap_or(true) {
             return;
         }
-        if kind == Kind::InputAccessory {
+        if kind == Kind::InputAccessory || (kind == Kind::HeaderItem && size.width > 0.0) {
             let mut style = self.layout.style(layout).expect("taffy style").clone();
             style.size.width = taffy::Dimension::length(size.width);
             self.layout.set_style(layout, style).expect("taffy style");
         } else if kind != Kind::HeaderItem {
             let config_padding = match kind {
                 // Large titles and transparent headers lay the content out
-                // under the header (scroll views inset themselves natively).
-                Kind::Screen if root.screen.header_transparent || root.screen.large_title => 0.0,
+                // under the native header (scroll views inset themselves
+                // natively).
+                Kind::Screen
+                    if native_header
+                        && (root.screen.header_transparent || root.screen.large_title) =>
+                {
+                    0.0
+                }
                 _ => header,
             };
             let mut style = self.nodes[key as usize]
@@ -3753,8 +3858,15 @@ impl<M: TextEngine> Core<M> {
                 HeaderSlot::Left => &mut config.left,
                 HeaderSlot::Right => &mut config.right,
                 HeaderSlot::Title => &mut config.title_view,
+                HeaderSlot::Header => &mut config.header_view,
             };
             *target = Some(child.id);
+        }
+        if let Some(style) = self.part_resolved(key, classes::Part::Header) {
+            let background = style.view.background_color;
+            config.background_color = (background.0 & 0xff != 0).then_some(background);
+            config.title_color = style.text.color;
+            config.tint_color = style.view.tint_color;
         }
         Some(config)
     }

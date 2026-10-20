@@ -143,7 +143,7 @@ web view 内的顶层导航也会在加载前由平台的导航代理检查。�
 
 ### `statusBar`
 
-`"statusBar": true` 允许应用修改状态栏（[`nsh/ui/mobile`](../components/status-bar.md) 中的 `StatusBar` 组件及其函数）。
+`"statusBar": true` 允许应用修改状态栏（[`nsh/base`](../modules/nsh-base.md#status-bar) 中的 `StatusBar` 组件及其函数）。
 
 ### `clipboard`
 

@@ -2,8 +2,8 @@
 // `Ledger` and the class `Account` all come from the app's crate
 // (`native/`, nsh.json "rust"), imported by its specifier. Their types are
 // generated from the Rust code into `.nsh/types/rust-exports/native.d.ts`.
-import { mount, Scroll, signal, Text, View } from "nsh";
-import { Button, Card, SafeAreaView } from "nsh/ui/mobile";
+import { type JSX, mount, Scroll, signal, Text, View } from "nsh";
+import { Button, SafeAreaView } from "nsh/base";
 import { Account, Gauge, Ledger } from "rust-exports/native";
 
 // Each object owns an instance kept in Rust.
@@ -15,6 +15,33 @@ function preview(): string {
   using draft = Account.parse("Draft: 10");
   draft.deposit(5);
   return draft.statement();
+}
+
+/** A card: a heading over its content. */
+function Card(props: { header: JSX.Element; children: JSX.Element | JSX.Element[] }) {
+  return (
+    <View style={{ gap: 8, padding: 16, borderRadius: 12, backgroundColor: "#f4f4f5" }}>
+      {props.header}
+      {props.children}
+    </View>
+  );
+}
+
+const ACTION_COLORS = { primary: "#2563eb", secondary: "#e4e4e7", danger: "#dc2626" };
+
+/** A button of `nsh/base` with this app's look. */
+function Action(props: { title: string; variant?: "primary" | "secondary" | "danger"; onPress: () => void }) {
+  const variant = () => props.variant ?? "primary";
+  return (
+    <Button
+      onPress={props.onPress}
+      accessibilityLabel={props.title}
+      style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: ACTION_COLORS[variant()] }}
+      activeStyle={{ opacity: 0.7 }}
+    >
+      <Text style={{ fontWeight: "600", color: variant() === "secondary" ? "#18181b" : "#ffffff" }}>{props.title}</Text>
+    </Button>
+  );
 }
 
 /** A line of text in the cards. */
@@ -51,18 +78,18 @@ function App() {
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
-      <Scroll contentContainerStyle={{ padding: 16, gap: 16 }}>
+      <Scroll contentStyle={{ padding: 16, gap: 16 }}>
         <Card header={<Text>Ledger · a module</Text>}>
           <Line>{`Formatted at once: ${Ledger.format(1234.5)}`}</Line>
           <Line muted>{copied()}</Line>
           <Line muted>{rate() ? `Rate: ${rate() * 100}%` : "Rate not fetched"}</Line>
           <View style={{ flexDirection: "row", gap: 8 }}>
-            <Button
+            <Action
               title="Copy statement"
               variant="secondary"
               onPress={async () => copied.set(`Copied ${await Ledger.copy(savings.statement())} characters`)}
             />
-            <Button title="Fetch rate" variant="secondary" onPress={async () => rate.set(await Ledger.fetchRate())} />
+            <Action title="Fetch rate" variant="secondary" onPress={async () => rate.set(await Ledger.fetchRate())} />
           </View>
         </Card>
 
@@ -72,8 +99,8 @@ function App() {
           <Line muted>{`Heard: ${heard().join(", ") || "nothing yet"}`}</Line>
           <Line muted>{status()}</Line>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            <Button title="Deposit $25" onPress={() => attempt(() => `Deposited: ${Ledger.format(savings.deposit(25))}`)} />
-            <Button
+            <Action title="Deposit $25" onPress={() => attempt(() => `Deposited: ${Ledger.format(savings.deposit(25))}`)} />
+            <Action
               title="Move $30"
               onPress={() =>
                 attempt(() => {
@@ -83,11 +110,11 @@ function App() {
                 })
               }
             />
-            <Button
+            <Action
               title="Accrue"
               onPress={async () => status.set(`Accrued: ${Ledger.format(await savings.accrue(rate() || 0.01))}`)}
             />
-            <Button
+            <Action
               title="Rename"
               variant="secondary"
               onPress={() => {
@@ -95,7 +122,7 @@ function App() {
                 name.set(savings.name);
               }}
             />
-            <Button
+            <Action
               title="Close checking"
               variant="danger"
               onPress={() => {

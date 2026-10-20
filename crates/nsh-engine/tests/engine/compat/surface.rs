@@ -101,7 +101,7 @@ pub(crate) fn runtime() -> String {
     let types = types();
     // Released apps run hardened: what hardening removes is not theirs.
     let host = nsh_js::Host::with_options(nsh_js::HostOptions {
-        ui_sets: vec![nsh_ui_mobile::registry()],
+        ui_sets: vec![nsh_base::registry()],
         harden: true,
         ..Default::default()
     })
@@ -149,7 +149,7 @@ fn sorted(out: &mut String, text: &str) {
 /// The files of `types/` of this checkout: `.nsh/types` without the files
 /// the bundler adds (asset imports), which are not the runtime's.
 pub(crate) fn types() -> Vec<(String, String)> {
-    let mut files = nsh_js::type_definitions(&[nsh_ui_mobile::registry().into()]);
+    let mut files = nsh_js::type_definitions(&[nsh_base::registry().into()]);
     files.sort();
     files
 }

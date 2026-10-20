@@ -9,8 +9,8 @@ mod nav;
 mod shell;
 mod ui;
 
+use nsh_base::{Foreground, StatusBar, StatusBarProps};
 use nsh_core::ui::prelude::*;
-use nsh_ui_mobile::{BarStyle, StatusBar, StatusBarProps};
 
 use crate::ui::{colors, desktop};
 
@@ -33,11 +33,11 @@ pub fn Gallery() -> impl IntoElement {
         // The status bar's content contrasts with the page in either
         // appearance.
         .child(StatusBar::element(StatusBarProps {
-            bar_style: Prop::bind(|| {
+            foreground: Prop::bind(|| {
                 Some(if dark() {
-                    BarStyle::LightContent
+                    Foreground::Light
                 } else {
-                    BarStyle::DarkContent
+                    Foreground::Dark
                 })
             }),
             ..StatusBarProps::default()

@@ -42,6 +42,7 @@ mod rust_touch;
 mod shutdown;
 mod split;
 mod storage;
+mod test_ui;
 mod theme;
 
 /// Hands the engine's batches to the test.

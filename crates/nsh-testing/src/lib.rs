@@ -4,7 +4,7 @@
 //! on an engine without a window ([`nsh_engine::headless::Headless`]).
 //!
 //! ```ignore
-//! let sets = vec![nsh_ui_mobile::registry(), my_app_native::registry()];
+//! let sets = vec![nsh_base::registry(), my_app_native::registry()];
 //! let mut app = nsh_testing::tsx("../App.tsx", sets).unwrap();
 //! app.wait_for("Ready");
 //! app.press("Save");

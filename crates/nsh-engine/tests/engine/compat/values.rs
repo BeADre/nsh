@@ -145,9 +145,6 @@ impl Mounted {
         let a = &p.accessibility;
         out.put("pointerEvents", p.pointer_events.js_name().into());
         out.put("hitSlop", insets(&p.hit_slop));
-        if let Some(v) = p.active_opacity {
-            out.put("activeOpacity", num(v));
-        }
         if let Some(v) = p.long_press_delay {
             out.put("delayLongPress", num(v));
         }
@@ -168,7 +165,7 @@ impl Mounted {
         if let Some(v) = &a.hint {
             out.put("accessibilityHint", v.to_string());
         }
-        out.put("accessibilityRole", role(a.role).into());
+        out.put("role", role(a.role).into());
         let s = a.state;
         let mut o = Object::default();
         o.flag("disabled", s.disabled);
@@ -232,9 +229,6 @@ impl Mounted {
                 if let Some(v) = text.selectable {
                     out.put("selectable", v.to_string());
                 }
-                if let Some(v) = text.selection_color {
-                    out.put("selectionColor", color(v));
-                }
             }
             Some(ViewKind::Image) => {
                 let (source, resize, options) = self.image.clone().unwrap_or_default();
@@ -292,10 +286,7 @@ impl Mounted {
                     out.put("value", v.clone());
                 }
                 out.put("placeholder", c.placeholder.clone());
-                if let Some(v) = c.placeholder_color {
-                    out.put("placeholderTextColor", color(v));
-                }
-                out.put("secureTextEntry", c.secure.to_string());
+                out.put("masked", c.secure.to_string());
                 out.put("keyboardType", c.keyboard.js_name().into());
                 out.put("keyboardAppearance", c.keyboard_appearance.js_name().into());
                 out.put("returnKeyType", c.return_key.js_name().into());
@@ -305,15 +296,11 @@ impl Mounted {
                 if let Some(v) = c.max_length {
                     out.put("maxLength", v.to_string());
                 }
-                out.put("editable", c.editable.to_string());
-                out.put("blurOnSubmit", c.blur_on_submit.to_string());
+                out.put("readonly", (!c.editable).to_string());
                 if let Some(v) = c.submit_behavior {
                     out.put("submitBehavior", v.js_name().into());
                 }
                 out.put("autoFocus", c.auto_focus.to_string());
-                if let Some(v) = c.selection_color {
-                    out.put("selectionColor", color(v));
-                }
                 out.put("autoComplete", auto_fill(c.auto_fill).into());
                 out.put("caretHidden", c.caret_hidden.to_string());
                 if let Some(v) = &c.accessory_id {
@@ -328,28 +315,23 @@ impl Mounted {
                 out.put("headerShown", c.header_shown.to_string());
                 out.put("headerLargeTitle", c.large_title.to_string());
                 out.put("headerTransparent", c.header_transparent.to_string());
-                if let Some(v) = c.tint_color {
-                    out.put("headerTintColor", color(v));
-                }
-                if let Some(v) = c.background_color {
-                    out.put("headerBackgroundColor", color(v));
-                }
-                if let Some(v) = c.title_color {
-                    out.put("headerTitleColor", color(v));
-                }
+                let mut o = Object::default();
+                o.opt("backgroundColor", c.background_color.map(color));
+                o.opt("color", c.title_color.map(color));
+                o.opt("tintColor", c.tint_color.map(color));
+                out.put("headerStyle", o.done());
                 if let Some(v) = &c.back_title {
                     out.put("headerBackTitle", v.to_string());
                 }
                 out.put("headerBackVisible", c.back_visible.to_string());
-                out.put("gestureEnabled", c.gesture_enabled.to_string());
-                out.put("preventBack", c.prevent_back.to_string());
+                out.put("popOnSwipe", c.gesture_enabled.to_string());
+                out.put("popOnBack", (!c.prevent_back).to_string());
                 out.put("animation", c.animation.js_name().into());
             }
             Some(ViewKind::Modal) => {
                 let c = self.modal.unwrap_or_default();
-                out.put("animationType", c.animation.js_name().into());
-                out.put("presentationStyle", c.presentation.js_name().into());
-                out.put("transparent", c.transparent.to_string());
+                out.put("animation", c.animation.js_name().into());
+                out.put("presentation", c.presentation.js_name().into());
                 out.put("statusBarTranslucent", c.status_bar_translucent.to_string());
                 out.put(
                     "supportedOrientations",
@@ -365,7 +347,12 @@ impl Mounted {
                         .map(|(_, name)| name.to_owned()),
                     ),
                 );
-                out.put("dismissible", c.dismissible.to_string());
+                out.put("closeOnEscape", c.close_on_escape.to_string());
+                out.put(
+                    "closeOnBackdropPress",
+                    c.close_on_backdrop_press.to_string(),
+                );
+                out.put("closeOnSwipe", c.close_on_swipe.to_string());
             }
             Some(ViewKind::WebView) => {
                 let w = match &self.native {
@@ -603,10 +590,19 @@ impl Mounted {
                     }
                     .into(),
                 );
+                if let Some(v) = text.selection_color {
+                    out.put("selectionColor", color(v));
+                }
                 (run.unwrap_or_default(), text.align)
             }
             Some(ViewKind::Input) => {
                 let c = self.input.as_deref().cloned().unwrap_or_default();
+                if let Some(v) = c.placeholder_color {
+                    out.put("placeholderColor", color(v));
+                }
+                if let Some(v) = c.selection_color {
+                    out.put("selectionColor", color(v));
+                }
                 (c.style, c.align)
             }
             _ => return out,
@@ -636,7 +632,6 @@ pub(crate) fn key(name: &str) -> &str {
         .find_map(|p| name.strip_prefix(p))
         .unwrap_or(name);
     match name {
-        "role" => "accessibilityRole",
         "textContentType" => "autoComplete",
         "experimental_backgroundImage" => "backgroundImage",
         other => other,
@@ -999,7 +994,6 @@ fn values_are_written_as_apps_write_them() {
     );
     assert_eq!(insets(&EdgeInsets::default()), "{}");
     assert_eq!(key("ios.keyboardAppearance"), "keyboardAppearance");
-    assert_eq!(key("role"), "accessibilityRole");
     let view = Mounted {
         kind: Some(ViewKind::View),
         ..Default::default()

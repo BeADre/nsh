@@ -202,7 +202,7 @@ jobs:
 | iOS | 视图的 `accessibilityIdentifier`（在 XCUITest 中为 `app.otherElements["add-to-cart"]`）。 |
 | Android | 无障碍节点的 view id 资源名（在 UI Automator 中为 `By.res("add-to-cart")`）。 |
 
-`testID` 是每个元素以及 `nsh/ui/mobile` 中各组件都有的 prop。它不会改变屏幕阅读器读出的内容；那应该用
+`testID` 是每个元素以及每个 Rust 组件（`SafeAreaView`、`KeyboardAvoidingView` 等）都有的 prop。它不会改变屏幕阅读器读出的内容；那应该用
 `accessibilityLabel`（参见[无障碍](./accessibility.md)）。在 `nsh trace` 的输出中，它出现在视图的 `ViewProps` item 里，
 形如 `test_id: Some("add-to-cart")`。
 

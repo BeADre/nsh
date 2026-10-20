@@ -1,7 +1,7 @@
-//! Rust components through the generated JS glue: props, events, children,
-//! named slots, children placed one by one, and a list of the app's rows;
-//! modules (`Alert`, `StatusBar`) and the environment (`SafeAreaView`,
-//! `KeyboardAvoidingView`).
+//! Rust components through the generated JS glue (the tests' own set,
+//! `test/ui`): props, events, children, named slots, children placed one by
+//! one, and a list of the app's rows; the runtime's modules (`Alert`,
+//! `StatusBar`) and the environment (`SafeAreaView`, `KeyboardAvoidingView`).
 
 use std::time::Duration;
 
@@ -43,16 +43,20 @@ fn start_with(
     if let Some(config) = config {
         std::fs::write(dir.join("nsh.json"), config).unwrap();
     }
+    let ui_sets = vec![nsh_base::registry(), crate::test_ui::registry()];
     let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {
         entry,
         minify: false,
         split: false,
-        ui_sets: vec![nsh_ui_mobile::registry().into()],
+        ui_sets: ui_sets.iter().map(Into::into).collect(),
     })
     .unwrap();
-    let bytecode =
-        nsh_js::compile_bytecode_with(&bundle.code, false, &[nsh_ui_mobile::registry().into()])
-            .unwrap();
+    let bytecode = nsh_js::compile_bytecode_with(
+        &bundle.code,
+        false,
+        &ui_sets.iter().map(Into::into).collect::<Vec<_>>(),
+    )
+    .unwrap();
     let (tx, rx) = crossbeam_channel::unbounded();
     let config = EngineConfig {
         // SAFETY: compiled just now by this runtime.
@@ -68,7 +72,7 @@ fn start_with(
         environment,
         header_heights: (44.0, 96.0),
         limits: nsh_engine::Limits::default(),
-        ui_sets: vec![nsh_ui_mobile::registry()],
+        ui_sets,
         runtime: None,
         data_dir: None,
         storage: None,
@@ -87,7 +91,7 @@ fn text_ids(batch: &MountBatch, wanted: &str) -> Option<u32> {
 }
 
 const INSET: &str = r#"import { mount, signal, Text } from "nsh";
-import { ListView } from "nsh/ui/mobile";
+import { ListView } from "test/ui";
 
 const rows = signal(["A", "B", "C"]);
 setTimeout(() => rows.update((r) => [...r, "D"]), 0);
@@ -213,7 +217,7 @@ fn shows(batch: &MountBatch, wanted: &str) -> bool {
 }
 
 const LAZY_SHEET: &str = r#"import { mount, signal, untracked, Text } from "nsh";
-import { Sheet } from "nsh/ui/mobile";
+import { Sheet } from "test/ui";
 
 const open = signal(false);
 const count = signal(1);
@@ -257,13 +261,8 @@ fn a_sheet_makes_its_content_when_it_opens() {
 }
 
 #[test]
-fn rendered_status_bars_win_over_what_functions_set() {
-    rendered_status_bars_win_over_what_functions_set_on(start(STATUS_BAR));
-}
-
-fn rendered_status_bars_win_over_what_functions_set_on(
-    (_engine, rx): (Engine, Receiver<MountBatch>),
-) {
+fn the_latest_rendered_status_bar_wins() {
+    let (_engine, rx) = start(STATUS_BAR);
     let mut configs = Vec::new();
     until(&rx, |batch| {
         for item in &batch.items {
@@ -275,22 +274,18 @@ fn rendered_status_bars_win_over_what_functions_set_on(
                 configs.push(*c);
             }
         }
-        configs.len() >= 3
+        configs.len() >= 4
     });
-    let red = nsh_core::Color::parse("#ff0000");
-    let green = nsh_core::Color::parse("#00ff00");
-    let seen: Vec<_> = configs
-        .iter()
-        .map(|c| (c.style, c.hidden, c.background))
-        .collect();
-    // One per turn: the functions' and the rendered setting merged, then
-    // the hidden bar, then the functions' alone.
+    let seen: Vec<_> = configs.iter().map(|c| (c.style, c.hidden)).collect();
+    // One per turn: the first bar, the one mounted later over it, then
+    // hidden, then the first one alone.
     assert_eq!(
         seen,
         [
-            (StatusBarStyle::Light, false, green),
-            (StatusBarStyle::Light, true, green),
-            (StatusBarStyle::Dark, true, red),
+            (StatusBarStyle::Dark, false),
+            (StatusBarStyle::Light, false),
+            (StatusBarStyle::Light, true),
+            (StatusBarStyle::Dark, false),
         ]
     );
 }
@@ -450,7 +445,7 @@ fn a_sibling_coming_back_does_not_move_a_rust_input_on(
 // --- Through the native modules ------------------------------------------------
 
 const CARD: &str = r#"import { mount, signal, Text } from "nsh";
-import { Button, Card } from "nsh/ui/mobile";
+import { Button, Card } from "test/ui";
 
 function App() {
   const titled = signal(true);
@@ -514,7 +509,7 @@ fn slots_children_and_events() {
 }
 
 const METHODS: &str = r#"import { mount, signal, Text, View } from "nsh";
-import { Stepper, type StepperRef } from "nsh/ui/mobile";
+import { Stepper, type StepperRef } from "test/ui";
 
 const shown = signal("waiting");
 let stepper!: StepperRef;
@@ -564,52 +559,91 @@ fn calls_of_a_components_methods() {
 }
 
 const ALERT: &str = r#"import { mount, signal, Text } from "nsh";
-import { Alert } from "nsh/ui/mobile";
+import { AlertDialog } from "nsh/base";
 
 const shown = signal("waiting");
 setTimeout(async () => {
-  const i = await Alert.alert("Delete the photo?", "It is gone then.", [
-    { text: "Cancel", style: "cancel" },
-    { text: "Delete", style: "destructive" },
-  ], { cancelable: true });
-  shown.set(`answer ${i}`);
+  const a = await AlertDialog.show({
+    title: "Delete the photo?",
+    description: "It is gone then.",
+    actions: [
+      { label: "Cancel", role: "cancel" },
+      { label: "Delete", role: "destructive", id: "delete" },
+    ],
+  });
+  const b = await AlertDialog.show({
+    presentation: "actionSheet",
+    actions: [{ label: "Share" }, { label: "Copy" }],
+  });
+  const c = await AlertDialog.show({ actions: [{ label: "OK" }], closeOnEscape: true });
+  let d = "resolved";
+  try {
+    await AlertDialog.show({ actions: [] });
+  } catch (e) {
+    d = "rejected";
+  }
+  shown.set(`answers ${a} ${b} ${c} ${d}`);
 }, 0);
 
 mount(() => <Text>{shown()}</Text>);
 "#;
 
+/// `AlertDialog.show` resolves with the chosen action's id, else its
+/// label, and with null when it closed without one.
 #[test]
-fn alert_resolves_with_the_button_pressed() {
+fn alert_dialogs_resolve_with_the_action_chosen() {
     let (engine, rx) = start(ALERT);
-    let mut dialog = None;
-    until(&rx, |batch| {
-        dialog = dialog.take().or_else(|| {
-            batch.items.iter().find_map(|i| match i {
-                MountItem::Command {
-                    id: ROOT_ID,
-                    command: Command::Dialog(d),
-                } => Some(d.clone()),
-                _ => None,
-            })
+    let next_dialog = || {
+        let mut dialog = None;
+        until(&rx, |batch| {
+            dialog = dialog.take().or_else(|| {
+                batch.items.iter().find_map(|i| match i {
+                    MountItem::Command {
+                        id: ROOT_ID,
+                        command: Command::Dialog(d),
+                    } => Some(d.clone()),
+                    _ => None,
+                })
+            });
+            dialog.is_some()
         });
-        dialog.is_some()
-    });
-    let dialog = dialog.expect("the alert");
-    assert_eq!(dialog.title.as_deref(), Some("Delete the photo?"));
-    engine.control().dispatch_event(
-        ROOT_ID,
-        EventKind::Dialog,
-        EventPayload::Map(vec![
-            ("id", PayloadValue::Number(dialog.id as f64)),
-            ("index", PayloadValue::Number(1.0)),
-        ]),
+        dialog.expect("a dialog")
+    };
+    let answer = |dialog: &nsh_core::Dialog, index: f64| {
+        engine.control().dispatch_event(
+            ROOT_ID,
+            EventKind::Dialog,
+            EventPayload::Map(vec![
+                ("id", PayloadValue::Number(dialog.id as f64)),
+                ("index", PayloadValue::Number(index)),
+            ]),
+        );
+    };
+    let alert = next_dialog();
+    assert_eq!(alert.title.as_deref(), Some("Delete the photo?"));
+    assert_eq!(alert.message.as_deref(), Some("It is gone then."));
+    assert!(!alert.sheet && !alert.cancelable);
+    assert_eq!(
+        alert.buttons[1].style,
+        nsh_core::DialogButtonStyle::Destructive
     );
-    let batches = until(&rx, |b| shows(b, "answer 1"));
-    assert!(batches.iter().any(|b| shows(b, "answer 1")));
+    answer(&alert, 1.0);
+    let sheet = next_dialog();
+    assert!(sheet.sheet && sheet.cancelable);
+    answer(&sheet, 0.0);
+    let ok = next_dialog();
+    assert!(ok.cancelable);
+    answer(&ok, -1.0);
+    let batches = until(&rx, |b| shows(b, "answers delete Share null rejected"));
+    assert!(
+        batches
+            .iter()
+            .any(|b| shows(b, "answers delete Share null rejected"))
+    );
 }
 
 const SAFE_AREA: &str = r#"import { mount, Text } from "nsh";
-import { KeyboardAvoidingView, SafeAreaView, safeArea } from "nsh/ui/mobile";
+import { KeyboardAvoidingView, SafeAreaView, safeArea } from "nsh/base";
 
 mount(() => (
   <KeyboardAvoidingView style={{ flex: 1 }}>
@@ -1000,8 +1034,15 @@ const INPUT_TRAITS: &str = r##"import { mount, Input, Text } from "nsh";
 mount(() => (
   <>
     <Input keyboardType="numeric" ios={{ keyboardAppearance: "dark" }} />
-    <Input keyboardType="numbers-and-punctuation" />
-    <Text selectable selectionColor="#ff0000">Pick me</Text>
+    <Input
+      keyboardType="numbers-and-punctuation"
+      masked
+      readonly
+      multiline
+      style={{ placeholderColor: "#00ff00", selectionColor: "#0000ff" }}
+    />
+    <Input class="placeholder:text-white selection:text-black" />
+    <Text selectable style={{ selectionColor: "#ff0000" }}>Pick me</Text>
   </>
 ));
 "##;
@@ -1016,20 +1057,35 @@ fn inputs_and_selectable_text_carry_their_traits() {
         .items
         .iter()
         .filter_map(|i| match i {
-            MountItem::Input { config, .. } => Some((config.keyboard, config.keyboard_appearance)),
+            MountItem::Input { config, .. } => Some(config.clone()),
             _ => None,
         })
         .collect();
+    let traits: Vec<_> = inputs
+        .iter()
+        .map(|c| (c.keyboard, c.keyboard_appearance))
+        .collect();
     assert_eq!(
-        inputs,
+        traits,
         [
             (KeyboardType::Numeric, KeyboardAppearance::Dark),
             (
                 KeyboardType::NumbersAndPunctuation,
                 KeyboardAppearance::Default
             ),
+            (KeyboardType::Default, KeyboardAppearance::Default),
         ]
     );
+    let c = &inputs[1];
+    assert!(c.secure && !c.editable && c.multiline);
+    assert_eq!(c.placeholder_color, nsh_core::Color::parse("#00ff00"));
+    assert_eq!(c.selection_color, nsh_core::Color::parse("#0000ff"));
+    assert!(!inputs[0].secure && inputs[0].editable && inputs[0].placeholder_color.is_none());
+    assert_eq!(
+        inputs[2].placeholder_color,
+        nsh_core::Color::parse("#ffffff")
+    );
+    assert_eq!(inputs[2].selection_color, nsh_core::Color::parse("#000000"));
     let text = first
         .items
         .iter()
@@ -1046,14 +1102,14 @@ fn inputs_and_selectable_text_carry_their_traits() {
 }
 
 const ROWS: &str = r#"import { mount, Text } from "nsh";
-import { Group, ListView } from "nsh/ui/mobile";
+import { Group, ListView } from "test/ui";
 
 const rows = Array.from({ length: 100 }, (_, i) => ({ id: i, label: `Row ${i}` }));
 
 mount(() => (
   <ListView
     each={rows}
-    ListHeaderComponent={() => (
+    header={() => (
       <Group>
         <Text>First</Text>
         <Text>Second</Text>
@@ -1104,7 +1160,7 @@ fn components_place_the_apps_children_and_rows() {
 }
 
 const STEPPER: &str = r#"import { mount, signal, Text, View } from "nsh";
-import { Stepper } from "nsh/ui/mobile";
+import { Stepper } from "test/ui";
 
 const changes = signal(0);
 mount(() => (
@@ -1115,20 +1171,22 @@ mount(() => (
 ));
 "#;
 
-const STATUS_BAR: &str = r##"import { signal, mount } from "nsh";
-import { setStatusBarBackgroundColor } from "nsh/android";
-import { StatusBar } from "nsh/ui/mobile";
+const STATUS_BAR: &str = r##"import { signal, mount, View } from "nsh";
+import { StatusBar } from "nsh/base";
 
-const rendered = signal(true);
-setStatusBarBackgroundColor("#ff0000");
-StatusBar.setBarStyle("dark-content");
-setTimeout(() => StatusBar.setHidden(true), 50);
+const rendered = signal(false);
+const hidden = signal(false);
+setTimeout(() => rendered.set(true), 30);
+setTimeout(() => hidden.set(true), 60);
 setTimeout(() => rendered.set(false), 100);
 
 mount(() => (
-  <If when={rendered()}>
-    <StatusBar barStyle="light-content" android={{ backgroundColor: "#00ff00" }} />
-  </If>
+  <View>
+    <StatusBar foreground="dark" />
+    <If when={rendered()}>
+      <StatusBar foreground="light" hidden={hidden()} />
+    </If>
+  </View>
 ));
 "##;
 
@@ -1146,7 +1204,7 @@ mount(() => <Text>{`presses ${presses()}`}</Text>);
 "#;
 
 const FIELD: &str = r#"import { mount, signal, Text, View } from "nsh";
-import { TextField } from "nsh/ui/mobile";
+import { TextField } from "test/ui";
 
 const name = signal("Ada");
 mount(() => (
@@ -1355,4 +1413,67 @@ fn locale_and_font_scale_follow_the_environment() {
     engine.control().set_environment(environment);
     let after = until(&rx, |b| shows(b, "de-DE 1.234,5 1.5"));
     assert!(after.iter().any(|b| shows(b, "de-DE 1.234,5 1.5")));
+}
+
+const BASE_BUTTON: &str = r#"import { mount, signal, Text } from "nsh";
+import { Button } from "nsh/base";
+
+function App() {
+  const count = signal(0);
+  return (
+    <Button selected={count() > 0} onPress={() => count.update((n) => n + 1)}>
+      <Text>{`Pressed ${count()}`}</Text>
+    </Button>
+  );
+}
+
+mount(App);
+"#;
+
+/// `nsh/base`'s `Button` has behavior and no look: a press target with the
+/// button role and the app's content, no style of its own.
+#[test]
+fn a_base_button_has_behavior_and_no_look() {
+    let (engine, rx) = start(BASE_BUTTON);
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    assert!(text_ids(&first, "Pressed 0").is_some());
+    let button = first
+        .items
+        .iter()
+        .find_map(|i| match i {
+            MountItem::Events { id, events } if events.contains(EventKind::Press) => Some(*id),
+            _ => None,
+        })
+        .expect("a pressable button");
+    assert!(
+        !first
+            .items
+            .iter()
+            .any(|i| matches!(i, MountItem::ViewStyle { id, .. } if *id == button)),
+        "no style of its own: {:?}",
+        first.items
+    );
+    let props = |batch: &MountBatch| {
+        batch.items.iter().find_map(|i| match i {
+            MountItem::ViewProps { id, props } if *id == button => Some(props.clone()),
+            _ => None,
+        })
+    };
+    let first_props = props(&first).expect("its props");
+    assert_eq!(
+        first_props.accessibility.role,
+        nsh_core::AccessibilityRole::Button
+    );
+    assert!(!first_props.accessibility.state.selected);
+    engine
+        .control()
+        .dispatch_event(button, EventKind::Press, EventPayload::None);
+    let after = until(&rx, |b| shows(b, "Pressed 1"));
+    let selected = after.iter().rev().find_map(props).expect("new props");
+    assert!(
+        selected.accessibility.state.selected,
+        "selected follows the app"
+    );
 }

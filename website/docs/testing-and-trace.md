@@ -219,7 +219,7 @@ Espresso / UI Automator, Appium, Maestro), give views a `testID`:
 | iOS | The view's `accessibilityIdentifier` (`app.otherElements["add-to-cart"]` in XCUITest). |
 | Android | The accessibility node's view id resource name (`By.res("add-to-cart")` in UI Automator). |
 
-`testID` is a prop of every element and of the components in `nsh/ui/mobile`. It does not change what screen readers
+`testID` is a prop of every element and of every Rust component (`SafeAreaView`, `KeyboardAvoidingView`, ...). It does not change what screen readers
 say; use `accessibilityLabel` for that (see [Accessibility](./accessibility.md)). In `nsh trace` output it appears in
 the view's `ViewProps` item as `test_id: Some("add-to-cart")`.
 

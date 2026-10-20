@@ -12,7 +12,7 @@ keeps, and for good, whatever the version number says; earlier versions made no 
 
 | Surface | Where it is | Why it matters |
 |---|---|---|
-| The exports of every module (`nsh`, `nsh/*`, `nsh/ui/mobile`) and their members | `crates/nsh-js` (`modules.rs` and the tables it lists), `crates/nsh-ui-mobile` | a bundle imports them by name: one missing name and the module fails to link, so the app never starts |
+| The exports of every module (`nsh`, `nsh/*`, `nsh/base`) and their members | `crates/nsh-js` (`modules.rs` and the tables it lists), `crates/nsh-base` | a bundle imports them by name: one missing name and the module fails to link, so the app never starts |
 | `nsh:rt`, what compiled JSX calls (`element`, `prop`, `insert`, ...) | `crates/nsh-js/src/dom.rs` (`RT_EXPORTS`) | bundles carry the output of the compiler that built them, so every function any compiler ever emitted keeps its name, its arguments and what it does |
 | The globals (web APIs, timers, `console`) and their members | `crates/nsh-js` (`host.rs`, `web/`) | as above |
 | Host element props, events, style keys and their values | `crates/nsh-core/src/js/` (`Prop`, `host::EVENTS`, `style_keys!`) | bundles pass them by name; a prop renamed is silently ignored, so the app runs wrong |
@@ -147,7 +147,7 @@ relative to its parent), `prop` / `noprop` (a host prop), `style` / `nostyle` (a
 Other steps stand in for the platform's input: `event <selector> <onEvent> [<key>=<value>...]` reports an event with
 its payload keys as the handler reads them (`event id:video onProgress currentTime=3.25 duration=12.5`),
 `touch start <selector> <x> <y>` / `touch move|end|cancel [<x> <y>]` move one finger through the touch handlers and
-the responder system, `type <selector> <text>` types into an input (`onKeyPress`, `onChangeText` and
+the responder system, `type <selector> <text>` types into an input (`onKeyPress`, `onChange` and
 `onSelectionChange` per character), `key <selector> <key>` presses a key, and `scroll <selector> <x> <y>` scrolls a
 scroll view (`onScroll`).
 Props and style keys are named and written as apps write them (`style id:card backgroundColor #3366ffff`,
