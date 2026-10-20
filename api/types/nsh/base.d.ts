@@ -68,10 +68,10 @@ export interface ButtonProps extends ComponentHostProps {
   children?: JSX.Element;
   /** The button was pressed. */
   onPress?: () => void;
-  /** A touch went down on it (for the app's own press feedback). */
-  onPressIn?: () => void;
-  /** The touch that went down on it ended or left. */
-  onPressOut?: () => void;
+  /** A press went down on it (for the app's own press feedback). */
+  onPressDown?: () => void;
+  /** The press ended: released, moved away or cancelled. */
+  onPressUp?: () => void;
 }
 
 /** A press target (`ButtonProps`). */
