@@ -448,3 +448,15 @@ release. Files a crate reads from outside its directory (`include_bytes!`, test 
    GPUI on Linux: `nsh-gpui-host --bundle … --script "…"` (the same steps) on a rootful Xwayland display of its own
    started with `-shm` (`DISPLAY=:N WAYLAND_DISPLAY=`, `WEBKIT_DISABLE_DMABUF_RENDERER=1` for web views); shots are read
    from the X server (`docs/dev/gpui.md`).
+
+## Parallel agents
+
+When work is split among several agents (subagents, teammates, Claude Code or Codex sessions):
+
+- Each agent owns a set of files and edits only those; they share one worktree beside the repository
+  (`../nsh.worktrees/<name>`) and its `target/`, so builds share their artifacts.
+- **Agents never run `cargo test` or `nsh test`.** Each test binary links its own copy of the bundler, QuickJS and the
+  core, and parallel runs of them exhaust disk, memory and the build lock. Agents write their tests and may run
+  `cargo check` / `cargo clippy` on the crates they touch (and `nsh check` for TSX types); they report what to test.
+- The lead merges the agents' work, then runs the tests once ("Verification after changes"), and hands failures back
+  to the agent that owns the code.
