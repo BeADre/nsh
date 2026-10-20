@@ -37,7 +37,7 @@ the old names.
   `on_will_change` may veto (NSH has no veto: the main thread never waits for JS). Lifecycle pairs are `onOpen` /
   `onClose` (`DialogTrigger::on_open`, `Dialog::on_close`). A user's attempt is named after the act (`onCancel`,
   `onBackPress`: `Dialog::on_cancel`, `DialogChangeReason::*Press`), never `on<Noun>Request`.
-- **Press, not click**: `onPress`, `onPressIn`, `onPressOut`, `onLongPress` (below, Button). `gpui-base` itself says
+- **Press, not click**: `onPress`, `onPressDown`, `onPressUp`, `onLongPress` (below, Button). `gpui-base` itself says
   *press* for pointer-independent activation (`DialogChangeReason::TriggerPress`, `close_on_backdrop_press`).
 - **States**: `disabled` blocks interaction, `readonly` allows selecting but not editing, `selected` is membership /
   the current item, `checked` / `pressed` the value of a checkbox / toggle (*guides*; `Selectable`, `Disableable`,
@@ -154,5 +154,6 @@ and `Input`'s React Native names follow the rules as well.
 | (new) | `hoverStyle`, `focusStyle`, `disabledStyle` | GPUI `hover` / `focus`; `ButtonStyles::disabled` | As the `<state>:` classes |
 | **Button** (`nsh/base`) | | | |
 | `disabled`, `selected`, `accessibilityLabel` | unchanged | `button.rs` `Button::disabled`, `selected`, `accessibility_label` | Add `role` (`Button::role`) |
-| `onPress`, `onPressIn`, `onPressOut` | unchanged | `gpui-base`'s *press* (`DialogChangeReason::TriggerPress`, `close_on_backdrop_press`) over `Button::on_click` | Every view has them: one word for one concept across `nsh` and `nsh/base` (*guides*); touch, pen, mouse and keyboard activation are presses, *click* is a mouse's (*guides* "Use `on_click` only for a genuine click-level contract") |
+| `onPress` | unchanged | `gpui-base`'s *press* (`DialogChangeReason::TriggerPress`, `close_on_backdrop_press`) over `Button::on_click` | Every view has them: one word for one concept across `nsh` and `nsh/base` (*guides*); touch, pen, mouse and keyboard activation are presses, *click* is a mouse's (*guides* "Use `on_click` only for a genuine click-level contract") |
+| `onPressIn`, `onPressOut` (every view, Button) | `onPressDown`, `onPressUp` | UIKit `.touchDown` / `.touchUp*`; GPUI `on_mouse_down` / `on_mouse_up` | Decided by the user: *down* / *up* are both frameworks' words, *press* any input's; `onPressUp` is the press's end (released, moved away or cancelled). Rust `on_press_down` / `on_press_up` |
 | `selected` styles | `selectedStyle`, `selected:` classes | `ButtonStyles::selected` | |

@@ -43,8 +43,8 @@ mount(App);
 |---|---|---|---|
 | `onPress` | `() => void` | | 手指在视图内抬起（普通按压，不是长按）。 |
 | `onLongPress` | `() => void` | | 手指按住达到 `delayLongPress`。之后不会再触发 `onPress`。 |
-| `onPressIn` | `() => void` | | 按压开始。 |
-| `onPressOut` | `() => void` | | 按压结束：抬起、滑出，或被滚动视图接管。 |
+| `onPressDown` | `() => void` | | 按压开始。 |
+| `onPressUp` | `() => void` | | 按压结束：抬起、滑出，或被滚动视图接管。 |
 | `delayLongPress` | `number` | `500` | 按压变为长按前的毫秒数。 |
 | `disabled` | `boolean` | `false` | 不接受按压，也不显示反馈；应用 `disabled:` 类。 |
 
@@ -52,7 +52,7 @@ mount(App);
 
 - **只有最内层的可按压视图响应。** 可按压的行里包含一个可按压的按钮时，按下按钮不会触发行的按压。
 - **在滚动视图内，按压会等待约 130 ms** 才开始（并显示反馈），这样从按钮上开始的拖动会滚动页面，而不是按下按钮。
-- **滑出即取消。** 手指移出视图时，按压以 `onPressOut` 结束，不触发 `onPress`。
+- **滑出即取消。** 手指移出视图时，按压以 `onPressUp` 结束，不触发 `onPress`。
 - **`disabled` 会把按压监听从挂载的视图上移除**，因此完全没有反馈，同时应用 `disabled:` 类（`class="disabled:opacity-40"`）。
 - **带 `onPress` 的嵌套 `<Text>` 片段就是链接。** 整段文字是一个原生视图，按压会交给手指下的那个片段。见[文本](./text.md)。
 

@@ -80,8 +80,8 @@ start first.
 |---|---|---|---|
 | `onPress` | `() => void` | | A tap ended inside the view. |
 | `onLongPress` | `() => void` | | The finger stayed down for `delayLongPress`. |
-| `onPressIn` | `() => void` | | A finger went down on the view. |
-| `onPressOut` | `() => void` | | The finger lifted or left. |
+| `onPressDown` | `() => void` | | A finger went down on the view. |
+| `onPressUp` | `() => void` | | The finger lifted or left. |
 | `delayLongPress` | `number` | `500` | Milliseconds before a press becomes a long press. |
 | `hitSlop` | `number \| { top?, right?, bottom?, left? }` | | Extends the touch area beyond the bounds, in points. |
 | `pointerEvents` | `"auto" \| "none" \| "box-none" \| "box-only"` | `"auto"` | Which touches the view and its children receive: `"none"` neither, `"box-none"` only the children, `"box-only"` only the view itself. |

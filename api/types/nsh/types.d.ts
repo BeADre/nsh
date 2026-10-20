@@ -545,8 +545,8 @@ export interface HostProps {
   disabled?: boolean;
   onPress?: () => void;
   onLongPress?: () => void;
-  onPressIn?: () => void;
-  onPressOut?: () => void;
+  onPressDown?: () => void;
+  onPressUp?: () => void;
   /** The mouse came over the view or a view inside it (never on touches). */
   onHoverIn?: () => void;
   /** The mouse left the view and the views inside it, or the window. */
