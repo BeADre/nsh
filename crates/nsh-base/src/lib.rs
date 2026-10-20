@@ -1,7 +1,7 @@
 //! `nsh/base`: the behavior and infrastructure foundation of NSH apps' UI,
 //! written in Rust, with no look of its own (as `gpui-base` is GPUI Kit's):
-//! navigation (stacks, screens, modals), safe areas, the system's dialogs,
-//! the software keyboard and the status bar.
+//! controls (`Button`), navigation (stacks, screens, modals), safe areas,
+//! the system's dialogs, the software keyboard and the status bar.
 //!
 //! What it renders lays out or tells the platform, never styles: the look
 //! of an app is the app's, drawn with nsh's primitives or the components of
@@ -11,6 +11,7 @@
 
 mod action_sheet;
 mod alert;
+mod button;
 mod keyboard;
 mod safe_area;
 mod status_bar;
@@ -22,6 +23,7 @@ use nsh_core::ui::{ComponentSpec, Registry};
 pub use crate::{
     action_sheet::{ActionSheet, ActionSheetOptions},
     alert::{Alert, AlertButton, AlertButtonStyle, AlertOptions},
+    button::{Button, ButtonEvent, ButtonProps},
     keyboard::{AvoidBehavior, Keyboard, KeyboardAvoidingView, KeyboardAvoidingViewProps},
     safe_area::{Edge, SafeAreaView, SafeAreaViewProps},
     status_bar::{
@@ -36,6 +38,7 @@ pub const SPECIFIER: &str = "nsh/base";
 pub fn registry() -> Registry {
     let mut registry = Registry::ui_set(SPECIFIER);
     registry
+        .register::<Button>()
         .register::<SafeAreaView>()
         .register::<KeyboardAvoidingView>()
         .register::<StatusBar>()
@@ -66,7 +69,12 @@ mod tests {
         let components: Vec<_> = registry.specs().iter().map(|s| s.export.clone()).collect();
         assert_eq!(
             components,
-            ["KeyboardAvoidingView", "SafeAreaView", "StatusBar"]
+            [
+                "Button",
+                "KeyboardAvoidingView",
+                "SafeAreaView",
+                "StatusBar"
+            ]
         );
         let modules: Vec<_> = registry.module_specs().iter().map(|m| m.name).collect();
         assert_eq!(modules, ["ActionSheet", "Alert", "Keyboard", "StatusBar"]);

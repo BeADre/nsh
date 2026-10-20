@@ -3,7 +3,7 @@ import { computed, effect, Scroll, signal, Text, View } from "nsh";
 import { createNativeValue, Easing } from "nsh/animated";
 import { colorScheme, Platform, windowSize } from "nsh/device";
 import { keymap } from "nsh/keymap";
-import { Modal, safeArea } from "nsh/base";
+import { Button as BaseButton, Modal, safeArea } from "nsh/base";
 import { Icon, type IconName } from "./icons";
 
 /** Whether the gallery shows its dark palette (reactive: reading it subscribes). */
@@ -581,12 +581,22 @@ export function Button(props: {
   flex?: number;
   onPress: () => void;
 }) {
+  // `nsh/base`'s Button gives the behavior (presses, disabled, the button
+  // role); the look below is the gallery's own.
+  const scale = createNativeValue(1);
   const variant = () => props.variant ?? "primary";
   const bg = () =>
     props.color ?? (variant() === "primary" ? colors.light : variant() === "accent" ? colors.accentFill : variant() === "ghost" ? "transparent" : colors.raised);
   const fg = () => (props.color ? "#ffffff" : variant() === "primary" ? colors.onLight : variant() === "accent" ? colors.onAccent : colors.text);
   return (
-    <Press onPress={props.onPress} disabled={props.disabled} accessibilityLabel={props.label} style={props.flex ? { flex: props.flex } : undefined}>
+    <BaseButton
+      onPress={props.onPress}
+      onPressIn={() => scale.spring(0.97, motion.press)}
+      onPressOut={() => scale.spring(1, motion.press)}
+      disabled={props.disabled}
+      accessibilityLabel={props.label}
+      style={{ flex: props.flex, opacity: props.disabled ? 0.4 : 1, transform: [{ scale }] }}
+    >
       <View
         style={{
           height: 44,
@@ -614,7 +624,7 @@ export function Button(props: {
         </If>
         <Text style={{ fontSize: 15, fontWeight: "600", color: fg() }}>{props.label}</Text>
       </View>
-    </Press>
+    </BaseButton>
   );
 }
 

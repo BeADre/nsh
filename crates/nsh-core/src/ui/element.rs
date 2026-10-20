@@ -801,6 +801,13 @@ pub trait Accessible: Element {
         self
     }
 
+    /// What screen readers say, while it is set (`None`: what its
+    /// content says).
+    fn optional_label(mut self, label: impl IntoReactive<Option<SharedString>>) -> Self {
+        self.node().bind_attr(label, |a, label| a.label = label);
+        self
+    }
+
     /// What happens when activated, for screen readers.
     fn hint(mut self, hint: impl IntoReactive<SharedString>) -> Self {
         self.node().bind_attr(hint, |a, hint| a.hint = Some(hint));

@@ -1,6 +1,6 @@
 ---
 title: nsh/base
-description: "Unstyled base components for an app's UI: navigation stacks and modals, safe areas, system dialogs, the software keyboard and the status bar."
+description: "Unstyled base components for an app's UI: buttons, navigation stacks and modals, safe areas, system dialogs, the software keyboard and the status bar."
 order: 2.5
 demo: ui-navigation
 ---
@@ -10,7 +10,7 @@ demo: ui-navigation
 `nsh/base` is the base component layer of an app's UI: unstyled components that own behavior, state, focus and
 accessibility, on every platform. It sits between the primitives (`nsh` and the `nsh/<module>` modules) and the
 app's own component library, as `gpui-base` sits between `gpui` and a styled library in GPUI Kit (see
-[Modules](./index.md#three-layers)). It provides navigation (a `Stack` of `Screen`s driven by a navigator you create
+[Modules](./index.md#three-layers)). It provides controls (`Button`), navigation (a `Stack` of `Screen`s driven by a navigator you create
 with `createNavigator`, and `Modal` for content presented over everything else), safe areas (`SafeAreaView`,
 `safeArea()` and `useSafeAreaInsets()`), the system's dialogs (`Alert` and `ActionSheet`), the software keyboard
 (`Keyboard`, `keyboard()` and `KeyboardAvoidingView`) and the status bar (`StatusBar`).
@@ -22,17 +22,54 @@ from the `nsh-base` crate (`nsh_base::{SafeAreaView, …}`).
 
 ```tsx
 import {
-  ActionSheet, Alert, createNavigator, Keyboard, keyboard, KeyboardAvoidingView, Modal, SafeAreaView, safeArea,
+  ActionSheet, Alert, Button, createNavigator, Keyboard, keyboard, KeyboardAvoidingView, Modal, SafeAreaView, safeArea,
   Screen, Stack, StatusBar, useSafeAreaInsets,
 } from "nsh/base";
 import type {
-  ActionSheetOptions, AlertButton, AlertButtonStyle, AlertOptions, AvoidBehavior, BarAnimation, BarStyle, Edge,
+  ActionSheetOptions, AlertButton, AlertButtonStyle, AlertOptions, AvoidBehavior, ButtonProps, BarAnimation, BarStyle, Edge,
   Insets, Navigator,
 } from "nsh/base";
 ```
 
 This page is the API reference. For walkthroughs, see the [Navigation guide](../docs/navigation.md) and
 [Forms and keyboard](../docs/forms-and-keyboard.md).
+
+## Controls
+
+### Button
+
+A press target that owns its behavior and has no look: presses, the disabled and selected states and the button role
+for screen readers. It has no colors, sizes or label of its own. Style it with `class` or `style`, its states with the
+`active:`, `hover:`, `focus:` and `disabled:` variants, and put its content inside, so one `Button` becomes your
+primary button, an icon button or a row of a list.
+
+```tsx
+import { mount, signal, Text } from "nsh";
+import { Button } from "nsh/base";
+
+function App() {
+  const count = signal(0);
+  return (
+    <Button
+      onPress={() => count.update((n) => n + 1)}
+      class="self-center px-5 py-3 rounded-xl bg-blue-600 active:bg-blue-700 disabled:opacity-40"
+    >
+      <Text class="text-white text-base font-semibold">{`Pressed ${count()}`}</Text>
+    </Button>
+  );
+}
+
+mount(App);
+```
+
+| Prop | Type | |
+|---|---|---|
+| `disabled` | `boolean` | No presses and no press feedback; `disabled:` styles apply and screen readers say it is dimmed. |
+| `selected` | `boolean` | Selected (a toggled trigger, the current tab); screen readers say so. The app owns the value and styles it. |
+| `accessibilityLabel` | `string` | What screen readers say, when the content is not enough (an icon). |
+| `onPress` | `() => void` | It was pressed. |
+| `onPressIn`, `onPressOut` | `() => void` | A touch went down on it, and ended or left: for your own press feedback (a spring, a highlight). |
+| `class`, `style` | | Its look, all of it. |
 
 ## Navigation
 

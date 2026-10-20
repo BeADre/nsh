@@ -1,28 +1,66 @@
 ---
 title: nsh/base
-description: 应用界面的无样式基础组件：导航栈与模态框、安全区、系统对话框、软键盘和状态栏。
+description: 应用界面的无样式基础组件：按钮、导航栈与模态框、安全区、系统对话框、软键盘和状态栏。
 order: 2.5
 demo: ui-navigation
 ---
 
 # nsh/base
 
-`nsh/base` 是应用界面的基础组件层：不带样式、负责行为、状态、焦点和无障碍的组件，各平台通用。它位于基础元素（`nsh` 和各个 `nsh/<module>` 模块）与应用自己的组件库之间，就像 GPUI Kit 中 `gpui-base` 位于 `gpui` 与带样式的组件库之间（见[模块](./index.md#three-layers)）。它提供导航（由 `createNavigator` 创建的导航器驱动的、由多个 `Screen` 组成的 `Stack`，以及在所有内容之上展示内容的 `Modal`）、安全区（`SafeAreaView`、`safeArea()` 和 `useSafeAreaInsets()`）、系统对话框（`Alert` 和 `ActionSheet`）、软键盘（`Keyboard`、`keyboard()` 和 `KeyboardAvoidingView`）以及状态栏（`StatusBar`）。
+`nsh/base` 是应用界面的基础组件层：不带样式、负责行为、状态、焦点和无障碍的组件，各平台通用。它位于基础元素（`nsh` 和各个 `nsh/<module>` 模块）与应用自己的组件库之间，就像 GPUI Kit 中 `gpui-base` 位于 `gpui` 与带样式的组件库之间（见[模块](./index.md#three-layers)）。它提供控件（`Button`）、导航（由 `createNavigator` 创建的导航器驱动的、由多个 `Screen` 组成的 `Stack`，以及在所有内容之上展示内容的 `Modal`）、安全区（`SafeAreaView`、`safeArea()` 和 `useSafeAreaInsets()`）、系统对话框（`Alert` 和 `ActionSheet`）、软键盘（`Keyboard`、`keyboard()` 和 `KeyboardAvoidingView`）以及状态栏（`StatusBar`）。
 
 外观由应用决定：页面、模态框或标题栏里的内容都是你自己的 JSX，用基础元素配合样式、[Tailwind](../docs/tailwind.md) 类和主题绘制；或者是[你自己的 crate](../docs/rust.md) 中的 Rust 组件；也可以是社区基于 `nsh/base` 构建的组件库。每个宿主都提供 `nsh/base`；Rust 应用通过 `nsh-base` crate 使用同一套 API（`nsh_base::{SafeAreaView, …}`）。
 
 ```tsx
 import {
-  ActionSheet, Alert, createNavigator, Keyboard, keyboard, KeyboardAvoidingView, Modal, SafeAreaView, safeArea,
+  ActionSheet, Alert, Button, createNavigator, Keyboard, keyboard, KeyboardAvoidingView, Modal, SafeAreaView, safeArea,
   Screen, Stack, StatusBar, useSafeAreaInsets,
 } from "nsh/base";
 import type {
-  ActionSheetOptions, AlertButton, AlertButtonStyle, AlertOptions, AvoidBehavior, BarAnimation, BarStyle, Edge,
+  ActionSheetOptions, AlertButton, AlertButtonStyle, AlertOptions, AvoidBehavior, ButtonProps, BarAnimation, BarStyle, Edge,
   Insets, Navigator,
 } from "nsh/base";
 ```
 
 本页是 API 参考。完整的上手讲解见[导航指南](../docs/navigation.md)和[表单与键盘](../docs/forms-and-keyboard.md)。
+
+<a id="controls"></a>
+
+## 控件
+
+<a id="button"></a>
+
+### Button
+
+一个只负责行为、没有外观的按压目标：处理按压、禁用和选中状态，并向屏幕阅读器报告按钮角色。它没有自己的颜色、尺寸或文字。用 `class` 或 `style` 设置样式，用 `active:`、`hover:`、`focus:`、`disabled:` 变体设置各状态的样式，内容放在它里面。这样同一个 `Button` 可以做成你的主按钮、图标按钮或列表的一行。
+
+```tsx
+import { mount, signal, Text } from "nsh";
+import { Button } from "nsh/base";
+
+function App() {
+  const count = signal(0);
+  return (
+    <Button
+      onPress={() => count.update((n) => n + 1)}
+      class="self-center px-5 py-3 rounded-xl bg-blue-600 active:bg-blue-700 disabled:opacity-40"
+    >
+      <Text class="text-white text-base font-semibold">{`Pressed ${count()}`}</Text>
+    </Button>
+  );
+}
+
+mount(App);
+```
+
+| 属性 | 类型 | |
+|---|---|---|
+| `disabled` | `boolean` | 不响应按压，也没有按压反馈；`disabled:` 样式生效，屏幕阅读器会报告它不可用。 |
+| `selected` | `boolean` | 选中状态（切换中的触发器、当前标签页），屏幕阅读器会报告。值由应用持有，样式也由应用决定。 |
+| `accessibilityLabel` | `string` | 内容不足以说明时（比如只有图标），屏幕阅读器读出的文字。 |
+| `onPress` | `() => void` | 被按下。 |
+| `onPressIn`、`onPressOut` | `() => void` | 触摸在它上面按下，以及结束或移开：用来做你自己的按压反馈（弹簧缩放、高亮）。 |
+| `class`、`style` | | 它的全部外观。 |
 
 <a id="navigation"></a>
 

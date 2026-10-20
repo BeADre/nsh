@@ -1239,3 +1239,70 @@ fn menus_reach_the_platform_and_call_back() {
         }
     )));
 }
+
+const BASE_BUTTON: &str = r#"import { mount, signal, Text } from "nsh";
+import { Button } from "nsh/base";
+
+function App() {
+  const count = signal(0);
+  return (
+    <Button selected={count() > 0} onPress={() => count.update((n) => n + 1)}>
+      <Text>{`Pressed ${count()}`}</Text>
+    </Button>
+  );
+}
+
+mount(App);
+"#;
+
+/// `nsh/base`'s `Button` has behavior and no look: a press target with the
+/// button role and the app's content, no style of its own.
+#[test]
+fn a_base_button_has_behavior_and_no_look() {
+    let (engine, rx) = start(BASE_BUTTON);
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    assert!(text_ids(&first, "Pressed 0").is_some());
+    let button = first
+        .items
+        .iter()
+        .find_map(|i| match i {
+            MountItem::Events { id, events } if events.contains(EventKind::Press) => Some(*id),
+            _ => None,
+        })
+        .expect("a pressable button");
+    assert!(
+        !first
+            .items
+            .iter()
+            .any(|i| matches!(i, MountItem::ViewStyle { id, .. } if *id == button)),
+        "no style of its own: {:?}",
+        first.items
+    );
+    let props = |batch: &MountBatch| {
+        batch.items.iter().find_map(|i| match i {
+            MountItem::ViewProps { id, props } if *id == button => Some(props.clone()),
+            _ => None,
+        })
+    };
+    let first_props = props(&first).expect("its props");
+    assert_eq!(
+        first_props.accessibility.role,
+        nsh_core::AccessibilityRole::Button
+    );
+    assert!(
+        first_props.active_opacity.is_none(),
+        "no press feedback of its own"
+    );
+    assert!(!first_props.accessibility.state.selected);
+    engine
+        .control()
+        .dispatch_event(button, EventKind::Press, EventPayload::None);
+    let after = until(&rx, |b| shows(b, "Pressed 1"));
+    let selected = after.iter().rev().find_map(props).expect("new props");
+    assert!(
+        selected.accessibility.state.selected,
+        "selected follows the app"
+    );
+}
