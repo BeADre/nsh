@@ -5,8 +5,8 @@ may never be built again (its team moved on, its source is frozen in a business 
 without asking). So every release of NSH runs every app built for an earlier one, unchanged. An app that stops
 starting after an NSH update is a bug in NSH, never in the app.
 
-This page is the contract and how it is enforced. The rules hold from v0.1.2 on, the first release `api/` keeps;
-earlier versions made no promises.
+This page is the contract and how it is enforced. The rules hold from v0.1.2 on, the first release whose apps `api/`
+keeps, and for good, whatever the version number says; earlier versions made no promises.
 
 ## What apps depend on
 
@@ -23,9 +23,9 @@ earlier versions made no promises.
 
 ## The rules
 
-1. **Nothing released is removed or renamed**: no module, export, member, prop, event, payload key, style key or value,
-   Tailwind utility, global or `nsh:rt` function. Removing something wrong-headed is not a reason either: it is
-   deprecated (rule 2) and stays.
+1. **Nothing that reached `main` is removed or renamed**, released or not: no module, export, member, prop, event,
+   payload key, style key or value, Tailwind utility, global or `nsh:rt` function. Removing something wrong-headed is
+   not a reason either: it is deprecated (rule 2) and stays.
 2. **A rename adds the new name and keeps the old one** as an alias of the same implementation (the same function or
    class object at run time), declared `@deprecated` with the new name, and kept for good. The same goes for moving an
    export between modules: the old module keeps exporting it.
@@ -43,77 +43,85 @@ earlier versions made no promises.
    their signatures and semantics, because bundles built by older compilers call them as those compilers did.
 6. **Formats are read forever.** Readers of packages, certificates, revocation lists and `app.json` accept every
    format an earlier release wrote. New fields are optional.
-7. **The only exception is security**: a capability that cannot be kept safe may be closed. That change edits the
-   frozen baseline in the same pull request, says why in its description and the release notes, and is the only
-   reason a baseline under `api/v*/` is ever changed other than by `cargo xtask api --freeze`.
+7. **The only exception is security**: a capability that cannot be kept safe may be closed. The pull request that
+   closes it adds the entries it removes to `api/closed.txt`, each with its reason (`<entry> -- <reason>`, the entry
+   as the `compat` tests report the break: `[<module>] <path>`, `<file>: <Name>` or `<file>: <Name>.<member>`; the
+   file's header has the details), and says why in its description
+   and the release notes. `api/closed.txt` is the only list of removals there will ever be.
 
 ## How it is enforced
 
-`api/` at the root of the repository holds what apps depend on, as text the tests compare:
+`api/` at the root of the repository is one record of what apps depend on, as text the tests compare:
 
 ```
 api/
-  current/              this checkout's surface (must match the code exactly)
-    runtime.txt         every module's exports and the globals as the runtime makes them, with their members and kinds
-    types/              the declarations of `.nsh/types`
-  v0.1/                 the baseline of a minor line (0.1.x), frozen by each of its releases
-    runtime.txt         the surface of the line's latest release
-    types/
-    apps/<app>/         what the line's first release's `nsh build --release` wrote for an example app (bundle.js, assets/)
-      script.txt        what a user does and sees in it
+  runtime.txt           every module's exports (`nsh:rt` included) and the globals, with their members and kinds
+  types/                the declarations of `.nsh/types`
+  apps/<app>/           fixture apps: bundle.js and assets/ as some checkout's `nsh build --release` wrote them
+    script.txt          what a user does and sees in it
+  closed.txt            the entries closed for security (rule 7), each with its reason
 ```
 
-There is one baseline per minor line, so `api/` grows by one directory per minor release, not per release. A patch
-release replaces its line's surface with its own, which only ever adds (the line's earlier surface is a subset by the
-rules); the apps stay those of the line's first release, which is where a new compiler output first ships. Files that
-do not change between lines (assets, most declarations) are stored once by git.
+The record only grows, as the web platform does: a name that shipped is kept, whatever release shipped it. There are
+no copies per version. Git's history is the baseline: every change reaches `main` through a pull request, each pull
+request is held to the record as of its merge base, so by induction everything that ever reached `main`, every
+release included, is still offered. Releases need nothing from `api/`.
 
 The engine's tests (`crates/nsh-engine/tests/engine/compat/`) check, on every pull request (the Core workflow):
 
-- `current_surface_is_recorded`: `api/current/` is the code's surface. Any change to the API, additions included,
-  shows up as a diff of `api/current/` in review. `cargo xtask api` records it.
-- `releases_are_still_offered`: everything every baseline offered is still offered, by rules 1 to 3: no name of
-  `runtime.txt` is gone or changed kind, and every declaration of `types/` is kept, the same or widened (`compare.rs`
-  says exactly what counts as widening; it compares declarations with their parameters' names erased).
-- `apps_of_releases_still_run`: each kept app, as its release built it, starts on this runtime without an error and
-  does what its script says. This is what catches what names cannot: `nsh:rt`'s calling conventions, props and
-  styles that still parse, behavior.
-- `the_version_has_a_baseline`: the workspace version's minor line has its baseline. The release workflow also checks
-  that the baseline is the tagged release's surface (`api/current/`, apps aside), so no release ships without being
-  frozen.
+- `surface_is_recorded`: `api/runtime.txt` and `api/types/` are the code's surface. Any change to the API, additions
+  included, shows up as their diff in review. `cargo xtask api` records it.
+- `nothing_merged_is_removed`: everything the record offered at git's merge base with `main` (on `main`, the parent
+  commit; `NSH_API_BASE=<rev>` names another) is still offered, by rules 1 to 3: no name of `runtime.txt` is gone or
+  changed kind, and every declaration of `types/` is kept, the same or widened (`compare.rs` says exactly what counts
+  as widening; it compares declarations with their parameters' names erased). Entries in `closed.txt` are the only
+  exceptions. The files of the fixture apps are unchanged, and their scripts only gain steps. In CI the test needs
+  git's history and fails without it; locally, without it, it skips with a note.
+- `apps_still_run`: each fixture app, as it was built, starts on this runtime without an error and does what its
+  script says. This is what catches what names cannot: `nsh:rt`'s calling conventions, props and styles that still
+  parse, behavior.
+- `declarations_are_understood`: every declaration is one `compare.rs` can read, so none escapes the comparison.
 
 ### Changing the API
 
 1. Make the change additive (the rules above).
-2. Run `cargo xtask api` and commit `api/current/` with the change. Its diff is the review of the API change, next to
-   the `## Public API` section of the pull request.
-3. `cargo test -p nsh-engine --test engine compat::` must pass without touching `api/v*/`.
+2. Run `cargo xtask api` and commit `api/runtime.txt` and `api/types/` with the change. Their diff is the review of
+   the API change, next to the `## Public API` section of the pull request.
+3. `cargo test -p nsh-engine --test engine compat::` must pass with the fixtures' bundles and assets unchanged and
+   nothing added to `api/closed.txt` (rule 7 aside).
 
-### Making a release
+### Keeping apps
 
-Bump the workspace version, then run `cargo xtask api --freeze`. It checks the API against every baseline, records
-`api/current/` and writes the surface into the line's baseline `api/v<major>.<minor>/`. On the first release of a line
-it also adds the example apps (`APPS` in `crates/xtask/src/api.rs`) built by this checkout, each with the script of the
-previous line: check that the scripts pass (`compat::apps_of_releases_still_run`), extend them to what the line added,
-and commit the baseline with the version bump. Nothing else changes a baseline (rule 7 aside).
+A fixture's `bundle.js` and `assets/` are never rebuilt or changed: they are what a compiler of their time wrote, and
+apps built then run as they are. When the JSX compiler's output changes (it starts emitting a new `nsh:rt` function,
+for one), keep what the new compiler writes too:
+
+```sh
+cargo xtask api --keep <app>...
+```
+
+It builds each named app of `examples/` with this checkout into `api/apps/<app>-<version>/`, with the newest script of
+that app. Check that the scripts pass (`compat::apps_still_run`), extend them to what the change added, and commit the
+fixtures with the change. A new feature worth keeping working gets steps in a script of an app that uses it; existing
+steps stay.
 
 ### Scripts
 
 `script.txt` is one step per line (`compat/apps.rs` has the full list): `expect <text>` waits for a text on screen,
 `absent <text>` checks one is gone, `tap id:<testID>` / `label:<label>` / `text:<text>` presses a view (or its nearest
 pressable ancestor), `wait <ms>` runs timers, and `viewport <w> <h>` (first) sizes the screen. A script should open
-every screen of its app and use what the release added. `NSH_API_DUMP=1` prints the texts each step adds and removes:
+every screen of its app and use what its app offers. `NSH_API_DUMP=1` prints the texts each step adds and removes:
 
 ```sh
-NSH_API_DUMP=1 cargo test -p nsh-engine --test engine compat::apps_of_releases_still_run -- --nocapture
+NSH_API_DUMP=1 cargo test -p nsh-engine --test engine compat::apps_still_run -- --nocapture
 ```
 
 ## What the tests do not see
 
 The tests hold the names, the declarations and what the kept apps do. They cannot prove that a behavior no script
 exercises is unchanged, or that a platform backend draws the same: rules 4 and 6 are also the reviewer's job. A pull
-request that changes behavior apps can see says so, and a new feature worth keeping working gets a step in the next
-release's scripts.
+request that changes behavior apps can see says so, and a new feature worth keeping working gets steps in a fixture's
+script.
 
 The host side (the iOS and Android SDKs, `nsh.h`, `AppView`) is the host app's API, rebuilt with each NSH update; it
-is versioned with the crates, not by these baselines.
+follows the crates' versions and is outside `api/`.

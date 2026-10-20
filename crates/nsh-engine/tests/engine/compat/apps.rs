@@ -1,5 +1,5 @@
-//! Apps built by released versions run on this one: `api/<version>/apps/`
-//! keeps what that version's `nsh build --release` wrote for some apps
+//! Apps built by earlier checkouts run on this one: `api/apps/` keeps what
+//! some checkout's `nsh build --release` wrote for some apps
 //! (`<app>/bundle.js`; packages always carry their source, which runs when
 //! their bytecode is not this runtime's) and a script of what a user does
 //! and sees (`<app>/script.txt`), one step per line (with the assets it

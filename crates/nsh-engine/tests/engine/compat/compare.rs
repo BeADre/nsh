@@ -1,5 +1,5 @@
-//! Whether this checkout still offers what a baseline (`api/<version>/`)
-//! did, by the rules of docs/dev/compatibility.md:
+//! Whether this checkout still offers what the record (`api/`) had at an
+//! earlier revision, by the rules of docs/dev/compatibility.md:
 //!
 //! - nothing goes: a module, an export, a member of an object, a class or
 //!   an interface, a global;
@@ -505,7 +505,7 @@ fn head(statement: &str) -> Option<(&'static str, String)> {
             return Some((kind, name));
         }
     }
-    panic!("a declaration the baseline does not know: `{statement}`")
+    panic!("a declaration the comparison does not know: `{statement}`")
 }
 
 /// A member's name: `a`, `static a`, `get a`, `()` (a call signature),
