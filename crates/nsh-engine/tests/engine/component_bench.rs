@@ -155,7 +155,7 @@ fn bytecode(entry: &str) -> Vec<u8> {
         );
         std::fs::write(dir.join(name), app).unwrap();
     }
-    let ui_sets = vec![crate::test_ui::registry()];
+    let ui_sets = [crate::test_ui::registry()];
     let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {
         entry: dir.join(entry),
         minify: false,
