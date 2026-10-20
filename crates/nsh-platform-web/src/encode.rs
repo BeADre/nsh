@@ -1312,12 +1312,8 @@ fn encode_command(out: &mut Out, id: u32, command: &Command) {
                 .str(uri)
                 .end();
         }
-        // The bar's color is the page's theme color; the browser keeps
-        // its bars' content and visibility.
-        Command::StatusBar(c) => {
-            let color = c.background.map(css_color).unwrap_or_default();
-            out.item("cmd").num(id).str("statusBar").str(&color).end();
-        }
+        // A browser's bars are the browser's.
+        Command::StatusBar(_) => {}
         other => log::debug!("web: command {other:?} is not supported"),
     }
 }

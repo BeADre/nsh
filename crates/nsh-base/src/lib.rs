@@ -27,7 +27,7 @@ pub use crate::{
     button::{Button, ButtonEvent, ButtonProps},
     keyboard::{AvoidBehavior, Keyboard, KeyboardAvoidingView, KeyboardAvoidingViewProps},
     safe_area::{Edge, SafeAreaView, SafeAreaViewProps},
-    status_bar::{Foreground, StatusBar, StatusBarProps, StatusBarWeb},
+    status_bar::{Foreground, StatusBar, StatusBarProps},
 };
 
 /// The JS module apps import the foundation as.

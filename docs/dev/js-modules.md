@@ -60,8 +60,7 @@ the chunks of a split bundle (`Screen.js`: a name that is no native module, with
   `accessibilityLiveRegion`, Dialog `statusBarTranslucent`. iOS: input `inputAccessoryViewID` / `textContentType` /
   `keyboardAppearance`, Dialog `supportedOrientations`, WebView `allowsBackForwardNavigationGestures`. Desktop:
   `windowDrag`, WebView `allowsBackForwardNavigationGestures` (macOS' trackpad swipes, Windows' touchscreen swipes; a
-  prop of several platforms names each: `#[prop(ios = "x", desktop = "x")]`). Web: StatusBar `themeColor` (a Rust
-  component's `web` prop). What two platforms do is a top-level prop, ignored where it does not apply (`presentation`,
+  prop of several platforms names each: `#[prop(ios = "x", desktop = "x")]`). What two platforms do is a top-level prop, ignored where it does not apply (`presentation`,
   `headerLargeTitle`, `headerBackTitle`, AlertDialog's `closeOnEscape` / `closeOnBackdropPress`; `api-naming.md`).
 - A module's exports are made when a bundle first imports it; what must always happen (the root's direction, the
   themes) is the renderer's (`dom.rs`, `setup`), not a module's.

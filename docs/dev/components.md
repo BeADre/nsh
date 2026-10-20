@@ -76,7 +76,7 @@ come from two places:
 - **System UI**: `dialog(..)` (await the index chosen, -1 when closed without one), `dismiss_keyboard()`, `add_status_bar(..)` /
   `update_status_bar(..)` for a component's setting (removed with it), `ModuleCx::set_status_bar(patch)` for a
   function's; `.inset_padding(..)` / `.inset_margin(..)` on an element (`SafeAreaView`, `KeyboardAvoidingView`).
-- **Platform-only props** are an `android` / `ios` / `web` prop of a `JsObject` struct (`StatusBarWeb`).
+- **Platform-only props** are an `android` / `ios` / `web` prop of a `JsObject` struct (an app's `ChartWeb { … }`).
 - Changing an app's component rebuilds the app's hosts and runners (`rust_app.rs`; `nsh run` does it on save), a
   component of `nsh/base` the dev hosts, `nsh-ios-app` and the Android runtime; TSX using it reloads as usual.
 

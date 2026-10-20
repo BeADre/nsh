@@ -2927,7 +2927,6 @@ class Player {
       case "setClipboard": this.writeClipboard(args[0]); break;
       case "readClipboard": this.readClipboard(args[0], args[1]); break;
       case "imageInfo": this.imageInfo(args[0], args[1]); break;
-      case "statusBar": this.setThemeColor(args[0]); break;
       case "back": this.defaultBack(); break;
       case "announce":
         // Cleared first: the same text again is announced again.
@@ -2946,23 +2945,7 @@ class Player {
     }
   }
 
-  /** `StatusBar`'s `web={{ themeColor }}`: the page's theme color ("" for the page's own). */
-  setThemeColor(color) {
-    let meta = document.querySelector('meta[name="theme-color"]:not([media])');
-    if (!meta && !color) return;
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.name = "theme-color";
-      meta._nshAdded = true;
-      document.head.append(meta);
-    }
-    if (meta._nshOriginal === undefined) meta._nshOriginal = meta.getAttribute("content");
-    if (color) meta.content = color;
-    else if (meta._nshAdded) {
-      meta.remove();
-    } else if (meta._nshOriginal === null) meta.removeAttribute("content");
-    else meta.content = meta._nshOriginal;
-  }
+
 
   /**
    * `Clipboard.setString`. The async Clipboard API needs a secure context
