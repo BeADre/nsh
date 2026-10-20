@@ -7,7 +7,9 @@
 //! It also removes from `api/uncovered.txt` what the fixture apps exercise
 //! now (the list only shrinks).
 //!
-//! `--keep <app>...` adds fixtures, `api/apps/<app>-<version>/`: apps as
+//! `--keep <app>...` only adds fixtures (recording would check the coverage
+//! before a new API's fixture has its script): `--keep`, write the scripts,
+//! then `cargo xtask api`. It adds, `api/apps/<app>-<version>/`: apps as
 //! this checkout's `nsh build --release` writes them, for when the JSX
 //! compiler's output changes (new `nsh:rt` calls), so the record keeps what
 //! the new compiler writes next to what the older ones wrote, and for a new
@@ -26,21 +28,8 @@ use crate::{android::root, term};
 
 pub(crate) fn api(keep: &[String]) -> anyhow::Result<()> {
     let root = root();
-    term::cargo(
-        Command::new("cargo")
-            .current_dir(&root)
-            .args(["test", "-p", "nsh-engine", "--test", "engine", "--"])
-            .args([
-                "--exact",
-                "compat::surface_is_recorded",
-                "compat::coverage::every_api_is_tested",
-            ])
-            .env("NSH_API_UPDATE", "1"),
-        "and recording the API",
-    )?;
-    term::done("recorded api/runtime.txt, api/types and api/uncovered.txt");
     if keep.is_empty() {
-        return Ok(());
+        return record(&root);
     }
     let apps = root.join("api/apps");
     let version = env!("CARGO_PKG_VERSION");
@@ -98,9 +87,31 @@ pub(crate) fn api(keep: &[String]) -> anyhow::Result<()> {
         }
         term::done(format!("kept {}", shown(&root, &dir)));
     }
+    // Recording comes after the scripts: the coverage check needs the
+    // `covers` steps of a new API's fixture, which are written next.
     term::done(
-        "run `cargo test -p nsh-engine --test engine compat::apps_still_run` to check the fixtures",
+        "write what the fixtures' scripts check, then run `cargo xtask api` to record the API \
+         (`cargo test -p nsh-engine --test engine compat::apps_still_run` runs the scripts)",
     );
+    Ok(())
+}
+
+/// Records `api/runtime.txt`, `api/types` and `api/tailwind.txt`, and
+/// shrinks `api/uncovered.txt` to what no fixture's script checks.
+fn record(root: &Path) -> anyhow::Result<()> {
+    term::cargo(
+        Command::new("cargo")
+            .current_dir(root)
+            .args(["test", "-p", "nsh-engine", "--test", "engine", "--"])
+            .args([
+                "--exact",
+                "compat::surface_is_recorded",
+                "compat::coverage::every_api_is_tested",
+            ])
+            .env("NSH_API_UPDATE", "1"),
+        "and recording the API",
+    )?;
+    term::done("recorded api/runtime.txt, api/types, api/tailwind.txt and api/uncovered.txt");
     Ok(())
 }
 

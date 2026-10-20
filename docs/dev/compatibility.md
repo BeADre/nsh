@@ -111,12 +111,14 @@ request records it with `cargo xtask api` and says so.
 ### Changing the API
 
 1. Make the change additive (the rules above).
-2. Test it: write `api/cases/<case>.tsx`, a small app that uses the new API and shows its result, keep its build with
-   `cargo xtask api --keep api/cases/<case>.tsx`, and write steps in `api/apps/<case>-<version>/script.txt` that check
-   the result, with a `covers <item>` step for each part.
-3. Run `cargo xtask api` and commit `api/` with the change: the record's diff is the review of the API change, next
-   to the `## Public API` section of the pull request, and `uncovered.txt` loses what the scripts now check. Covering
-   an older entry of `uncovered.txt` is welcome the same way.
+2. Test it: write `api/cases/<case>.tsx`, a small app that uses the new API and shows its result, and keep its build
+   with `cargo xtask api --keep api/cases/<case>.tsx` (it only builds the fixture, `api/apps/<case>-<version>/`, with
+   a stub script, and records nothing yet). Write steps in its `script.txt` that check the result, with a
+   `covers <item>` step for each part, and run them (`compat::apps_still_run`).
+3. Then run `cargo xtask api` and commit `api/` with the change: it records the surface and checks that every part of
+   the API is covered, which the new fixture's `covers` steps now do. The record's diff is the review of the API
+   change, next to the `## Public API` section of the pull request, and `uncovered.txt` loses what the scripts now
+   check. Covering an older entry of `uncovered.txt` is welcome the same way.
 4. `cargo test -p nsh-engine --test engine compat::` must pass with the fixtures' bundles, assets and existing steps
    unchanged and nothing added to `api/closed.txt` (rule 7 aside).
 
@@ -131,9 +133,9 @@ cargo xtask api --keep <app>...
 ```
 
 `<app>` is an example's name, or the path of an app directory or of a single entry module (`api/cases/<case>.tsx`).
-It is built with this checkout into `api/apps/<name>-<version>/`, with the newest script of that app or a stub. Check
-that the scripts pass (`compat::apps_still_run`), extend them to what the change added, and commit the fixtures with
-the change. Existing steps stay.
+It is built with this checkout into `api/apps/<name>-<version>/`, with the newest script of that app or a stub;
+`--keep` records nothing. Check that the scripts pass (`compat::apps_still_run`), extend them to what the change added,
+run `cargo xtask api`, and commit the fixtures with the change. Existing steps stay.
 
 ### Scripts
 
