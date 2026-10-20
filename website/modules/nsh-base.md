@@ -71,7 +71,7 @@ mount(App);
 | `accessibilityLabel` | `string` | What screen readers say, when the content is not enough (an icon). |
 | `role` | `AccessibilityRole` | What it is for screen readers (default `"button"`): `"link"`, `"tab"`, `"menuitem"`, ... |
 | `onPress` | `() => void` | It was pressed. |
-| `onPressIn`, `onPressOut` | `() => void` | A touch went down on it, and ended or left: for your own press feedback (a spring, a highlight). |
+| `onPressDown`, `onPressUp` | `() => void` | A touch went down on it, and ended or left: for your own press feedback (a spring, a highlight). |
 | `class`, `style` | | Its look, all of it. |
 | `activeStyle`, `hoverStyle`, `focusStyle`, `disabledStyle` | `StyleProp<ViewStyle>` | The style while pressed, hovered, focused or disabled, as the `<state>:` classes. Later states win; `disabled` wins over all. |
 

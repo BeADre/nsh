@@ -81,8 +81,8 @@ function App() {
     <View style={{ flex: 1, backgroundColor: ui().page, padding: 16, paddingTop: 24, gap: 14 }}>
       <View style={{ flexDirection: "row", gap: 10 }}>
         <View
-          onPressIn={() => add("pressIn")}
-          onPressOut={() => add("pressOut")}
+          onPressDown={() => add("pressIn")}
+          onPressUp={() => add("pressOut")}
           onPress={() => add("press")}
           onLongPress={() => add("longPress")}
           activeStyle={{ opacity: 0.5 }}

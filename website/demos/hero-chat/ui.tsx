@@ -306,8 +306,8 @@ export function Press(props: {
       onPress={props.onPress}
       onLongPress={props.onLongPress}
       disabled={props.disabled}
-      onPressIn={() => s.spring(props.scale ?? 0.97, motion.press)}
-      onPressOut={() => s.spring(1, motion.press)}
+      onPressDown={() => s.spring(props.scale ?? 0.97, motion.press)}
+      onPressUp={() => s.spring(1, motion.press)}
       role={props.role ?? "button"}
       accessibilityLabel={props.accessibilityLabel}
       accessibilityState={props.accessibilityState}

@@ -39,10 +39,10 @@ pub struct ButtonProps {
 pub enum ButtonEvent {
     /// The button was pressed.
     Press,
-    /// A touch went down on it (for the app's own press feedback).
-    PressIn,
-    /// The touch that went down on it ended or left.
-    PressOut,
+    /// A press went down on it (for the app's own press feedback).
+    PressDown,
+    /// The press ended: released, moved away or cancelled.
+    PressUp,
 }
 
 /// A press target ([`ButtonProps`]).
@@ -58,7 +58,7 @@ pub fn Button(props: ButtonProps, cx: Scope<ButtonEvent>) -> impl IntoElement {
         })
         .selected_style(props.selected_style)
         .on_press(move |_: &()| cx.emit(ButtonEvent::Press))
-        .on_press_in(move |_: &()| cx.emit(ButtonEvent::PressIn))
-        .on_press_out(move |_: &()| cx.emit(ButtonEvent::PressOut))
+        .on_press_down(move |_: &()| cx.emit(ButtonEvent::PressDown))
+        .on_press_up(move |_: &()| cx.emit(ButtonEvent::PressUp))
         .child(props.children)
 }
