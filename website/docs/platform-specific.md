@@ -57,7 +57,7 @@ What exists today:
 | `desktop={{ allowsBackForwardNavigationGestures }}` | `WebView` | macOS: two-finger trackpad swipes go back and forward in the page history; Windows: touchscreen swipes; Linux: touchpad swipes. |
 | `desktop={{ windowDrag }}` | every element | Pressing it drags the window, as the system's title bar would (see [nsh/desktop](../modules/nsh-desktop.md#a-title-bar-of-your-own)). |
 
-`desktop={{…}}` and `web={{…}}` are accepted everywhere ([`StatusBar`](../modules/nsh-base.md#status-bar) takes `web={{ themeColor }}`). The types (`IOSProps`, `AndroidProps`, `DesktopProps` and their per-element forms) tell your editor what each element takes.
+`desktop={{…}}` and `web={{…}}` are accepted everywhere. The types (`IOSProps`, `AndroidProps`, `DesktopProps` and their per-element forms) tell your editor what each element takes.
 
 Something two or more platforms do is a top-level prop, applied where it means something: `NavPage`'s `title`, `headerStyle`, `headerLargeTitle` and `headerBackTitle` set up the system header of iOS and Android, its `header` slot is the header of the desktops and the web, and `Dialog`'s `presentation` picks iOS's sheets. `AlertDialog.show`'s `closeOnBackdropPress`, `pagingEnabled`, `refreshing`, `hitSlop` and the rest work on every platform.
 
@@ -121,18 +121,17 @@ See [nsh/desktop](../modules/nsh-desktop.md).
 
 ### The status bar
 
-The status bar is set with [`StatusBar`](../modules/nsh-base.md#status-bar) from `nsh/base`, on both platforms: `foreground` (`"auto"`, `"light"` for dark backgrounds, `"dark"` for light ones), `hidden` and `animated`. The most recently mounted `StatusBar` wins, prop by prop, so a page can render one for itself and the previous settings come back when it goes away.
+On both platforms the status bar belongs to the page or dialog on top, as in UIKit, where the topmost view controller decides it: [`NavPage` and `Dialog` take `statusBar`](../modules/nsh-base.md#status-bar) with `foreground` (`"auto"`, `"light"` for dark backgrounds, `"dark"` for light ones), `hidden` and `animated`. The page or dialog shown most recently wins, field by field, and the one below it applies again when it goes away. `nsh.json`'s `"statusBar"` is the app's default under them.
 
 ```tsx
 import { View } from "nsh";
-import { StatusBar } from "nsh/base";
+import { NavPage } from "nsh/base";
 
 function PhotoViewer() {
   return (
-    <View style={{ flex: 1, backgroundColor: "#000000" }}>
-      <StatusBar foreground="light" animated />
-      …
-    </View>
+    <NavPage headerShown={false} statusBar={{ foreground: "light", animated: true }}>
+      <View style={{ flex: 1, backgroundColor: "#000000" }}>…</View>
+    </NavPage>
   );
 }
 ```

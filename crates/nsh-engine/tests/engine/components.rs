@@ -1,7 +1,8 @@
 //! Rust components through the generated JS glue (the tests' own set,
 //! `test/ui`): props, events, children, named slots, children placed one by
-//! one, and a list of the app's rows; the runtime's modules (`Alert`,
-//! `StatusBar`) and the environment (`SafeAreaView`, `KeyboardAvoidingView`).
+//! one, and a list of the app's rows; the runtime's modules (`Alert`), the
+//! status bar of pages and dialogs and the environment (`SafeAreaView`,
+//! `KeyboardAvoidingView`).
 
 use std::time::Duration;
 
@@ -260,32 +261,59 @@ fn a_sheet_makes_its_content_when_it_opens() {
     );
 }
 
-#[test]
-fn the_latest_rendered_status_bar_wins() {
-    let (_engine, rx) = start(STATUS_BAR);
+/// The status bar configs the app sends, until there are `count`.
+fn status_bars(rx: &Receiver<MountBatch>, count: usize) -> Vec<(StatusBarStyle, bool)> {
     let mut configs = Vec::new();
-    until(&rx, |batch| {
+    until(rx, |batch| {
         for item in &batch.items {
             if let MountItem::Command {
                 id: ROOT_ID,
                 command: Command::StatusBar(c),
             } = item
             {
-                configs.push(*c);
+                configs.push((c.style, c.hidden));
             }
         }
-        configs.len() >= 4
+        configs.len() >= count
     });
-    let seen: Vec<_> = configs.iter().map(|c| (c.style, c.hidden)).collect();
-    // One per turn: the first bar, the one mounted later over it, then
-    // hidden, then the first one alone.
+    configs
+}
+
+#[test]
+fn the_topmost_page_or_dialog_decides_the_status_bar() {
+    let (_engine, rx) = start(STATUS_BAR);
+    // One per turn that changes it: the first page's; a pushed page over
+    // it (the first page changing its own stays under it); a dialog's
+    // `hidden` over the pushed page's `foreground`; closed; popped, the
+    // first page's as it is now.
     assert_eq!(
-        seen,
+        status_bars(&rx, 5),
         [
             (StatusBarStyle::Dark, false),
             (StatusBarStyle::Light, false),
             (StatusBarStyle::Light, true),
-            (StatusBarStyle::Dark, false),
+            (StatusBarStyle::Light, false),
+            (StatusBarStyle::Default, false),
+        ]
+    );
+}
+
+#[test]
+fn nsh_json_gives_the_status_bar_its_default() {
+    let (_engine, rx) = start_with(
+        STATUS_BAR_DEFAULT,
+        Environment::default(),
+        None,
+        Some(r#"{ "statusBar": { "foreground": "light", "hidden": true } }"#),
+    );
+    // The default; a dialog showing the bar over it, field by field;
+    // closed, the default again.
+    assert_eq!(
+        status_bars(&rx, 3),
+        [
+            (StatusBarStyle::Light, true),
+            (StatusBarStyle::Light, false),
+            (StatusBarStyle::Light, true),
         ]
     );
 }
@@ -1172,20 +1200,49 @@ mount(() => (
 "#;
 
 const STATUS_BAR: &str = r##"import { signal, mount, View } from "nsh";
-import { StatusBar } from "nsh/base";
+import { Dialog, NavPage, NavStack, createNavStack } from "nsh/base";
 
-const rendered = signal(false);
-const hidden = signal(false);
-setTimeout(() => rendered.set(true), 30);
-setTimeout(() => hidden.set(true), 60);
-setTimeout(() => rendered.set(false), 100);
+type Route = { name: string };
+const nav = createNavStack<Route>([{ name: "home" }]);
+const home = signal<"auto" | "dark">("dark");
+const open = signal(false);
+setTimeout(() => nav.push({ name: "detail" }), 30);
+setTimeout(() => home.set("auto"), 50);
+setTimeout(() => open.set(true), 70);
+setTimeout(() => open.set(false), 100);
+setTimeout(() => nav.pop(), 130);
+
+mount(() => (
+  <View style={{ flex: 1 }}>
+    <NavStack state={nav} style={{ flex: 1 }}>
+      {(route) => (
+        <NavPage
+          title={route.name}
+          statusBar={route.name === "home" ? { foreground: home() } : { foreground: "light" }}
+        >
+          <View />
+        </NavPage>
+      )}
+    </NavStack>
+    <Dialog open={open()} statusBar={{ hidden: true }}>
+      <View />
+    </Dialog>
+  </View>
+));
+"##;
+
+const STATUS_BAR_DEFAULT: &str = r##"import { signal, mount, View } from "nsh";
+import { Dialog } from "nsh/base";
+
+const open = signal(false);
+setTimeout(() => open.set(true), 30);
+setTimeout(() => open.set(false), 60);
 
 mount(() => (
   <View>
-    <StatusBar foreground="dark" />
-    <If when={rendered()}>
-      <StatusBar foreground="light" hidden={hidden()} />
-    </If>
+    <Dialog open={open()} statusBar={{ hidden: false }}>
+      <View />
+    </Dialog>
   </View>
 ));
 "##;

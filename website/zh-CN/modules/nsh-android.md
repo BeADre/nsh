@@ -82,4 +82,4 @@ function Editor() {
 > [!NOTE]
 > 监听器在系统已经派发了返回操作之后才运行：主线程从不等待 JS。只要注册了至少一个监听器，对话框和导航栈不处理的返回操作就由 NSH 接管；没有监听器返回 `true` 时，由 NSH 自己退出应用。
 
-状态栏在 iOS 和 Android 上都用 `nsh/base` 中的 [`StatusBar`](./nsh-base.md#status-bar) 设置。
+状态栏在 iOS 和 Android 上都由 `nsh/base` 中[页面和对话框](./nsh-base.md#status-bar)的 `statusBar` 设置。

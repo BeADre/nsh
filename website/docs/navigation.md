@@ -136,6 +136,7 @@ Pages stay mounted while their route is in the stack: going back shows the previ
 | `headerLargeTitle` | `boolean` | `false` | iOS: a large title that shrinks into the bar as the content scrolls. |
 | `headerBackTitle` | `string` | | The label of the back button that leads back to this page (iOS; Android's up arrow says it to screen readers). |
 | `animation` | `"default" \| "slide" \| "fade" \| "none"` | `"default"` | How the page enters and leaves. |
+| `statusBar` | `{ foreground?, hidden?, animated? }` | | iOS and Android: the status bar while the page is on top ([Status bar](../modules/nsh-base.md#status-bar)). |
 | `popOnSwipe` | `boolean` | `true` | The interactive back gesture (iOS swipe back, Android predictive back) pops. The back buttons pop either way. |
 | `popOnBack` | `boolean` | `true` | Every way back pops the page: the back buttons, Android's back, the desktops' back keys, the browser's back button and the swipe. |
 | `onBackPress` | `() => void` | | The user pressed back on the page, whether or not `popOnBack` let it pop. |
@@ -309,6 +310,6 @@ A tab bar is your own UI, drawn from primitives: a row of pressable views and a 
 ## Related
 
 - [`nsh/base`](../modules/nsh-base.md): the `createNavStack`, `NavStack`, `NavPage`, `Dialog` and `SafeAreaView` reference.
-- [`StatusBar`](../modules/nsh-base.md#status-bar).
+- [The status bar](../modules/nsh-base.md#status-bar) of pages and dialogs.
 - [`AlertDialog`](../modules/nsh-base.md#alertdialog).
 - [`nsh/android`](../modules/nsh-android.md): `BackHandler`.

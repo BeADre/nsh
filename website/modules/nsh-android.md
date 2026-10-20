@@ -82,4 +82,4 @@ function Editor() {
 > [!NOTE]
 > The listener runs after the system has delivered the press: the main thread never waits for JS. While at least one listener is registered, NSH takes back presses that dialogs and stacks leave, and exits the app itself when no listener returns `true`.
 
-The status bar is set with [`StatusBar`](./nsh-base.md#status-bar) from `nsh/base`, on iOS and Android alike.
+The status bar is set by the `statusBar` of [pages and dialogs](./nsh-base.md#status-bar) from `nsh/base`, on iOS and Android alike.

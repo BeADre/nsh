@@ -287,6 +287,8 @@ pub(crate) struct RootConfig {
     /// The app's id (`nsh.json` `"id"`), which names where it keeps its
     /// data.
     app_id: Option<String>,
+    /// `"statusBar"` (JSON, checked): the status bar's default.
+    status_bar: Option<String>,
 }
 
 /// Whether `entry` is a Rust app's (`entry::resolve` gives its `nsh.json`
@@ -485,7 +487,7 @@ fn toml_string(line: &str, key: &str) -> Option<String> {
 }
 
 /// The `"root"` of the app's `config` (its `nsh.json`, in `dir`) with its
-/// `"theme"` and `"appearance"`.
+/// `"theme"`, `"appearance"` and `"statusBar"`.
 fn root_config(
     dir: &Path,
     config: &serde_json::Value,
@@ -530,10 +532,19 @@ fn root_config(
             bail!("nsh.json: appearance: {other:?} is not \"light\", \"dark\" or \"system\"")
         }
     };
+    let status_bar = match config.get("statusBar") {
+        None => None,
+        Some(v) => {
+            nsh_core::StatusBarSetting::from_json(v)
+                .map_err(|e| anyhow::anyhow!("nsh.json: statusBar: {e}"))?;
+            Some(v.to_string())
+        }
+    };
     Ok(RootConfig {
         component,
         theme,
         appearance,
+        status_bar,
         app_id: crate::package::app_id(&dir.join("nsh.json")).ok(),
     })
 }
@@ -1729,7 +1740,7 @@ fn set_fn(krate: &AppCrate) -> String {
 }
 
 /// `app_root()`, a Rust app's root (`nsh.json` `"root"`, `"theme"`,
-/// `"appearance"`, `"id"`) in the crate the generated code links as `krate`, under
+/// `"appearance"`, `"statusBar"`, `"id"`) in the crate the generated code links as `krate`, under
 /// `cfg`.
 fn root_fn(cfg: &str, krate: &str, root: &RootConfig) -> String {
     let mut make = format!("nsh_core::ui::Root::of::<{krate}::{}>()", root.component);
@@ -1753,8 +1764,29 @@ fn root_fn(cfg: &str, krate: &str, root: &RootConfig) -> String {
             "\n        .appearance(nsh_core::ui::Appearance::{variant})"
         ));
     }
+    if let Some(setting) = root
+        .status_bar
+        .as_deref()
+        .and_then(|json| serde_json::from_str(json).ok())
+        .and_then(|v| nsh_core::StatusBarSetting::from_json(&v).ok())
+    {
+        let mut make_setting = "nsh_core::StatusBarSetting::default()".to_owned();
+        if let Some(style) = setting.style {
+            let variant = match style {
+                nsh_core::StatusBarStyle::Default => "Default",
+                nsh_core::StatusBarStyle::Light => "Light",
+                nsh_core::StatusBarStyle::Dark => "Dark",
+            };
+            make_setting.push_str(&format!(".foreground(nsh_core::StatusBarStyle::{variant})"));
+        }
+        if let Some(hidden) = setting.hidden {
+            make_setting.push_str(&format!(".hidden({hidden})"));
+        }
+        make.push_str(&format!("\n        .status_bar({make_setting})"));
+    }
     format!(
-        "\n/// The app's root (`nsh.json` `\"root\"`), with its theme and appearance.\n\
+        "\n/// The app's root (`nsh.json` `\"root\"`), with its theme, appearance and\n\
+         /// status bar.\n\
          {cfg}fn app_root() -> nsh_core::ui::Root {{\n    {make}\n}}\n"
     )
 }
@@ -1975,6 +2007,7 @@ mod tests {
                 theme: None,
                 appearance: None,
                 app_id: None,
+                status_bar: None,
             };
             let app = app(&dir, &[(package, dir.join("native"))], Some(root));
             app.write_workspace().unwrap();
@@ -2199,6 +2232,37 @@ mod tests {
             )
             .is_err()
         );
+        let root = super::root_config(
+            &dir,
+            &config(r#"{ "root": "App", "statusBar": { "foreground": "light" } }"#),
+            &ws,
+        )
+        .unwrap();
+        assert_eq!(
+            root.status_bar.as_deref(),
+            Some(r#"{"foreground":"light"}"#)
+        );
+        for (bad, message) in [
+            (r#""light""#, "nsh.json: statusBar: expected an object"),
+            (
+                r#"{ "foreground": "dim" }"#,
+                "nsh.json: statusBar: foreground: \"dim\" is not",
+            ),
+            (
+                r#"{ "hidden": "yes" }"#,
+                "nsh.json: statusBar: hidden: \"yes\" is not true or false",
+            ),
+            (
+                r#"{ "style": "light" }"#,
+                "nsh.json: statusBar: unknown key \"style\"",
+            ),
+        ] {
+            let json = format!(r#"{{ "root": "App", "statusBar": {bad} }}"#);
+            let err = super::root_config(&dir, &config(&json), &ws)
+                .unwrap_err()
+                .to_string();
+            assert!(err.starts_with(message), "{err}");
+        }
         let code = super::root_fn(
             "#[cfg(x)]\n",
             "app_native",
@@ -2207,6 +2271,7 @@ mod tests {
                 theme: Some("/app/theme.json".into()),
                 appearance: Some("dark".into()),
                 app_id: Some("com.example.app".into()),
+                status_bar: Some(r#"{"foreground":"light","hidden":false}"#.into()),
             },
         );
         for line in [
@@ -2215,6 +2280,7 @@ mod tests {
             "include_str!(\"/app/theme.json\")",
             ".appearance(nsh_core::ui::Appearance::Dark)",
             ".app_id(\"com.example.app\")",
+            ".status_bar(nsh_core::StatusBarSetting::default().foreground(nsh_core::StatusBarStyle::Light).hidden(false))",
         ] {
             assert!(code.contains(line), "no {line:?} in\n{code}");
         }
@@ -2232,6 +2298,7 @@ mod tests {
                 theme: None,
                 appearance: None,
                 app_id: None,
+                status_bar: None,
             }),
         );
         app.write_workspace().unwrap();
@@ -2522,6 +2589,7 @@ mod tests {
                 theme: None,
                 appearance: None,
                 app_id: None,
+                status_bar: None,
             }),
         );
         app.write_workspace().unwrap();

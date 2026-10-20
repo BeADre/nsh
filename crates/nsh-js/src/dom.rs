@@ -2942,9 +2942,10 @@ unsafe extern "C" fn unmount(
     result
 }
 
-/// `setup(tailwind, theme, appearance)`: the app's Tailwind theme and the
-/// theme of the Rust components (JSON strings, or null) and its
-/// appearance (`"light"` / `"dark"`, or null), before anything renders.
+/// `setup(tailwind, theme, appearance, statusBar)`: the app's Tailwind
+/// theme and the theme of the Rust components (JSON strings, or null), its
+/// appearance (`"light"` / `"dark"`, or null) and the status bar's default
+/// (`nsh.json` `"statusBar"` as JSON, or null), before anything renders.
 unsafe extern "C" fn setup(
     ctx: *mut JsContext,
     _this: JsValue,
@@ -2960,6 +2961,21 @@ unsafe extern "C" fn setup(
         {
             return e;
         }
+    }
+    // Checked by the bundler; a hand-made bundle's wrong value is ignored.
+    let status_bar = string_arg(ctx, arg(argc, argv, 3))
+        .and_then(|json| serde_json::from_str(&json).ok())
+        .and_then(|v| nsh_core::StatusBarSetting::from_json(&v).ok());
+    if let Some(setting) = status_bar
+        && let Err(e) = push_op(
+            ctx,
+            Op::Command {
+                id: nsh_core::ROOT_ID,
+                command: nsh_core::Command::SetStatusBar(setting),
+            },
+        )
+    {
+        return e;
     }
     let appearance =
         crate::env::parse_appearance(&string_arg(ctx, arg(argc, argv, 2)).unwrap_or_default());
@@ -3237,7 +3253,7 @@ pub(crate) const RT_EXPORTS: &[crate::modules::Item] = &[
     ("each", Export::Function(each, 3), Ts::Internal),
     ("merge", Export::Function(merge, 2), Ts::Internal),
     ("list", Export::Function(crate::list::list, 1), Ts::Internal),
-    ("setup", Export::Function(setup, 3), Ts::Internal),
+    ("setup", Export::Function(setup, 4), Ts::Internal),
     ("font", Export::Function(font, 2), Ts::Internal),
     ("ref", Export::Function(ref_, 3), Ts::Internal),
 ];

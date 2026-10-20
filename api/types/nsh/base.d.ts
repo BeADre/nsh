@@ -44,9 +44,6 @@ export type AvoidBehavior = "padding" | "height";
 /** An edge of a view. */
 export type Edge = "top" | "right" | "bottom" | "left";
 
-/** The color of the status bar's content. */
-export type Foreground = "auto" | "light" | "dark";
-
 export interface ButtonProps extends ComponentHostProps {
   /** No presses, no press feedback; `disabled:` styles apply and screen readers say it is dimmed. */
   disabled?: boolean;
@@ -94,18 +91,6 @@ export interface SafeAreaViewProps extends ComponentHostProps {
 
 /** A view padded by the insets of system UI or headers where it renders (the surface's safe area, a modal's, or a screen's, below its header), on top of its own padding. */
 export declare const SafeAreaView: ((props: SafeAreaViewProps) => JSX.Element);
-
-export interface StatusBarProps extends ComponentHostProps {
-  /** The color of the bar's content: `"light"` for dark backgrounds, `"dark"` for light ones, `"auto"` the platform's for the appearance. */
-  foreground?: Foreground | null;
-  /** Hidden. */
-  hidden?: boolean | null;
-  /** Animate changes of `foreground` and `hidden`. */
-  animated?: boolean | null;
-}
-
-/** A rendered status bar setting (`StatusBarProps`): over the others while it is mounted. */
-export declare const StatusBar: ((props: StatusBarProps) => JSX.Element);
 
 /** The system's alert dialog (UIAlertController, AlertDialog). */
 export interface AlertDialogModule {
@@ -193,6 +178,21 @@ export interface NavStackProps<R> {
   class?: string;
   /** Renders a route; return a `<NavPage>` for header options. */
   children: (route: R, index: Accessor<number>) => JSX.Element;
+}
+
+/** The color of the status bar's content. */
+export type StatusBarForeground = "auto" | "light" | "dark";
+
+/** What the status bar shows while a page or dialog is up (`statusBar`; iOS
+ * and Android). The fields left out keep what is below: the pages under it
+ * and the app's default (`nsh.json` `statusBar`). */
+export interface StatusBar {
+  /** The content's color: "light" for dark backgrounds, "dark" for light ones, "auto" the platform's for the appearance. */
+  foreground?: StatusBarForeground;
+  /** Hidden. */
+  hidden?: boolean;
+  /** Animate the change when the page or dialog comes and goes. */
+  animated?: boolean;
 }
 
 /** The colors of a page's system header (iOS and Android). */

@@ -201,7 +201,7 @@ player.run(await (await fetch("./bundle.nshc")).arrayBuffer());
 | `safeArea()` | 与容器重叠部分的 `env(safe-area-inset-*)`（手机上 `viewport-fit=cover` 的页面） |
 | `keyboardFrame()` | 屏幕键盘遮住容器的高度（`visualViewport`） |
 
-`Platform.Version` 为 `"0.0"`，`screenReaderEnabled()` 始终为 `false`（浏览器不提供这一信息）。[`StatusBar`](../modules/nsh-base.md#status-bar) 的 `web={{ themeColor }}` 设置页面的 `<meta name="theme-color">`，也就是浏览器给页面周围的栏使用的颜色。
+`Platform.Version` 为 `"0.0"`，`screenReaderEnabled()` 始终为 `false`（浏览器不提供这一信息）。页面周围的栏属于浏览器；页面的 [`statusBar`](../modules/nsh-base.md#status-bar) 用于手机。
 
 ## 网络
 

@@ -256,7 +256,7 @@ repository's `target/`; dependencies only it uses are declared in `crates/gpui/C
   `nsh` / `nsh/<module>` (native in `crates/nsh-js` or Rust modules of the runtime, `crates/nsh-core/src/runtime/`).
   `nsh-base` ↔ `gpui-base`: `nsh/base` (`crates/nsh-base`), unstyled base components of `gpui-base`'s scope that own
   behavior, state, focus, keyboard and accessibility and leave every visual choice to the app (navigation, dialogs, a
-  button, safe areas, system alerts, the keyboard and the status bar today; controls such as toggles, sliders,
+  button, safe areas, system alerts and the keyboard today, with the status bar a prop of pages and dialogs; controls such as toggles, sliders,
   selects, popovers and sheets as their behavior is written). Names follow `gpui-base`'s (`docs/dev/api-naming.md`). `gpui-component` ↔ nothing: a styled component library is never part of
   NSH; apps and the community build theirs on `nsh-base`, or style the UI in the app itself. Each export has one home
   (two registries exporting one name panic, `Registry::merged`). Platform-only APIs go to `nsh/ios` / `nsh/android`,

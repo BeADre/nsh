@@ -9,7 +9,6 @@ mod nav;
 mod shell;
 mod ui;
 
-use nsh_base::{Foreground, StatusBar, StatusBarProps};
 use nsh_core::ui::prelude::*;
 
 use crate::ui::{colors, desktop};
@@ -30,18 +29,6 @@ pub fn Gallery() -> impl IntoElement {
     view()
         .flex_1()
         .bg(colors::BACKGROUND)
-        // The status bar's content contrasts with the page in either
-        // appearance.
-        .child(StatusBar::element(StatusBarProps {
-            foreground: Prop::bind(|| {
-                Some(if dark() {
-                    Foreground::Light
-                } else {
-                    Foreground::Dark
-                })
-            }),
-            ..StatusBarProps::default()
-        }))
         // Made again when the window crosses the threshold, as TS remounts
         // its shell: what is open carries over.
         .child(If::new(desktop, shell::desktop_layout).otherwise(shell::phone))

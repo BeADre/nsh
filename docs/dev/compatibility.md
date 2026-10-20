@@ -149,7 +149,8 @@ pressable ancestor), `wait <ms>` runs timers, and `viewport <w> <h>` and `platfo
 pick the platform whose `ios={{…}}` / `android={{…}}` / `desktop={{…}}` / `web={{…}}` props apply, and `fontscale <scale>` sets the user's text size. What a view looks
 like is checked as the platform receives it: `frame <selector> <x> <y> <width> <height>` (its layout, in points
 relative to its parent), `prop` / `noprop` (a host prop), `style` / `nostyle` (a paint or text style key), `listens`
-(an event the platform reports); `log <text>` checks a `console` line, and `covers <item>` is a claim, not a step.
+(an event the platform reports), `statusbar <key>=<value>...` (the status bar the platform was last told to show:
+`foreground`, `hidden`, `animated`); `log <text>` checks a `console` line, and `covers <item>` is a claim, not a step.
 Other steps stand in for the platform's input: `event <selector> <onEvent> [<key>=<value>...]` reports an event with
 its payload keys as the handler reads them (`event id:video onProgress currentTime=3.25 duration=12.5`),
 `touch start <selector> <x> <y>` / `touch move|end|cancel [<x> <y>]` move one finger through the touch handlers and

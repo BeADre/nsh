@@ -15,7 +15,8 @@ use super::{
 use crate::{
     AutoCapitalize, AutoFill, Color, EventKind, HeaderSlot, JsonValue, KeyboardAppearance,
     KeyboardType, ModalAnimation, ModalPresentation, ModalProp, NativeProp, Prop, ResizeMode,
-    ReturnKeyType, ScreenAnimation, ScreenProp, ScrollProp, Size, SubmitBehavior, Tag, WebSource,
+    ReturnKeyType, ScreenAnimation, ScreenProp, ScrollProp, Size, StatusBarSetting, SubmitBehavior,
+    Tag, WebSource,
     canvas::{
         CanvasFont, CanvasGradient, CanvasImage, CanvasOp, CanvasTextAlign, CanvasTextBaseline,
         Composite, Drawing, FillRule, LineCap, LineJoin, Num, Paint, Path, PathOp,
@@ -600,6 +601,13 @@ impl Screen {
         self.bind_prop(animation, |a| Prop::Screen(ScreenProp::Animation(a)))
     }
 
+    /// What the status bar shows while the screen is up (iOS and Android;
+    /// TS: `statusBar`): over the screens below it and the app's default,
+    /// field by field, as a view controller's `preferredStatusBarStyle`.
+    pub fn status_bar(self, setting: impl IntoReactive<StatusBarSetting>) -> Self {
+        self.bind_prop(setting, |s| Prop::Screen(ScreenProp::StatusBar(Some(s))))
+    }
+
     /// An element at the header's start (instead of the back button).
     pub fn header_left(self, item: impl IntoElement) -> Self {
         self.header_item(HeaderSlot::Left, "header-left", item)
@@ -652,6 +660,12 @@ impl Modal {
         self.bind_prop(presentation, |presentation: ModalPresentation| {
             Prop::Modal(ModalProp::Presentation(presentation))
         })
+    }
+
+    /// What the status bar shows while it is presented (iOS and Android;
+    /// TS: `statusBar`): over what is below it, field by field.
+    pub fn status_bar(self, setting: impl IntoReactive<StatusBarSetting>) -> Self {
+        self.bind_prop(setting, |s| Prop::Screen(ScreenProp::StatusBar(Some(s))))
     }
 
     /// Under the status bar (Android).

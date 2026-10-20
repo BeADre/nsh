@@ -1,5 +1,5 @@
 import { type JSX, mount, Scroll, signal, Text, View } from "nsh";
-import { createNavStack, NavPage, NavStack, safeAreaInsets, StatusBar } from "nsh/base";
+import { createNavStack, NavPage, NavStack, safeAreaInsets } from "nsh/base";
 import { FlightPlan } from "./cards/FlightPlan";
 import { HopLog } from "./cards/HopLog";
 import { Mass } from "./cards/Mass";
@@ -165,7 +165,6 @@ function Log() {
 function App() {
   return (
     <View style={{ flex: 1, backgroundColor: color.page }}>
-      <StatusBar foreground="light" />
       <NavStack state={nav} style={{ flex: 1 }}>
         {(route) => (route.name === "lab" ? <Lab /> : <Log />)}
       </NavStack>

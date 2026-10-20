@@ -83,6 +83,10 @@
 //! - `keyboard <height> <duration>`: the software keyboard shows at
 //!   `<height>` points over the bottom of the surface, animated over
 //!   `<duration>` seconds (`0 0`: it hides);
+//! - `statusbar <key>=<value>...`: the status bar the platform was last
+//!   told to show reads `<value>` for each `<key>` given (`foreground`:
+//!   `auto`, `light` or `dark`; `hidden`, `animated`: `true` or `false`;
+//!   compat/values.rs), waits for it;
 //! - `covers <item>`: no step, a claim: the script checks what `<item>` (a
 //!   part of the API as `api/uncovered.txt` names it) does (compat/coverage.rs
 //!   verifies it).
@@ -825,6 +829,46 @@ pub(crate) fn run(code: String, script: &str, assets: &Path) -> Result<(), Failu
                 environment.keyboard_height = height;
                 environment.keyboard_duration = duration;
                 run.control.set_environment(environment);
+            }
+            "statusbar" => {
+                let want = parse_fields(arg).map_err(|e| format!("`{line}`: {e}"))?;
+                if want.is_empty() {
+                    return Err(format!("`{line}`: statusbar <key>=<value>...").into());
+                }
+                let want: Vec<(String, String)> = want
+                    .into_iter()
+                    .map(|(k, f)| {
+                        let v = match f {
+                            Field::Bool(b) => b.to_string(),
+                            Field::Str(s) => s,
+                            Field::Number(n) => values::num(n as f32),
+                        };
+                        (k, v)
+                    })
+                    .collect();
+                for (key, _) in &want {
+                    if !["foreground", "hidden", "animated"].contains(&key.as_str()) {
+                        return Err(format!("`{line}`: no status bar key `{key}`").into());
+                    }
+                }
+                let read = |v: &Views| v.nodes.get(&ROOT)?.mounted.status_bar();
+                let fits = |v: &Views| {
+                    read(v).is_some_and(|got| {
+                        want.iter()
+                            .all(|(k, v)| got.get(k.as_str()).is_some_and(|g| g == v))
+                    })
+                };
+                if !run.until(EXPECT_WAIT, fits) {
+                    let what = match read(&run.views) {
+                        None => "the platform was told no status bar".to_owned(),
+                        Some(got) => {
+                            let got: Vec<String> =
+                                got.iter().map(|(k, v)| format!("{k}={v}")).collect();
+                            format!("the status bar is {}", got.join(" "))
+                        }
+                    };
+                    return failed(what, &run);
+                }
             }
             "covers" => continue,
             other => return Err(format!("unknown step `{other}`").into()),

@@ -254,8 +254,8 @@ impl ResolveSetup {
     }
 }
 
-/// The `"tailwind"`, `"theme"` and `"appearance"` of the `nsh.json` next to
-/// the entry, checked. `"theme"` is a gpui-kit theme file's path (relative
+/// The `"tailwind"`, `"theme"`, `"appearance"` and `"statusBar"` of the
+/// `nsh.json` next to the entry, checked. `"theme"` is a gpui-kit theme file's path (relative
 /// to `nsh.json`) or its content.
 fn tailwind_setup(dir: &std::path::Path) -> Result<Arc<plugin::ThemeSetup>, BundleError> {
     let path = dir.join("nsh.json");
@@ -294,6 +294,11 @@ fn tailwind_setup(dir: &std::path::Path) -> Result<Arc<plugin::ThemeSetup>, Bund
                 ));
             }
         };
+    }
+    if let Some(status_bar) = config.get("statusBar") {
+        nsh_core::StatusBarSetting::from_json(status_bar)
+            .map_err(|e| BundleError::other(format!("nsh.json: statusBar: {e}")))?;
+        setup.status_bar = Some(status_bar.to_string());
     }
     Ok(Arc::new(setup))
 }

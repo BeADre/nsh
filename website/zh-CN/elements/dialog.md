@@ -50,6 +50,7 @@ dialog 的安全区域 inset，供其内部的 `SafeAreaView` 和 `safeAreaInset
 | `closeOnEscape` | `boolean` | `true` | Escape 和 Android 返回键在原生侧关闭它。 |
 | `closeOnBackdropPress` | `boolean` | `true` | 按下背景层时关闭它。 |
 | `closeOnSwipe` | `boolean` | `true` | 下滑 sheet（iOS、手机浏览器）时在原生侧关闭它。 |
+| `statusBar` | `{ foreground?, hidden?, animated? }` | 无 | iOS 和 Android：对话框打开期间的状态栏，位于页面的设置之上（[状态栏](../modules/nsh-base.md#status-bar)）。 |
 | `onOpen` | `() => void` | | 已完全出现。 |
 | `onClose` | `() => void` | | 已离开：用户关闭了它，或应用移除了它。 |
 | `onCancel` | `() => void` | | 用户尝试关闭它（Escape、返回、按下背景层、下滑），无论 `closeOn*` 是否允许关闭。 |

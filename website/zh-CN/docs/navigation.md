@@ -140,6 +140,7 @@ export const nav = createNavStack<Route>([{ name: "home" }]);
 | `headerLargeTitle` | `boolean` | `false` | iOS：大标题，内容滚动时缩进标题栏。 |
 | `headerBackTitle` | `string` | | 返回到本页面的返回按钮上的文字（iOS；Android 的向上箭头把它读给屏幕阅读器）。 |
 | `animation` | `"default" \| "slide" \| "fade" \| "none"` | `"default"` | 页面进入和离开的方式。 |
+| `statusBar` | `{ foreground?, hidden?, animated? }` | | iOS 和 Android：页面在最上层时的状态栏（[状态栏](../modules/nsh-base.md#status-bar)）。 |
 | `popOnSwipe` | `boolean` | `true` | 交互式返回手势（iOS 侧滑返回、Android 预测性返回）会返回。返回按钮无论如何都会返回。 |
 | `popOnBack` | `boolean` | `true` | 每一种返回方式都会弹出页面：返回按钮、Android 返回键、桌面的返回键、浏览器的返回按钮和侧滑。 |
 | `onBackPress` | `() => void` | | 用户在页面上按了返回，无论 `popOnBack` 是否让它弹出。 |
@@ -315,6 +316,6 @@ function Editor() {
 ## 相关内容
 
 - [`nsh/base`](../modules/nsh-base.md)：`createNavStack`、`NavStack`、`NavPage`、`Dialog` 和 `SafeAreaView` 参考。
-- [`StatusBar`](../modules/nsh-base.md#status-bar)。
+- 页面和对话框的[状态栏](../modules/nsh-base.md#status-bar)。
 - [`AlertDialog`](../modules/nsh-base.md#alertdialog)。
 - [`nsh/android`](../modules/nsh-android.md)：`BackHandler`。

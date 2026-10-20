@@ -1,6 +1,6 @@
 ---
 title: nsh/base
-description: "Unstyled base components for an app's UI: buttons, navigation stacks and dialogs, safe areas, system alert dialogs, the software keyboard and the status bar."
+description: "Unstyled base components for an app's UI: buttons, navigation stacks and dialogs, safe areas, system alert dialogs, the software keyboard and the status bar of pages and dialogs."
 order: 2.5
 demo: ui-navigation
 ---
@@ -13,7 +13,8 @@ app's own component library, as `gpui-base` sits between `gpui` and a styled lib
 [Modules](./index.md#three-layers)). It provides controls (`Button`), navigation (a `NavStack` of `NavPage`s driven
 by the state you create with `createNavStack`, and `Dialog` for content presented over everything else), safe areas
 (`SafeAreaView`, `safeArea()` and `safeAreaInsets()`), the system's alert dialogs (`AlertDialog`), the software
-keyboard (`Keyboard`, `keyboardFrame()` and `KeyboardAvoidingView`) and the status bar (`StatusBar`).
+keyboard (`Keyboard`, `keyboardFrame()` and `KeyboardAvoidingView`). Pages and dialogs also decide the status bar
+(`statusBar`).
 
 The look is the app's: what goes inside a page, a dialog or a header is your own JSX, drawn from the primitives with
 styles, [Tailwind](../docs/tailwind.md) classes and your theme, Rust components from [your own crate](../docs/rust.md),
@@ -23,11 +24,12 @@ from the `nsh-base` crate (`nsh_base::{SafeAreaView, …}`).
 ```tsx
 import {
   AlertDialog, Button, createNavStack, Dialog, Keyboard, keyboardFrame, KeyboardAvoidingView, NavPage, NavStack,
-  SafeAreaView, safeArea, safeAreaInsets, StatusBar,
+  SafeAreaView, safeArea, safeAreaInsets,
 } from "nsh/base";
 import type {
   AlertDialogAction, AlertDialogOptions, AlertDialogPresentation, AlertDialogRole, AvoidBehavior, ButtonProps,
-  DialogChangeReason, DialogProps, Edge, Foreground, HeaderStyle, Insets, NavPageProps, NavStackProps, NavStackState,
+  DialogChangeReason, DialogProps, Edge, HeaderStyle, Insets, NavPageProps, NavStackProps, NavStackState, StatusBar,
+  StatusBarForeground,
 } from "nsh/base";
 ```
 
@@ -243,6 +245,7 @@ options of the system header on iOS and Android:
 | `popOnBack` | `boolean` | `true` | The back buttons and the swipe back pop the page. See [Leaving a page](#leaving-a-page). |
 | `popOnSwipe` | `boolean` | `true` | The interactive back gesture pops the page: iOS swipe back, Android predictive back that follows the finger. The back buttons pop either way. |
 | `animation` | `"default" \| "slide" \| "fade" \| "none"` | `"default"` | How the page enters and leaves. |
+| `statusBar` | `{ foreground?, hidden?, animated? }` | none | iOS and Android: the status bar while the page is on top. See [Status bar](#status-bar). |
 | `style`, `class` | | none | The page's style. |
 | `children` | `JSX.Element` | none | The content. |
 | `onBackPress` | `() => void` | none | The user pressed back on the page (the header's back button, Android back, Escape, Alt+Left or a mouse's back button on the desktops, the browser's back), whether or not `popOnBack` let it pop. |
@@ -343,6 +346,7 @@ function Settings() {
 | `closeOnEscape` | `boolean` | `true` | Escape and the Android back button close it. |
 | `closeOnBackdropPress` | `boolean` | `true` | A press on the backdrop closes it. |
 | `closeOnSwipe` | `boolean` | `true` | Swiping a sheet down (iOS, phone browsers) closes it. |
+| `statusBar` | `{ foreground?, hidden?, animated? }` | none | iOS and Android: the status bar while the dialog is open. See [Status bar](#status-bar). |
 | `class`, `style` | | none | The popup's style. |
 | `backdropClass`, `backdropStyle` | | none | With either, a backdrop fills the dialog behind the popup. |
 | `ios` | `{ supportedOrientations?: (…)[] }` | none | iOS: the orientations it allows (default: the presenter's). |
@@ -701,71 +705,59 @@ The padding or margin is added to what the view's own style sets, so your paddin
 
 ## Status bar
 
-`StatusBar` sets how the system status bar looks while a part of the UI is shown: the color of its content (time,
-battery, signal) and whether it is hidden.
-
-### StatusBar
-
-A rendered `StatusBar` takes up no space. Its setting applies while it is mounted:
+The status bar belongs to what is on screen, as in UIKit, where each view controller declares its
+`preferredStatusBarStyle` and the topmost one decides. In NSH the pages and dialogs are those view controllers: a
+`NavPage` or a `Dialog` declares the status bar it wants with `statusBar`, and the app declares its default in
+`nsh.json`.
 
 ```tsx
-import { mount, Text, View } from "nsh";
-import { StatusBar } from "nsh/base";
+import { NavPage } from "nsh/base";
 
-function App() {
-  return (
-    <View style={{ flex: 1, backgroundColor: "#0b0b0f" }}>
-      <StatusBar foreground="light" />
-      <Text style={{ color: "#ffffff", padding: 16, paddingTop: 64 }}>Dark screen, light status bar</Text>
-    </View>
-  );
-}
-
-mount(App);
-```
-
-You can render several `StatusBar`s, for example one per page. The **most recently mounted** one wins, **prop by
-prop**: a `StatusBar` that only sets `hidden` keeps the `foreground` of the one below it. When a `StatusBar` unmounts,
-for example when its page is popped, the previous setting applies again.
-
-```tsx
 function PhotoViewer() {
   return (
-    <NavPage headerShown={false}>
-      <StatusBar hidden animated />
+    <NavPage headerShown={false} statusBar={{ foreground: "light", hidden: true, animated: true }}>
       …
     </NavPage>
   );
 }
 ```
 
-#### StatusBar props
+`statusBar` takes these fields, each optional:
 
-| Prop | Type | Default | Description |
-|---|---|---|---|
-| `foreground` | `"auto" \| "light" \| "dark" \| null` | not set | The color of the content (see [Foreground](#foreground)). |
-| `hidden` | `boolean \| null` | not set | Hides the status bar. |
-| `animated` | `boolean \| null` | not set | Animates changes of `foreground` and `hidden`. |
-| `web` | `{ themeColor?: string \| null }` | not set | Browsers only: the page's theme color (`<meta name="theme-color">`). |
+| Field | Type | Description |
+|---|---|---|
+| `foreground` | `"auto" \| "light" \| "dark"` | The color of the content (time, battery, signal): `"light"` for dark backgrounds, `"dark"` for light ones, `"auto"` the platform's for the current appearance. |
+| `hidden` | `boolean` | Hides the status bar. |
+| `animated` | `boolean` | Animates the change when the page or dialog comes and goes. |
 
-A prop left unset leaves that part of the status bar to the `StatusBar` below, or to the platform.
+The value is reactive: `statusBar={{ foreground: dark() ? "light" : "dark" }}` follows the signal.
 
-#### Foreground
+### Which one applies
 
-| `foreground` | Content |
-|---|---|
-| `"auto"` | The platform's for the current appearance (light or dark mode). |
-| `"light"` | Light content, for dark backgrounds. |
-| `"dark"` | Dark content, for light backgrounds. |
-
-#### In a browser
-
-Browsers give their own bars around the page a color (the address bar on phones, the title bar of an installed web
-app). `web={{ themeColor }}` sets it, as the page's `<meta name="theme-color">`, with the same most-recent-wins rule.
+The page or dialog shown **most recently** decides, **field by field**: a page pushed onto a stack is over the pages
+below it, and an open dialog is over the pages. A field it leaves out comes from the one below it, and in the end
+from the app's default. When the page is popped or the dialog closes, the one below it applies again.
 
 ```tsx
-<StatusBar foreground="light" web={{ themeColor: "#0b0b0f" }} />
+<NavPage title="Inbox" statusBar={{ foreground: "dark" }}>…</NavPage>
+
+// Pushed over it: hidden, with the inbox's dark content when it shows again.
+<NavPage title="Photo" statusBar={{ hidden: true }}>…</NavPage>
 ```
+
+### The app's default
+
+`nsh.json`'s `"statusBar"` is the setting under every page and dialog, as Info.plist's `UIStatusBarStyle` and
+`UIStatusBarHidden` are in a UIKit app:
+
+```json
+{
+  "statusBar": { "foreground": "light", "hidden": false }
+}
+```
+
+Both fields are optional. Without it the content is `"auto"` and the bar shows. Packaged iOS apps also show it on the
+launch screen.
 
 ### The status bar on each platform
 
@@ -775,8 +767,8 @@ app). `web={{ themeColor }}` sets it, as the page's `<meta name="theme-color">`,
   `NshAppView.preferredStatusBarUpdateAnimation` from its view controller.
 - **Android**: apps draw edge to edge, behind the status bar (Android 15, API 35): the app's own background is the
   bar's, and `foreground` keeps its content readable on it.
-- **Desktops, Mac Catalyst and the web**: `foreground` and `hidden` apply where the platform has a status bar; the
-  web takes `web={{ themeColor }}`.
+- **Desktops and the web**: the window's title bar and the browser's bars are the system's and the browser's;
+  `statusBar` and `nsh.json`'s `"statusBar"` are for the phones.
 
 > [!IMPORTANT]
 > When your `nsh.json` declares `"capabilities"`, the status bar changes only when they include

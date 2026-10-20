@@ -1048,7 +1048,11 @@ fn values_are_written_as_apps_write_them() {
 ///   with (so a script tells them apart);
 /// - `selectedRange` (inputs): the selection the platform was last told
 ///   to make (`selectedRange`, a ref's `setSelection`), `start=<n> end=<n>`
-///   in UTF-16 units; missing until one.
+///   in UTF-16 units; missing until one;
+/// - the status bar (the root, the `statusbar` step): what the platform
+///   was last told to show (`Command::StatusBar`: `nsh.json`'s default
+///   under the pages' and dialogs' `statusBar`, field by field), as
+///   [`Mounted::status_bar`] writes it; missing until it is told.
 #[derive(Default, Clone)]
 struct Later {
     offset: Option<(f32, f32)>,
@@ -1059,12 +1063,14 @@ struct Later {
     /// node.
     gestures: Option<[Option<nsh_core::nsh_animation::NodeId>; 4]>,
     scroll_value: Option<nsh_core::nsh_animation::NodeId>,
+    status_bar: Option<nsh_core::StatusBarConfig>,
 }
 
 impl Later {
     fn apply(&mut self, item: &MountItem) {
         match item {
             MountItem::Command { command, .. } => match *command {
+                nsh_core::Command::StatusBar(config) => self.status_bar = Some(config),
                 nsh_core::Command::ScrollTo { x, y, .. } => self.offset = Some((x, y)),
                 nsh_core::Command::ZoomTo { scale, .. } => self.zoom = Some(scale),
                 nsh_core::Command::SetSelection { start, end } => {
@@ -1150,6 +1156,27 @@ impl Mounted {
     /// Whether the view is a scroll view (a list's included).
     pub(crate) fn is_scroll(&self) -> bool {
         self.kind == Some(ViewKind::Scroll)
+    }
+
+    /// The status bar the platform was last told to show (on the root):
+    /// `foreground` (`auto`, `light`, `dark`, as `StatusBarForeground`
+    /// names them), `hidden` and `animated`, each always written; `None`
+    /// until the platform is told.
+    pub(crate) fn status_bar(&self) -> Option<Out> {
+        let config = self.later.status_bar?;
+        let mut out = Out::new();
+        out.put(
+            "foreground",
+            match config.style {
+                nsh_core::StatusBarStyle::Default => "auto",
+                nsh_core::StatusBarStyle::Light => "light",
+                nsh_core::StatusBarStyle::Dark => "dark",
+            }
+            .into(),
+        );
+        out.put("hidden", config.hidden.to_string());
+        out.put("animated", config.animated.to_string());
+        Some(out)
     }
 
     /// The user scrolled the view to `x`, `y` (a script's `scroll` step).

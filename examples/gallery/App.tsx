@@ -2,13 +2,13 @@ import { effect, mount, Scroll, signal, Text, untracked, View } from "nsh";
 import { Platform, windowSize } from "nsh/device";
 import { isAvailable as hasWindow, Window } from "nsh/desktop";
 import { Image } from "nsh/image";
-import { NavPage, NavStack, StatusBar } from "nsh/base";
+import { NavPage, NavStack } from "nsh/base";
 import { Storage } from "nsh/storage";
 import { Icon } from "./icons";
 import { TitleBar } from "./TitleBar";
 import logo from "./logo@2x.png";
 import { type DemoEntry, nav } from "./nav";
-import { Appear, Badge, colors, desktop, header, IconTile, isDark, lazy, mono, PageHeader, Press, radius, SIDEBAR } from "./ui";
+import { Appear, Badge, colors, desktop, header, IconTile, lazy, mono, PageHeader, Press, radius, SIDEBAR } from "./ui";
 
 /** The demos, by what they show; each module loads when first shown (`lazy`). */
 const groups: { title: string; demos: DemoEntry[] }[] = [
@@ -322,7 +322,6 @@ function App() {
   rememberDemo();
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar foreground={isDark() ? "light" : "dark"} />
       <TitleBar />
       <If when={desktop()} else={<Phone />}>
         <Desktop />

@@ -7,7 +7,3 @@
 # (docs/dev/compatibility.md).
 [globals] cancelAnimationFrame
 [globals] requestAnimationFrame
-[nsh/base] StatusBar
-[props] StatusBar.animated
-[props] StatusBar.foreground
-[props] StatusBar.hidden

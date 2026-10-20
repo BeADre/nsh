@@ -140,6 +140,21 @@ export interface NavStackProps<R> {
   children: (route: R, index: Accessor<number>) => JSX.Element;
 }
 
+/** The color of the status bar's content. */
+export type StatusBarForeground = "auto" | "light" | "dark";
+
+/** What the status bar shows while a page or dialog is up (`statusBar`; iOS
+ * and Android). The fields left out keep what is below: the pages under it
+ * and the app's default (`nsh.json` `statusBar`). */
+export interface StatusBar {
+  /** The content's color: "light" for dark backgrounds, "dark" for light ones, "auto" the platform's for the appearance. */
+  foreground?: StatusBarForeground;
+  /** Hidden. */
+  hidden?: boolean;
+  /** Animate the change when the page or dialog comes and goes. */
+  animated?: boolean;
+}
+
 /** The colors of a page's system header (iOS and Android). */
 export interface HeaderStyle {
   backgroundColor?: ColorValue;

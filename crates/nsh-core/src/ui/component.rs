@@ -25,9 +25,9 @@ use super::{
 /// `#[component]` on a function makes the type and this impl.
 ///
 /// It is registered under its type's name ([`std::any::type_name`]:
-/// `app_native::chart::Chart`) and exported to JS as the type's own
-/// name (`Button`), so neither is written by hand
-/// ([`Registry::register`]).
+/// `gallery_native::Gallery`, the root component of `examples/gallery-rs`)
+/// and exported to JS as the type's own name (`Gallery`), so neither is
+/// written by hand ([`Registry::register`]).
 ///
 /// ```ignore
 /// #[component]
@@ -355,9 +355,9 @@ impl Event for NoEvent {
 #[derive(Debug, Clone)]
 pub struct ComponentSpec {
     /// Its registered name: its type's ([`std::any::type_name`]:
-    /// `app_native::chart::Chart`), unique within one binary.
+    /// `gallery_native::Gallery`), unique within one binary.
     pub name: &'static str,
-    /// Its JS export: the type's own name (`Button`).
+    /// Its JS export: the type's own name (`Gallery`).
     pub export: String,
     /// Documentation.
     pub doc: &'static str,
@@ -431,8 +431,8 @@ pub(crate) fn name_of<C: Component>() -> &'static str {
     std::any::type_name::<C>()
 }
 
-/// A type's own name, its JS export: `app_native::tab_bar::TabBar` ->
-/// `TabBar` (a generic one's without its arguments: `app::Picker<app::Fruit>`
+/// A type's own name, its JS export: `gallery_native::demos::physics::Physics`
+/// -> `Physics` (a generic one's without its arguments: `app::Picker<app::Fruit>`
 /// -> `Picker`).
 fn export_name(type_name: &str) -> &str {
     let path = type_name.split('<').next().unwrap_or(type_name);
@@ -478,6 +478,7 @@ pub struct Root {
     fonts: Vec<Arc<[u8]>>,
     appearance: Option<crate::platform::Appearance>,
     app_id: Option<String>,
+    status_bar: Option<crate::StatusBarSetting>,
 }
 
 impl Root {
@@ -489,6 +490,7 @@ impl Root {
             fonts: Vec::new(),
             appearance: None,
             app_id: None,
+            status_bar: None,
         }
     }
 
@@ -523,6 +525,18 @@ impl Root {
     pub fn appearance(mut self, appearance: crate::platform::Appearance) -> Self {
         self.appearance = Some(appearance);
         self
+    }
+
+    /// The status bar's default (`nsh.json` `"statusBar"`), under what
+    /// pages and dialogs set (`Screen::status_bar`, `Modal::status_bar`).
+    pub fn status_bar(mut self, setting: crate::StatusBarSetting) -> Self {
+        self.status_bar = Some(setting);
+        self
+    }
+
+    /// The status bar's default ([`Root::status_bar`]).
+    pub fn status_bar_ref(&self) -> Option<crate::StatusBarSetting> {
+        self.status_bar
     }
 
     /// The appearance it starts in ([`Root::appearance`]; `None`: the

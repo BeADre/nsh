@@ -135,7 +135,6 @@ KeyboardAvoidingView function
 NavPage function
 NavStack function
 SafeAreaView function
-StatusBar function
 createNavStack function
 keyboardFrame function
 safeArea function

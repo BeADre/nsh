@@ -218,7 +218,7 @@ The page reports the rest of the environment, and keeps it current:
 | `safeArea()` | `env(safe-area-inset-*)` where it overlaps the container (`viewport-fit=cover` pages on phones) |
 | `keyboardFrame()` | how much of the container the on-screen keyboard covers (`visualViewport`) |
 
-`Platform.Version` is `"0.0"`, and `screenReaderEnabled()` stays `false` (browsers do not tell). [`StatusBar`](../modules/nsh-base.md#status-bar)'s `web={{ themeColor }}` sets the page's `<meta name="theme-color">`, the color browsers give their bars around the page.
+`Platform.Version` is `"0.0"`, and `screenReaderEnabled()` stays `false` (browsers do not tell). The browser's bars around the page are the browser's; a page's [`statusBar`](../modules/nsh-base.md#status-bar) is for the phones.
 
 ## Networking
 

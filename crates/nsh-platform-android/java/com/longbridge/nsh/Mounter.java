@@ -305,7 +305,10 @@ final class Mounter {
                 }
                 case APPEARANCE: {
                     appearance = b.getInt();
-                    if (barStyle == 0) SystemUi.statusBar(context, barStyle, barHidden, night());
+                    if (barStyle == 0) {
+                        SystemUi.statusBar(context, barStyle, barHidden, night());
+                        for (ModalHost m : shownModals) m.statusBar(barStyle, barHidden, night());
+                    }
                     break;
                 }
                 case LAYOUT_DIRECTION: {
@@ -1514,6 +1517,7 @@ final class Mounter {
                 modal.show();
                 shownModals.remove(modal);
                 shownModals.add(modal);
+                if (barStyle >= 0) modal.statusBar(barStyle, barHidden, night());
             } else {
                 modal.dismiss();
                 shownModals.remove(modal);
@@ -1781,6 +1785,7 @@ final class Mounter {
                 barStyle = style;
                 barHidden = hidden;
                 SystemUi.statusBar(context, style, hidden, night());
+                for (ModalHost m : shownModals) m.statusBar(style, hidden, night());
                 break;
             }
             case 12: {

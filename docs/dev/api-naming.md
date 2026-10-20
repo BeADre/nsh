@@ -120,9 +120,10 @@ and `Input`'s React Native names follow the rules as well.
 | `ActionSheet` (a module) | `presentation: "alert" \| "actionSheet"` | none (UIKit `preferredStyle`) | Default `"alert"`; same word as Modal's `presentation` |
 | `AlertOptions.cancelable` | `closeOnEscape` + `closeOnBackdropPress` | `AlertDialog::close_on_escape`; `Dialog::close_on_backdrop_press` | Default `false` for `"alert"` (`AlertDialog` has no backdrop dismissal), `true` for `"actionSheet"` |
 | **StatusBar** | | | |
-| `barStyle: "default" \| "light-content" \| "dark-content"` | `foreground: "auto" \| "light" \| "dark"` | none; `gpui-kit` theme `foreground` (the content's color) | Not `style` (the inline style every component takes); `"light"` is light content, for dark backgrounds |
-| `hidden`, `animated` | unchanged | `NavMotion::Animated` (UIKit `animated:`) | |
-| `StatusBar.setBarStyle`, `StatusBar.setHidden`, `BarAnimation` | (dropped) | | The component is the API |
+| `StatusBar` (a component; the most recently mounted wins) | `statusBar?: StatusBar` on `NavPage` and `Dialog`; `nsh.json` `"statusBar"` for the default | UIKit: each view controller's `preferredStatusBarStyle` / `prefersStatusBarHidden`, the topmost deciding; Info.plist `UIStatusBarStyle` / `UIStatusBarHidden`; `gpui-base` has none | Decided by the user (2026-10-20): the status bar follows UIKit; pages and dialogs are NSH's view controllers. Rust: `Screen::status_bar`, `Modal::status_bar`, `Root::status_bar` |
+| `foreground: "auto" \| "light" \| "dark"` (`Foreground`) | `foreground` of `StatusBar` (`StatusBarForeground`) | none; `gpui-kit` theme `foreground` (the content's color) | Not `style` (the inline style every component takes); `"light"` is light content, for dark backgrounds |
+| `hidden`, `animated` | fields of `StatusBar` | `NavMotion::Animated` (UIKit `animated:`) | `nsh.json` takes `foreground` and `hidden` |
+| `StatusBar.setBarStyle`, `StatusBar.setHidden`, `BarAnimation` | (dropped) | | The pages and dialogs are the API |
 | `android.backgroundColor`; `nsh/android` `setStatusBarBackgroundColor` | (dropped) | | Edge-to-edge (API 35) has no bar color |
 | **KeyboardAvoidingView** | | | |
 | `behavior="position"`, `contentContainerStyle` | (dropped) | | `behavior: "padding" \| "height"` |

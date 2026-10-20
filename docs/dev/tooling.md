@@ -340,7 +340,7 @@ program that describes them, builds the hosts and runners with them, and does ev
   stay hot. After a restart a failing build reports the error and waits for the next change (`RustApp::wait_after`).
 - **Rust apps.** With `"root": "<path in the crate>"` in `nsh.json` (in the first crate `"rust"` lists), the app's
   directory resolves to its `nsh.json` (`entry::resolve`; a named `App.tsx` stays the TSX entry), and the app runs with
-  no JS: `rust_app::RootConfig` (with `"theme"`, `"appearance"` and `"id"`) adds the members `rust-linux`,
+  no JS: `rust_app::RootConfig` (with `"theme"`, `"appearance"`, `"statusBar"` and `"id"`) adds the members `rust-linux`,
   `rust-macos`, `rust-windows`, `rust-ios` (each the platform's release runner library without its feature `js`, whose
   `run_rust` mounts the generated `app_root()`), `rust-android` (`nsh::ui_sets!` and `nsh::main!`,
   `nsh-platform-android` without `js`; the APK's manifest gets the `com.longbridge.nsh.RUST` meta-data `AppActivity`
