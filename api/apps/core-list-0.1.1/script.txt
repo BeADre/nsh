@@ -4,8 +4,18 @@ expect 1. Apple
 expect 2. Banana
 expect 3. Cherry
 absent 4. Item 4
+expect End of fruits
+frame id:row-0 0 0 370 40
+frame id:plum 0 0 358 30
+frame id:inner 12 12 366 20
+frame id:inner2 8 8 374 20
+expect Plum
+absent No plums
+expect Nothing here
 tap id:add
 expect 4. Item 4
 expect 3. Cherry
 covers [nsh/list] List
 covers [nsh:rt] list
+covers [props] contentStyle
+covers [props] contentClass
