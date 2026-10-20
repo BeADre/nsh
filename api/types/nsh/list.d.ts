@@ -24,18 +24,23 @@ export interface ViewabilityConfig {
 
 export interface ListProps<T> extends ScrollingHostProps, ListHostProps {
   each: readonly T[];
-  ListHeaderComponent?: ListSlot;
-  ListFooterComponent?: ListSlot;
+  /** Above the items, scrolling with them. */
+  header?: ListSlot;
+  /** Below the items, scrolling with them. */
+  footer?: ListSlot;
   /** Shown instead of the items while `each` is empty. */
-  ListEmptyComponent?: ListSlot;
+  empty?: ListSlot;
   /** Rendered between items (one column). */
-  ItemSeparatorComponent?: ListSlot;
+  separator?: ListSlot;
   /** Scrolls to this item before the first frame. */
   initialScrollIndex?: number;
   /** Key of an item in `onViewableItemsChanged` tokens (default: `item.key`, `item.id`, or the index). */
   keyExtractor?: (item: T, index: number) => string;
   onViewableItemsChanged?: (info: { viewableItems: ViewToken<T>[]; changed: ViewToken<T>[] }) => void;
   style?: StyleProp<ViewStyle>;
+  /** Padding and gaps of the content as classes (`p-*`, `gap-*`);
+   * `contentStyle` wins over them. */
+  contentClass?: string;
   /** How close to the end (in viewports) `onEndReached` fires; default 1. */
   onEndReachedThreshold?: number;
   ref?: YNode | ((node: YNode) => void);
@@ -47,7 +52,7 @@ export interface ListProps<T> extends ScrollingHostProps, ListHostProps {
 /** What an app passes to a Rust component that lays out a list of rows
  * (an `Items` prop): the data and the rows; the component decides the
  * layout. */
-export type ListItemsProps<T> = Pick<ListProps<T>, "each" | "children" | "keyExtractor" | "stickyHeaderIndices" | "initialScrollIndex" | "onViewableItemsChanged" | "viewabilityConfig" | "refreshing" | "onRefresh" | "onEndReached" | "onEndReachedThreshold" | "ListHeaderComponent" | "ListFooterComponent" | "ListEmptyComponent">;
+export type ListItemsProps<T> = Pick<ListProps<T>, "each" | "children" | "keyExtractor" | "stickyHeaderIndices" | "initialScrollIndex" | "onViewableItemsChanged" | "viewabilityConfig" | "refreshing" | "onRefresh" | "onEndReached" | "onEndReachedThreshold" | "header" | "footer" | "empty">;
 
 /**
  * A virtualized, recycling list on a native scroll view. Only rows near the
