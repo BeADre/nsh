@@ -42,7 +42,6 @@ mod keys;
 mod mount;
 mod native;
 mod navigation;
-mod net;
 mod render;
 mod rt;
 mod script;

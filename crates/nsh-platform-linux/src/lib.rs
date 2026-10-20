@@ -30,7 +30,6 @@ mod keymap;
 mod mount;
 mod native;
 mod navigation;
-mod net;
 mod script;
 mod scroll;
 mod surface;

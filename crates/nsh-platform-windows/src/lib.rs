@@ -40,7 +40,6 @@ mod keymap;
 mod mount;
 mod native;
 mod navigation;
-mod net;
 mod render;
 mod script;
 mod scroll;
