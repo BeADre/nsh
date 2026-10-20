@@ -150,8 +150,9 @@ Other steps stand in for the platform's input: `event <selector> <onEvent> [<key
 its payload keys as the handler reads them (`event id:video onProgress currentTime=3.25 duration=12.5`),
 `touch start <selector> <x> <y>` / `touch move|end|cancel [<x> <y>]` move one finger through the touch handlers and
 the responder system, `type <selector> <text>` types into an input (`onKeyPress`, `onChange` and
-`onSelectionChange` per character), `key <selector> <key>` presses a key, and `scroll <selector> <x> <y>` scrolls a
-scroll view (`onScroll`).
+`onSelectionChange` per character), `key <selector> <key>` presses a key, `scroll <selector> <x> <y>` scrolls a
+scroll view (`onScroll`), and `state <selector> pressed|hovered|focused|none...` reports a view's interaction states as
+a platform does (`activeStyle`, `hover:`, ...), failing when the core did not ask the platform to track them.
 Props and style keys are named and written as apps write them (`style id:card backgroundColor #3366ffff`,
 `prop id:field ios.keyboardAppearance dark`), in the stable text forms `compat/values.rs` defines, never from the
 core's types, so the scripts stay valid while those change. A script should open every screen of its app and check

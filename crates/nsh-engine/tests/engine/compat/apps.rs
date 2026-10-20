@@ -70,6 +70,12 @@
 //! - `fontscale <scale>`: before anything else (with `viewport`), the
 //!   user's text size (1 by default), which scales the fonts of texts and
 //!   inputs;
+//! - `state <selector> <state>...`: the platform reports the interaction
+//!   states of the first view on screen the selector names (itself): it
+//!   is now `pressed`, `hovered` and / or `focused`, and in no other
+//!   (`none`: in none). A platform reports only the states the core asked
+//!   it to track (`activeStyle`, `hover:`, ...), so the step waits for the
+//!   view to track the states it names and fails when it does not;
 //! - `covers <item>`: no step, a claim: the script checks what `<item>` (a
 //!   part of the API as `api/uncovered.txt` names it) does (compat/coverage.rs
 //!   verifies it).
@@ -93,6 +99,7 @@ use nsh_core::{
     NodeId, PayloadValue, Rect, Size, TouchEvent, TouchPhase, TouchPoint,
     keymap::Modifiers,
     platform::{Environment, Idiom, Os},
+    tailwind::state,
 };
 use nsh_engine::{Assets, Bundle, Engine, EngineConfig, EngineControl, MountSink};
 
@@ -739,6 +746,33 @@ pub(crate) fn run(code: String, script: &str, assets: &Path) -> Result<(), Failu
                     return failed("no such view".into(), &run);
                 };
                 run.control.scroll(id, x, y, 0);
+            }
+            "state" => {
+                let (selector, names) = selector(arg);
+                let mut states = 0;
+                for name in names.split_whitespace() {
+                    states |= match name {
+                        "pressed" => state::PRESSED,
+                        "hovered" => state::HOVERED,
+                        "focused" => state::FOCUSED,
+                        "none" => 0,
+                        _ => {
+                            return Err(format!(
+                                "`{line}`: state <selector> pressed|hovered|focused|none..."
+                            )
+                            .into());
+                        }
+                    };
+                }
+                let tracks = |v: &Views| {
+                    v.find_view(&selector)
+                        .filter(|id| v.nodes.get(id).is_some_and(|n| n.mounted.tracks(states)))
+                };
+                if !run.until(EXPECT_WAIT, |v| tracks(v).is_some()) {
+                    return failed(format!("the platform does not track `{names}`"), &run);
+                }
+                let id = tracks(&run.views).unwrap();
+                run.control.set_states(id, states);
             }
             "covers" => continue,
             other => return Err(format!("unknown step `{other}`").into()),

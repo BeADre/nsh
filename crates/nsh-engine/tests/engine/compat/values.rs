@@ -61,6 +61,9 @@ pub(crate) struct Mounted {
     screen: Option<Box<ScreenConfig>>,
     modal: Option<ModalConfig>,
     native: Option<NativeProps>,
+    /// The interaction states the platform reports
+    /// ([`MountItem::TrackStates`]; bits of `nsh_core::tailwind::state`).
+    tracked: u8,
 }
 
 impl Mounted {
@@ -99,6 +102,7 @@ impl Mounted {
             MountItem::ScreenConfig { config, .. } => self.screen = Some(config.clone()),
             MountItem::ModalConfig { config, .. } => self.modal = Some(*config),
             MountItem::NativeProps { props, .. } => self.native = Some(props.clone()),
+            MountItem::TrackStates { states, .. } => self.tracked = *states,
             _ => {}
         }
     }
@@ -120,7 +124,8 @@ impl Mounted {
             | MountItem::InputValue { id, .. }
             | MountItem::ScreenConfig { id, .. }
             | MountItem::ModalConfig { id, .. }
-            | MountItem::NativeProps { id, .. } => *id,
+            | MountItem::NativeProps { id, .. }
+            | MountItem::TrackStates { id, .. } => *id,
             _ => return None,
         })
     }
@@ -136,6 +141,12 @@ impl Mounted {
     /// Whether the platform reports `event` (an `on…` prop) of the view.
     pub(crate) fn listens(&self, event: EventKind) -> bool {
         self.events.contains(event)
+    }
+
+    /// Whether the platform reports all the interaction states `states`
+    /// (bits of `nsh_core::tailwind::state`) of the view.
+    pub(crate) fn tracks(&self, states: u8) -> bool {
+        self.tracked & states == states
     }
 
     /// The view's props, by JS name.
