@@ -47,12 +47,6 @@ export type Edge = "top" | "right" | "bottom" | "left";
 /** The color of the status bar's content. */
 export type Foreground = "auto" | "light" | "dark";
 
-/** The props of a `StatusBar` only the web has. */
-export interface StatusBarWeb {
-  /** The color the browser gives its own bars around the page (the page's `<meta name="theme-color">`). */
-  themeColor?: string | null;
-}
-
 export interface ButtonProps extends ComponentHostProps {
   /** No presses, no press feedback; `disabled:` styles apply and screen readers say it is dimmed. */
   disabled?: boolean;
@@ -108,8 +102,6 @@ export interface StatusBarProps extends ComponentHostProps {
   hidden?: boolean | null;
   /** Animate changes of `foreground` and `hidden`. */
   animated?: boolean | null;
-  /** What only the web has. */
-  web?: StatusBarWeb | null;
 }
 
 /** A rendered status bar setting (`StatusBarProps`): over the others while it is mounted. */
@@ -186,7 +178,8 @@ export interface NavStackState<R> {
   popToRoot(): void;
   /** Replaces the top page. */
   replace(route: R): void;
-  /** Replaces all pages. */
+  /** Replaces the pages with `routes`; a route that stays (the same value)
+   * keeps its page and its state. */
   setRoutes(routes: R[]): void;
   /** Removes the topmost page of `route`, wherever it is. */
   remove(route: R): void;
@@ -194,6 +187,8 @@ export interface NavStackState<R> {
 
 export interface NavStackProps<R> {
   state: NavStackState<R>;
+  /** Finds the stack in tests and `nsh trace`. */
+  testID?: string;
   style?: StyleProp<ViewStyle>;
   class?: string;
   /** Renders a route; return a `<NavPage>` for header options. */
@@ -210,6 +205,8 @@ export interface HeaderStyle {
 }
 
 export interface NavPageProps extends NavPageHostProps {
+  /** Finds the page in tests and `nsh trace`. */
+  testID?: string;
   /** The app's header on the desktops and the web, which have no system
    * header: placed at the top of the page, as wide as the page and as tall
    * as it lays out, with the content below it. NSH draws nothing else
@@ -244,6 +241,8 @@ export interface NavPageProps extends NavPageHostProps {
 export type DialogChangeReason = "cancel" | "backdropPress" | "swipe";
 
 export interface DialogProps extends DialogHostProps {
+  /** Finds the dialog in tests and `nsh trace`. */
+  testID?: string;
   /** Shown while true (default). */
   open?: boolean;
   /** How it comes in and goes (default `"slide"`). */
@@ -272,6 +271,8 @@ export interface DialogProps extends DialogHostProps {
   backdropStyle?: StyleProp<ViewStyle>;
   /** The backdrop's classes (see `backdropStyle`). */
   backdropClass?: string;
+  /** Finds the backdrop in tests and `nsh trace`. */
+  backdropTestID?: string;
   children?: JSX.Element;
   ios?: IOSDialogHostProps;
   android?: AndroidDialogHostProps;

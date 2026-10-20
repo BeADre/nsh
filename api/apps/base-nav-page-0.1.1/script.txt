@@ -79,3 +79,11 @@ covers [props] headerBackVisible
 covers [props] popOnSwipe
 covers [props] popOnBack
 covers [props] animation
+covers [props] NavPage.header
+covers [props] NavPage.headerLeft
+covers [props] NavPage.headerRight
+covers [props] NavPage.headerTitle
+covers [props] NavPage.headerStyle
+covers [props] NavPage.headerClass
+covers [events] NavPage.onBackPress
+covers [events] NavPage.onDismiss

@@ -49,3 +49,5 @@ covers [props] disabledStyle
 covers [events] onPressDown
 covers [events] onPressUp
 covers [events] onPress
+covers [props] Button.selected
+covers [props] Button.selectedStyle

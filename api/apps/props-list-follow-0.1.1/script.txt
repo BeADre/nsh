@@ -10,3 +10,4 @@ prop scroll:text:"Feed 9" contentOffset y=240
 expect Viewable: 0,1
 covers [props] maintainVisibleContentPosition
 covers [props] viewabilityConfig
+covers [events] List.onViewableItemsChanged

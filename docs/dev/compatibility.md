@@ -90,12 +90,16 @@ The engine's tests (`crates/nsh-engine/tests/engine/compat/`) check, on every pu
   script says. This is what catches what names cannot: `nsh:rt`'s calling conventions, props and styles that still
   parse, behavior.
 - `coverage::every_api_is_tested`: every export, global NSH provides (the language's own builtins aside), host prop,
-  event and style key is checked by a fixture's script, or listed in `uncovered.txt`; the list holds nothing a script
-  checks. A script claims what it checks with `covers <item>` steps (`[<module>] <name>`, `[globals] <name>`,
-  `[props] <name>`, `[events] <name>`, `[styles] <name>`; platform props as `ios.<name>`, `android.<name>`, ...).
-  Each claim is verified: the bundle uses the item, and for props, events and style keys, renaming the item in the
-  bundle makes a check step of the script fail. For exports and globals only the use can be verified: the claim is
-  the author's word that a step checks the result.
+  component prop, event and style key is checked by a fixture's script, or listed in `uncovered.txt`; the list holds
+  nothing a script checks. A script claims what it checks with `covers <item>` steps (`[<module>] <name>`,
+  `[globals] <name>`, `[props] <name>`, `[events] <name>`, `[styles] <name>`; platform props as `ios.<name>`,
+  `android.<name>`, ...). A component's own props and events, the members of its module's `<Component>Props` that are
+  not host props (which it inherits or passes on under their names), are `[props] <Component>.<name>` and
+  `[events] <Component>.<name>` (`[props] List.header`, `[events] Dialog.onOpenChange`); a member is an event when it
+  is an `on…` function. Each claim is verified: the bundle uses the item (for a component's, the component and the
+  name), and for props, events and style keys, renaming the item in the bundle makes a check step of the script fail
+  (or, for a prop the component requires, makes the app fail). For exports and globals only the use can be verified:
+  the claim is the author's word that a step checks the result.
 - `coverage::uncovered_only_shrinks`: `uncovered.txt` gains no entry over the merge base, so a new API lands with its
   test.
 - `declarations_are_understood`: every declaration is one `compare.rs` can read, so none escapes the comparison.
@@ -151,8 +155,9 @@ its payload keys as the handler reads them (`event id:video onProgress currentTi
 `touch start <selector> <x> <y>` / `touch move|end|cancel [<x> <y>]` move one finger through the touch handlers and
 the responder system, `type <selector> <text>` types into an input (`onKeyPress`, `onChange` and
 `onSelectionChange` per character), `key <selector> <key>` presses a key, `scroll <selector> <x> <y>` scrolls a
-scroll view (`onScroll`), and `state <selector> pressed|hovered|focused|none...` reports a view's interaction states as
-a platform does (`activeStyle`, `hover:`, ...), failing when the core did not ask the platform to track them.
+scroll view (`onScroll`), `keyboard <height> <duration>` shows the software keyboard (at height 0, hides it), and
+`state <selector> pressed|hovered|focused|none...` reports a view's interaction states as a platform does
+(`activeStyle`, `hover:`, ...), failing when the core did not ask the platform to track them.
 Props and style keys are named and written as apps write them (`style id:card backgroundColor #3366ffff`,
 `prop id:field ios.keyboardAppearance dark`), in the stable text forms `compat/values.rs` defines, never from the
 core's types, so the scripts stay valid while those change. A script should open every screen of its app and check

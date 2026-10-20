@@ -80,6 +80,9 @@
 //!   names is at `<x> <y>` on the surface: its frames' origins added up,
 //!   scroll offsets aside (a list's row, whose frame is its cell's), waits
 //!   for it;
+//! - `keyboard <height> <duration>`: the software keyboard shows at
+//!   `<height>` points over the bottom of the surface, animated over
+//!   `<duration>` seconds (`0 0`: it hides);
 //! - `covers <item>`: no step, a claim: the script checks what `<item>` (a
 //!   part of the API as `api/uncovered.txt` names it) does (compat/coverage.rs
 //!   verifies it).
@@ -815,6 +818,13 @@ pub(crate) fn run(code: String, script: &str, assets: &Path) -> Result<(), Failu
                 }
                 let id = tracks(&run.views).unwrap();
                 run.control.set_states(id, states);
+            }
+            "keyboard" => {
+                let [height, duration] = numbers::<2>(arg)
+                    .ok_or_else(|| format!("`{line}`: keyboard <height> <duration>"))?;
+                environment.keyboard_height = height;
+                environment.keyboard_duration = duration;
+                run.control.set_environment(environment);
             }
             "covers" => continue,
             other => return Err(format!("unknown step `{other}`").into()),

@@ -81,3 +81,8 @@ covers [props] closeOnEscape
 covers [props] closeOnSwipe
 covers [props] closeOnBackdropPress
 covers [props] ios.supportedOrientations
+covers [props] Dialog.open
+covers [events] Dialog.onOpen
+covers [events] Dialog.onClose
+covers [events] Dialog.onCancel
+covers [events] Dialog.onOpenChange

@@ -1045,10 +1045,14 @@ fn values_are_written_as_apps_write_them() {
 /// - `scrollValue`, `pan` (`{ x?, y? }`), `pinch` (`{ scale? }`),
 ///   `rotation` (`{ angle? }`): the animated values the scroll offset
 ///   and the gestures drive, each written as the value it was created
-///   with (so a script tells them apart).
+///   with (so a script tells them apart);
+/// - `selectedRange` (inputs): the selection the platform was last told
+///   to make (`selectedRange`, a ref's `setSelection`), `start=<n> end=<n>`
+///   in UTF-16 units; missing until one.
 #[derive(Default, Clone)]
 struct Later {
     offset: Option<(f32, f32)>,
+    selection: Option<(u32, u32)>,
     zoom: Option<f32>,
     sticky: Option<Vec<(f32, f32)>>,
     /// `pan.x`, `pan.y`, `pinch.scale`, `rotation.angle`, by animated
@@ -1063,6 +1067,9 @@ impl Later {
             MountItem::Command { command, .. } => match *command {
                 nsh_core::Command::ScrollTo { x, y, .. } => self.offset = Some((x, y)),
                 nsh_core::Command::ZoomTo { scale, .. } => self.zoom = Some(scale),
+                nsh_core::Command::SetSelection { start, end } => {
+                    self.selection = Some((start, end));
+                }
                 _ => {}
             },
             MountItem::ScrollBy { dx, dy, .. } => {
@@ -1111,6 +1118,12 @@ impl Later {
             if let Some(v) = animated(self.scroll_value) {
                 out.put("scrollValue", v);
             }
+        }
+        if let Some((start, end)) = self.selection {
+            let mut o = Object::default();
+            o.opt("start", Some(start.to_string()));
+            o.opt("end", Some(end.to_string()));
+            out.put("selectedRange", o.done());
         }
         if let Some([x, y, scale, angle]) = self.gestures {
             let mut o = Object::default();

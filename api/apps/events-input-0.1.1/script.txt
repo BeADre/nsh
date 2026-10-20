@@ -39,6 +39,8 @@ noprop id:field readonly
 style id:secret placeholderColor #888888ff
 style id:secret selectionColor #ff6600ff
 style id:pick selectionColor #00aa00ff
+# The selection the app sets.
+prop id:secret selectedRange start=0 end=2
 covers [nsh] Input
 covers [props] multiline
 covers [props] masked
@@ -52,3 +54,4 @@ covers [events] onChange
 covers [events] onSubmit
 covers [events] onSelectionChange
 covers [events] onContentSizeChange
+covers [props] selectedRange

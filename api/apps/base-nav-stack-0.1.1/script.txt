@@ -91,3 +91,4 @@ covers [nsh/base] createNavStack
 covers [nsh/base] NavStack
 covers [nsh/base] NavPage
 covers [nsh/base] Button
+covers [props] NavStack.state

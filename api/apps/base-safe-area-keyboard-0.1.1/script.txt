@@ -24,6 +24,19 @@ expect Page insets: 40 5 30 7
 frame id:avoid-padding-inner 0 0 390 30
 frame id:avoid-height-inner 0 0 390 30
 frame id:avoid-off-inner 0 0 390 30
+# A keyboard 5 points tall: `padding` pads the bottom by it and the
+# `offset`, `height` makes a margin of as much below it, and a disabled
+# one makes no room.
+keyboard 5 0
+expect Keyboard: 5, duration a number
+frame id:avoid-padding-inner 0 0 390 5
+frame id:avoid-height-inner 0 0 390 30
+frame id:avoid-off-inner 0 0 390 30
+frame id:avoid-off 0 210 390 30
+# It hides: no room again.
+keyboard 0 0
+frame id:avoid-padding-inner 0 0 390 30
+frame id:avoid-off 0 185 390 30
 tap text:Dismiss the keyboard
 expect Dismiss: called
 covers [nsh/base] safeArea
@@ -32,3 +45,7 @@ covers [nsh/base] SafeAreaView
 covers [nsh/base] keyboardFrame
 covers [nsh/base] Keyboard
 covers [nsh/base] KeyboardAvoidingView
+covers [props] SafeAreaView.edges
+covers [props] KeyboardAvoidingView.enabled
+covers [props] KeyboardAvoidingView.behavior
+covers [props] KeyboardAvoidingView.offset
