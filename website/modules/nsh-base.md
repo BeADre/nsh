@@ -84,7 +84,7 @@ import { createNavigator, Screen, Stack } from "nsh/base";
 
 type Route = { name: "home" } | { name: "detail"; id: number };
 
-const nav = createNavigator<Route>({ name: "home" });
+const nav = createNavigator<Route>([{ name: "home" }]);
 
 function Action(props: { title: string; onPress: () => void }) {
   return (
@@ -142,10 +142,11 @@ mount(App);
 ### createNavigator
 
 ```ts
-function createNavigator<R>(initial: R | R[]): Navigator<R>
+function createNavigator<R>(initial: R[]): Navigator<R>
 ```
 
-Creates a navigator whose stack starts with `initial` (one route or several). Create it once, for example at module
+Creates a navigator whose stack starts with the routes of `initial`, bottom to top. Each push is a screen of its own, so the
+same route can be pushed twice. Create it once, for example at module
 level, and pass it to `<Stack navigator>`. Any code can import it to navigate.
 
 | Member | Description |
@@ -156,7 +157,7 @@ level, and pass it to `<Stack navigator>`. Any code can import it to navigate.
 | `popToTop(): void` | Pops back to the first screen. |
 | `replace(route: R): void` | Replaces the top screen. |
 | `reset(routes: R[]): void` | Replaces all screens. |
-| `remove(route: R): void` | Removes a route wherever it is in the stack. |
+| `remove(route: R): void` | Removes the topmost screen of `route`, wherever it is in the stack. |
 
 ```tsx
 nav.push({ name: "detail", id: 7 });

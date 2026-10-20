@@ -246,7 +246,7 @@ import { mount, signal, Text, View } from "nsh";
 import { Screen, Stack, createNavigator } from "nsh/base";
 
 type Route = { name: string };
-const nav = createNavigator<Route>({ name: "home" });
+const nav = createNavigator<Route>([{ name: "home" }]);
 const taps = signal(0);
 
 function Label(props: { route: string }) {

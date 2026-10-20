@@ -14,7 +14,7 @@ function Button(props: { title: string; variant?: "primary" | "secondary"; onPre
 
 type Route = { name: "home" } | { name: "detail"; id: number };
 
-const nav = createNavigator<Route>({ name: "home" });
+const nav = createNavigator<Route>([{ name: "home" }]);
 
 function Home() {
   const opened = signal(0);

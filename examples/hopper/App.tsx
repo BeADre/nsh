@@ -10,7 +10,7 @@ import { Icon, type IconName } from "./icons";
 import { color } from "./theme";
 
 type Route = { name: "lab" } | { name: "log" };
-const nav = createNavigator<Route>({ name: "lab" });
+const nav = createNavigator<Route>([{ name: "lab" }]);
 
 /** The lab's sections: what flew, what flies next, the vehicle. */
 const tabs: { name: string; title: string; icon: IconName }[] = [

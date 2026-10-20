@@ -15,7 +15,7 @@ import { createNavigator, Screen, Stack } from "nsh/base";
 
 type Route = { name: "inbox" } | { name: "message"; id: number };
 
-const nav = createNavigator<Route>({ name: "inbox" });
+const nav = createNavigator<Route>([{ name: "inbox" }]);
 
 function Inbox() {
   return (
@@ -63,7 +63,7 @@ mount(App);
 
 ## Navigator
 
-`createNavigator(initial)` 创建路由栈。路由可以是任何值（字符串、对象，或者像上面那样的可辨识联合类型）；路由按标识比较，所以每个页面都应该 push 一个新对象。navigator 只创建一次，放在模块顶层或根组件中，在需要导航的页面里导入它。
+`createNavigator(initial)` 用一个路由数组创建路由栈。路由可以是任何值（字符串、对象，或者像上面那样的可辨识联合类型），每次 push 都是一个独立的页面，同一个路由 push 两次也一样。navigator 只创建一次，放在模块顶层或根组件中，在需要导航的页面里导入它。
 
 | 成员 | 说明 |
 |---|---|
@@ -86,7 +86,7 @@ import { type JSX } from "nsh";
 import { createNavigator } from "nsh/base";
 
 export type Route = { name: "home" } | { name: "page"; page: () => JSX.Element };
-export const nav = createNavigator<Route>({ name: "home" });
+export const nav = createNavigator<Route>([{ name: "home" }]);
 
 // 在别处：nav.push({ name: "page", page: Settings });
 ```

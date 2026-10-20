@@ -144,7 +144,7 @@ const NAVIGATION: &str = r#"import { mount, signal, Text, View } from "nsh";
 import { Modal, Screen, Stack, createNavigator, safeAreaInsets } from "nsh/base";
 
 type Route = { name: string };
-const nav = createNavigator<Route>({ name: "home" });
+const nav = createNavigator<Route>([{ name: "home" }]);
 const open = signal(false);
 
 function Insets() {
@@ -344,4 +344,60 @@ fn removed_modal_hears_its_dismissal() {
     control.dispatch_event(modal, EventKind::Dismiss, EventPayload::None);
     let batch = next(&rx, |b| text_id(b, "dismissed").is_some());
     assert!(text_id(&batch, "dismissed").is_some());
+}
+
+const SAME_ROUTE_TWICE: &str = r#"import { mount, Text, View } from "nsh";
+import { Screen, Stack, createNavigator } from "nsh/base";
+
+const nav = createNavigator(["home"]);
+
+mount(() => (
+  <View style={{ flex: 1 }}>
+    <Stack navigator={nav} style={{ flex: 1 }}>
+      {(route, index) => (
+        <Screen title={`${route} ${index()}`}>
+          <Text onPress={() => nav.push("detail")}>{`push from ${index()}`}</Text>
+          <Text>{`depth ${nav.routes().length}`}</Text>
+        </Screen>
+      )}
+    </Stack>
+  </View>
+));
+"#;
+
+/// A route pushed twice is two screens: the user popping the top one
+/// natively removes that one only.
+#[test]
+fn a_route_pushed_twice_is_two_screens() {
+    let (engine, rx) = start_app(SAME_ROUTE_TWICE);
+    let control = engine.control();
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    let push = text_id(&first, "push from 0").unwrap();
+    control.dispatch_event(push, EventKind::Press, EventPayload::None);
+    let batch = next(&rx, |b| !titles(b).is_empty());
+    assert_eq!(
+        titles(&batch).last().map(|t| t.1.as_str()),
+        Some("detail 1")
+    );
+    while rx.recv_timeout(Duration::from_millis(200)).is_ok() {}
+    control.dispatch_event(push, EventKind::Press, EventPayload::None);
+    let batch = next(&rx, |b| !titles(b).is_empty());
+    let top = titles(&batch);
+    assert_eq!(
+        top.last().map(|t| t.1.as_str()),
+        Some("detail 2"),
+        "{top:?}"
+    );
+    let top_screen = top[0].0;
+    while rx.recv_timeout(Duration::from_millis(200)).is_ok() {}
+    // The user pops the top "detail": the other one stays.
+    control.dispatch_event(top_screen, EventKind::Dismiss, EventPayload::None);
+    let batch = next(&rx, |b| texts(b).iter().any(|t| t.starts_with("depth ")));
+    assert!(
+        texts(&batch).contains(&"depth 2".to_owned()),
+        "{:?}",
+        texts(&batch)
+    );
 }

@@ -13,4 +13,4 @@ export interface DemoEntry {
 /** A screen a demo pushes: a component rendering its own `<Screen>`. */
 export type Route = { name: "home" } | { name: "demo"; demo: DemoEntry } | { name: "page"; page: () => JSX.Element };
 
-export const nav = createNavigator<Route>({ name: "home" });
+export const nav = createNavigator<Route>([{ name: "home" }]);

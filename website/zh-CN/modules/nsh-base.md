@@ -76,7 +76,7 @@ import { createNavigator, Screen, Stack } from "nsh/base";
 
 type Route = { name: "home" } | { name: "detail"; id: number };
 
-const nav = createNavigator<Route>({ name: "home" });
+const nav = createNavigator<Route>([{ name: "home" }]);
 
 function Action(props: { title: string; onPress: () => void }) {
   return (
@@ -130,10 +130,10 @@ mount(App);
 ### createNavigator
 
 ```ts
-function createNavigator<R>(initial: R | R[]): Navigator<R>
+function createNavigator<R>(initial: R[]): Navigator<R>
 ```
 
-创建一个导航器，其栈以 `initial`（一个或多个路由）开始。只需创建一次（例如在模块顶层），然后传给 `<Stack navigator>`。任何代码都可以导入它来进行导航。
+创建一个导航器，其栈从 `initial` 中的路由开始（从栈底到栈顶）。每次 push 都是一个独立的页面，同一个路由可以 push 两次。只需创建一次（例如在模块顶层），然后传给 `<Stack navigator>`。任何代码都可以导入它来进行导航。
 
 | 成员 | 说明 |
 |---|---|
@@ -143,7 +143,7 @@ function createNavigator<R>(initial: R | R[]): Navigator<R>
 | `popToTop(): void` | 返回到第一个页面。 |
 | `replace(route: R): void` | 替换栈顶页面。 |
 | `reset(routes: R[]): void` | 替换所有页面。 |
-| `remove(route: R): void` | 移除某个路由，无论它在栈中的什么位置。 |
+| `remove(route: R): void` | 移除 `route` 最上面的那个页面，无论它在栈中的什么位置。 |
 
 ```tsx
 nav.push({ name: "detail", id: 7 });

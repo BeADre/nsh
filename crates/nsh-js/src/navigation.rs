@@ -71,7 +71,7 @@ pub(crate) const EXPORTS: &[Item] = &[
         Export::Function(create_navigator, 1),
         Ts::function(
             "A stack of routes for `<Stack>`, starting with `initial`.",
-            &["<R>(initial: R | R[]): Navigator<R>"],
+            &["<R>(initial: R[]): Navigator<R>"],
         ),
     ),
     (
@@ -101,7 +101,7 @@ pub(crate) const EXPORTS: &[Item] = &[
 ];
 
 /// The types of the navigation's exports.
-pub(crate) const TYPES: &str = r#"/** A stack of routes for `<Stack>`: plain values, compared by identity. */
+pub(crate) const TYPES: &str = r#"/** A stack of routes for `<Stack>`: the app's values; each push is a screen of its own, the same route pushed twice included. */
 export interface Navigator<R> {
   /** The routes, bottom to top (reactive). */
   routes: Accessor<readonly R[]>;
@@ -115,7 +115,7 @@ export interface Navigator<R> {
   replace(route: R): void;
   /** Replaces all screens. */
   reset(routes: R[]): void;
-  /** Removes a route wherever it is (the user popped its screen). */
+  /** Removes the topmost screen of `route`, wherever it is. */
   remove(route: R): void;
 }
 
@@ -175,18 +175,22 @@ unsafe extern "C" fn create_navigator(
     argv: *mut JsValue,
 ) -> JsValue {
     let initial = arg(argc, argv, 0);
-    // SAFETY: a new array of the initial route(s).
-    let routes = unsafe {
-        if qjs::JS_IsArray(initial) {
-            let mut values = routes_of(ctx, initial);
-            qjs::JS_NewArrayFrom(ctx, values.len() as c_int, values.as_mut_ptr())
-        } else {
-            let mut values = [qjs::JS_DupValue(ctx, initial)];
-            qjs::JS_NewArrayFrom(ctx, 1, values.as_mut_ptr())
-        }
-    };
-    let signal = reactive::new_signal(ctx, routes);
-    free(ctx, routes);
+    // SAFETY: an inline tag check.
+    if !unsafe { qjs::JS_IsArray(initial) } {
+        // SAFETY: throwing in the calling context.
+        return unsafe {
+            qjs::JS_ThrowTypeError(ctx, c"createNavigator: an array of routes".as_ptr())
+        };
+    }
+    let mut entries: Vec<JsValue> = routes_of(ctx, initial)
+        .into_iter()
+        .map(|route| entry(ctx, route))
+        .collect();
+    // SAFETY: a new array taking the entries.
+    let entries =
+        unsafe { qjs::JS_NewArrayFrom(ctx, entries.len() as c_int, entries.as_mut_ptr()) };
+    let signal = reactive::new_signal(ctx, entries);
+    free(ctx, entries);
     // SAFETY: a new object taking the functions.
     let nav = unsafe { qjs::JS_NewObject(ctx) };
     let methods: [(&CStr, c_int, c_int); 6] = [
@@ -209,13 +213,33 @@ unsafe extern "C" fn create_navigator(
     // `routes`: a read-only accessor.
     let read = native(ctx, read_routes, 0, &mut [signal]);
     let routes = reactive::memo(ctx, read, false);
-    // SAFETY: the object takes the accessor; the signal is held by the
-    // functions.
+    // SAFETY: the object takes the accessor and the signal, the latter
+    // hidden (not enumerable, not writable): `<Stack>` renders its entries.
     unsafe {
         qjs::JS_SetPropertyStr(ctx, nav, c"routes".as_ptr(), routes);
-        qjs::JS_FreeValue(ctx, signal);
+        qjs::JS_DefinePropertyValueStr(ctx, nav, ENTRIES.as_ptr(), signal, 0);
     }
     nav
+}
+
+/// The hidden property of a navigator holding its entries' signal.
+const ENTRIES: &CStr = c"__nshEntries";
+
+/// One screen of a navigator: an object of its own around the route, so a
+/// route pushed twice is two screens, and the user popping one removes
+/// that one (takes `route`).
+fn entry(ctx: *mut JsContext, route: JsValue) -> JsValue {
+    // SAFETY: a new object taking the route.
+    unsafe {
+        let entry = qjs::JS_NewObject(ctx);
+        qjs::JS_SetPropertyStr(ctx, entry, c"route".as_ptr(), route);
+        entry
+    }
+}
+
+/// The route of an entry (owned).
+fn route_of(ctx: *mut JsContext, entry: JsValue) -> JsValue {
+    get(ctx, entry, c"route")
 }
 
 unsafe extern "C" fn read_routes(
@@ -226,12 +250,23 @@ unsafe extern "C" fn read_routes(
     _magic: c_int,
     data: *mut JsValue,
 ) -> JsValue {
-    // SAFETY: one data value: the routes signal.
-    unsafe { qjs::JS_Call(ctx, *data, UNDEFINED, 0, ptr::null_mut()) }
+    // SAFETY: one data value: the entries' signal.
+    let entries = unsafe { qjs::JS_Call(ctx, *data, UNDEFINED, 0, ptr::null_mut()) };
+    let mut routes: Vec<JsValue> = routes_of(ctx, entries)
+        .into_iter()
+        .map(|e| {
+            let route = route_of(ctx, e);
+            free(ctx, e);
+            route
+        })
+        .collect();
+    free(ctx, entries);
+    // SAFETY: a new array taking the routes.
+    unsafe { qjs::JS_NewArrayFrom(ctx, routes.len() as c_int, routes.as_mut_ptr()) }
 }
 
 /// The navigator's functions, by magic: push, pop, popToTop, replace,
-/// reset, remove.
+/// reset, remove; 6: remove one entry (the user popped its screen).
 unsafe extern "C" fn navigate(
     ctx: *mut JsContext,
     _this: JsValue,
@@ -247,7 +282,7 @@ unsafe extern "C" fn navigate(
     let a0 = arg(argc, argv, 0);
     let dup = |v: JsValue| unsafe { qjs::JS_DupValue(ctx, v) };
     match magic {
-        0 => routes.push(dup(a0)),
+        0 => routes.push(entry(ctx, dup(a0))),
         1 => {
             let mut count = 1f64;
             // SAFETY: converting a live value.
@@ -268,23 +303,38 @@ unsafe extern "C" fn navigate(
             if let Some(v) = routes.pop() {
                 free(ctx, v);
             }
-            routes.push(dup(a0));
+            routes.push(entry(ctx, dup(a0)));
         }
         4 => {
             for v in routes.drain(..) {
                 free(ctx, v);
             }
-            routes = routes_of(ctx, a0);
+            routes = routes_of(ctx, a0)
+                .into_iter()
+                .map(|route| entry(ctx, route))
+                .collect();
+        }
+        5 => {
+            // The topmost screen showing the route.
+            let at = routes.iter().rposition(|&e| {
+                let route = route_of(ctx, e);
+                // SAFETY: an identity comparison of live values.
+                let same = unsafe { qjs::JS_IsStrictEqual(ctx, route, a0) };
+                free(ctx, route);
+                same
+            });
+            if let Some(at) = at {
+                free(ctx, routes.remove(at));
+            }
         }
         _ => {
-            let (gone, kept): (Vec<_>, Vec<_>) = routes
-                .into_iter()
-                // SAFETY: identity comparisons of live values.
-                .partition(|&v| unsafe { qjs::JS_IsStrictEqual(ctx, v, a0) });
-            for v in gone {
-                free(ctx, v);
+            // SAFETY: identity comparisons of live values.
+            if let Some(at) = routes
+                .iter()
+                .position(|&e| unsafe { qjs::JS_IsStrictEqual(ctx, e, a0) })
+            {
+                free(ctx, routes.remove(at));
             }
-            routes = kept;
         }
     }
     // SAFETY: a new array taking the routes.
@@ -310,13 +360,13 @@ unsafe extern "C" fn stack(
     let result = (|| -> Result<(), JsValue> {
         dom::spread_except(ctx, node, props, &["navigator", "children"])?;
         let navigator = get(ctx, props, c"navigator");
-        let routes = get(ctx, navigator, c"routes");
+        let entries = get(ctx, navigator, ENTRIES);
         free(ctx, navigator);
         let render = native(ctx, stack_row, 2, &mut [props]);
-        // SAFETY: `each(routes, render)`: rows by route identity.
-        let mut args = [routes, render];
+        // SAFETY: `each(entries, render)`: a row per pushed screen.
+        let mut args = [entries, render];
         let rows = unsafe { crate::dom::each(ctx, UNDEFINED, 2, args.as_mut_ptr()) };
-        free(ctx, routes);
+        free(ctx, entries);
         free(ctx, render);
         // SAFETY: an inline tag check.
         if unsafe { qjs::JS_IsException(rows) } {
@@ -348,9 +398,10 @@ unsafe extern "C" fn stack_row(
     // SAFETY: one data value (the stack's props); `item` is an accessor.
     let props = unsafe { *data };
     let (item, index) = (arg(argc, argv, 0), arg(argc, argv, 1));
-    let route = reactive::untracked_with(ctx, || unsafe {
+    let entry = reactive::untracked_with(ctx, || unsafe {
         qjs::JS_Call(ctx, item, UNDEFINED, 0, ptr::null_mut())
     });
+    let route = route_of(ctx, entry);
     let children = get(ctx, props, c"children");
     let mut args = [route, index];
     // SAFETY: the app's function, called untracked.
@@ -359,16 +410,17 @@ unsafe extern "C" fn stack_row(
     });
     free(ctx, children);
     // SAFETY: an inline tag check.
+    free(ctx, route);
     if unsafe { qjs::JS_IsException(rendered) } {
-        free(ctx, route);
+        free(ctx, entry);
         return rendered;
     }
     let navigator = get(ctx, props, c"navigator");
-    let remove = get(ctx, navigator, c"remove");
+    let entries = get(ctx, navigator, ENTRIES);
     free(ctx, navigator);
-    let popped = native(ctx, pop_route, 0, &mut [remove, route]);
-    free(ctx, remove);
-    free(ctx, route);
+    let popped = native(ctx, pop_route, 0, &mut [entries, entry]);
+    free(ctx, entries);
+    free(ctx, entry);
     // An accessor (e.g. a component made hot) may render another screen
     // later.
     let result =
@@ -391,11 +443,10 @@ unsafe extern "C" fn pop_route(
     _magic: c_int,
     data: *mut JsValue,
 ) -> JsValue {
-    // SAFETY: two data values: the navigator's `remove` and the route.
-    unsafe {
-        let mut args = [*data.add(1)];
-        qjs::JS_Call(ctx, *data, UNDEFINED, 1, args.as_mut_ptr())
-    }
+    // SAFETY: two data values: the navigator's entries and the entry.
+    let mut args = [unsafe { *data.add(1) }];
+    // SAFETY: `navigate` removing that entry (magic 6) from the signal.
+    unsafe { navigate(ctx, UNDEFINED, 1, args.as_mut_ptr(), 6, data) }
 }
 
 unsafe extern "C" fn screen_of_accessor(

@@ -15,7 +15,7 @@ import { createNavigator, Screen, Stack } from "nsh/base";
 
 type Route = { name: "inbox" } | { name: "message"; id: number };
 
-const nav = createNavigator<Route>({ name: "inbox" });
+const nav = createNavigator<Route>([{ name: "inbox" }]);
 
 function Inbox() {
   return (
@@ -63,7 +63,7 @@ mount(App);
 
 ## The navigator
 
-`createNavigator(initial)` creates the stack of routes. A route is any value you like (a string, an object, a discriminated union as above); routes are compared by identity, so push a new object for each screen. Create the navigator once, at module level or in your root component, and import it wherever screens navigate.
+`createNavigator(initial)` creates the stack of routes from an array of them. A route is any value you like (a string, an object, a discriminated union as above), and each push is a screen of its own, the same route pushed twice included. Create the navigator once, at module level or in your root component, and import it wherever screens navigate.
 
 | Member | Description |
 |---|---|
@@ -86,7 +86,7 @@ import { type JSX } from "nsh";
 import { createNavigator } from "nsh/base";
 
 export type Route = { name: "home" } | { name: "page"; page: () => JSX.Element };
-export const nav = createNavigator<Route>({ name: "home" });
+export const nav = createNavigator<Route>([{ name: "home" }]);
 
 // Elsewhere: nav.push({ name: "page", page: Settings });
 ```
