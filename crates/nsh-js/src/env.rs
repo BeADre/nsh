@@ -390,7 +390,7 @@ pub(crate) const REEXPORTS: &[Item] = &[
         ),
     ),
     (
-        "keyboard",
+        "keyboardFrame",
         Export::Value(|ctx| accessor(ctx, Part::Keyboard)),
         Ts::value(
             "Height of the software keyboard over the surface (0 when hidden) and the\nduration of its animation in seconds (reactive).",
@@ -401,7 +401,7 @@ pub(crate) const REEXPORTS: &[Item] = &[
         "safeAreaInsets",
         Export::Function(safe_area_insets, 0),
         Ts::function(
-            "Insets not covered by system UI or headers where this component renders:\nthe surface's safe area, a modal's, or a screen's (below its header).",
+            "Insets not covered by system UI or headers where this component renders:\nthe surface's safe area, a dialog's, or a page's (below its header).",
             &["(): Accessor<Insets>"],
         ),
     ),

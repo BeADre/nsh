@@ -87,9 +87,13 @@ pub(crate) fn Sheet(props: SheetProps, cx: Scope<SheetEvent>) -> impl IntoElemen
             (close.clone(), close.clone(), close.clone());
         let drag = offset.clone();
         modal()
-            .transparent(true)
             .animation(ModalAnimation::None)
-            .on_request_close(move |_: &()| close_back())
+            // The sheet slides away itself before it goes: nothing closes
+            // it natively, every attempt is reported to `on_cancel`.
+            .close_on_escape(false)
+            .close_on_backdrop_press(false)
+            .close_on_swipe(false)
+            .on_cancel(move |_: &()| close_back())
             .child(
                 // The backdrop fades with the panel's position.
                 view()

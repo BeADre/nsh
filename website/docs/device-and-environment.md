@@ -16,8 +16,8 @@ The environment an app runs in changes while it runs: the window resizes (rotati
 | `colorScheme()` | `nsh/device` | `"light"` or `"dark"`: the system's, or the app's own (`setColorScheme`). |
 | `fontScale()` | `nsh/device` | The user's preferred text size relative to the default (1 is the default). |
 | `safeArea()` | `nsh/base` | Insets of the surface not covered by system UI: `{ top, right, bottom, left }`. |
-| `safeAreaInsets()` | `nsh/base` | The insets where the calling component renders (a screen, a modal). |
-| `keyboard()` | `nsh/base` | `{ height, duration }` of the software keyboard. |
+| `safeAreaInsets()` | `nsh/base` | The insets where the calling component renders (a page, a dialog). |
+| `keyboardFrame()` | `nsh/base` | `{ height, duration }` of the software keyboard. |
 | `I18nManager.isRTL` | `nsh/device` | Whether the app lays out right to left. |
 | `reduceMotion()`, `screenReaderEnabled()` | `nsh/accessibility` | See [Accessibility](./accessibility.md). |
 
@@ -105,7 +105,7 @@ An app that is always dark (or always light) says so in `nsh.json`, and `colorSc
 import { Text, View } from "nsh";
 import { colorScheme, setColorScheme } from "nsh/device";
 
-<View onPress={() => setColorScheme(colorScheme() === "dark" ? "light" : "dark")} accessibilityRole="button" class="rounded-lg px-4 py-2 bg-neutral-200 dark:bg-neutral-800">
+<View onPress={() => setColorScheme(colorScheme() === "dark" ? "light" : "dark")} role="button" class="rounded-lg px-4 py-2 bg-neutral-200 dark:bg-neutral-800">
   <Text class="text-neutral-900 dark:text-neutral-50">{colorScheme() === "dark" ? "Light" : "Dark"}</Text>
 </View>
 ```
@@ -133,7 +133,7 @@ Read `fontScale()` to adapt layout that does not follow text automatically, such
 Notches, the home indicator, the status bar, Android's navigation bar and the Mac Catalyst title bar cover parts of the surface. NSH apps draw edge to edge on every platform, and get the covered parts as insets.
 
 - `safeArea()` gives the surface's insets.
-- `safeAreaInsets()` gives the insets **where the component renders**: inside a navigation [screen](./navigation.md#safe-areas-under-the-header) they are measured below its header, inside a [modal](./navigation.md#modals) they are the modal's. Prefer it in components that may be shown in several places.
+- `safeAreaInsets()` gives the insets **where the component renders**: inside a navigation [page](./navigation.md#safe-areas-under-the-header) they are measured below its header, inside a [dialog](../elements/dialog.md) they are the dialog's. Prefer it in components that may be shown in several places.
 - `SafeAreaView` from `nsh/base` is a view padded by those insets (all edges by default, or `edges={["top", "bottom"]}`), on top of its own padding.
 
 ```tsx

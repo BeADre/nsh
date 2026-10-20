@@ -7,12 +7,8 @@ use std::hash::{BuildHasher, RandomState};
 use nsh_base::{
     AvoidBehavior, KeyboardAvoidingView, KeyboardAvoidingViewProps, SafeAreaView, SafeAreaViewProps,
 };
-use nsh_core::{
-    PatchValue, StyleKey, UNDERLAY_OPACITY,
-    ui::{
-        AnyElement, Idiom, Input, KeyboardDismissMode, LayoutAnimation, Orientation, Os, Style,
-        prelude::*,
-    },
+use nsh_core::ui::{
+    AnyElement, Idiom, Input, KeyboardDismissMode, LayoutAnimation, Orientation, Os, prelude::*,
 };
 
 use crate::{
@@ -20,8 +16,8 @@ use crate::{
     ui::{
         self, Badge, ButtonVariant as UiVariant, DemoPage, Finish, Finished, IconName, IconTile,
         Inset, MONO, PressProps, Row, Segment, Segmented, SegmentedEvent, SegmentedProps,
-        SegmentedSize, ToggleEvent, Tone, appear, caption, colors, header, hint, icon,
-        inset_shadow, press_with, radius, rgb_a, segmented, tints, toggle,
+        SegmentedSize, ToggleEvent, Tone, appear, caption, colors, hint, icon, inset_shadow,
+        press_with, radius, rgb_a, segmented, tints, titled, toggle,
     },
 };
 
@@ -143,52 +139,60 @@ fn PressFeedback() -> impl IntoElement {
         ))
         .child(
             tile()
-                .active_opacity(0.4)
+                .active(|s| s.opacity(0.4))
                 .on_press(pressed("Fading tile"))
                 .child(tile_content(
                     "Fades while pressed",
-                    "activeOpacity={0.4}",
+                    "activeStyle={{ opacity: 0.4 }}",
                     None,
                 )),
         )
         // The underlays' colors follow the appearance.
         .child(
             tile()
-                .underlay(|| color(colors::RAISED), UNDERLAY_OPACITY)
+                .group()
+                .active(|s| s.bg(colors::RAISED))
                 .on_press(pressed("Underlay tile"))
-                .child(tile_content(
-                    "Lights up while pressed",
-                    "underlayColor",
-                    None,
-                )),
+                .child(
+                    tile_content(
+                        "Lights up while pressed",
+                        "activeStyle={{ backgroundColor }}",
+                        None,
+                    )
+                    .group_active(|s| s.opacity(0.85)),
+                ),
         )
         .child(
             tile()
                 .disabled(disabled)
-                .underlay(|| color(tints::DANGER), UNDERLAY_OPACITY)
+                .group()
+                .active(|s| s.bg(tints::DANGER))
                 .disabled_style(|s| s.opacity(0.4))
                 .on_press(pressed("Enabled tile"))
-                .child(tile_content(
-                    move || {
-                        if disabled.get() {
-                            "Takes no presses"
-                        } else {
-                            "Enabled"
-                        }
-                    },
-                    "disabled + disabled:opacity-40",
-                    Some(
-                        Badge::new(move || if disabled.get() { "Off" } else { "On" })
-                            .tone(move || {
-                                if disabled.get() {
-                                    Tone::Neutral
-                                } else {
-                                    Tone::Up
-                                }
-                            })
-                            .into_element(),
-                    ),
-                )),
+                .child(
+                    tile_content(
+                        move || {
+                            if disabled.get() {
+                                "Takes no presses"
+                            } else {
+                                "Enabled"
+                            }
+                        },
+                        "disabled + disabled:opacity-40",
+                        Some(
+                            Badge::new(move || if disabled.get() { "Off" } else { "On" })
+                                .tone(move || {
+                                    if disabled.get() {
+                                        Tone::Neutral
+                                    } else {
+                                        Tone::Up
+                                    }
+                                })
+                                .into_element(),
+                        ),
+                    )
+                    .group_active(|s| s.opacity(0.85)),
+                ),
         )
         .child(
             view()
@@ -215,7 +219,7 @@ fn PressableSheet() -> impl IntoElement {
         modal()
             .presentation(ModalPresentation::PageSheet)
             .animation(ModalAnimation::Slide)
-            .on_request_close(open(false))
+            .on_cancel(open(false))
             .child(
                 SafeAreaView::element(SafeAreaViewProps::default())
                     .flex_1()
@@ -413,7 +417,7 @@ fn Accessory() -> impl IntoElement {
                 .value(move || content.get())
                 .placeholder("Focus me")
                 .input_accessory("counter")
-                .on_change_text(move |v: &str| content.set(v.to_owned())),
+                .on_change(move |v: &str| content.set(v.to_owned())),
         )
         .child(caption(
             if os() == Os::Android {
@@ -452,7 +456,7 @@ fn Accessory() -> impl IntoElement {
 }
 
 /// The behaviors of the keyboard avoiding view: label, what it does.
-const BEHAVIORS: [(AvoidBehavior, &str, &str); 3] = [
+const BEHAVIORS: [(AvoidBehavior, &str, &str); 2] = [
     (
         AvoidBehavior::Padding,
         "padding",
@@ -463,11 +467,6 @@ const BEHAVIORS: [(AvoidBehavior, &str, &str); 3] = [
         "height",
         "The view shrinks: its background ends at the keyboard.",
     ),
-    (
-        AvoidBehavior::Position,
-        "position",
-        "The inner content view moves up as a whole.",
-    ),
 ];
 
 /// The content of the keyboard avoiding view's screen.
@@ -476,12 +475,9 @@ fn AvoidingPage() -> impl IntoElement {
     let behavior = signal(0_u32);
     let focused = signal(false);
     let picked = move || BEHAVIORS[behavior.get() as usize];
-    // The inner view of `position` fills the avoiding view.
-    let fill = Style::default().with(StyleKey::Flex, PatchValue::Number(1.0));
     view().flex_1().child(
         KeyboardAvoidingView::element(KeyboardAvoidingViewProps {
             behavior: Prop::bind(move || picked().0),
-            content_container_style: fill.into(),
             ..KeyboardAvoidingViewProps::default()
         })
         .flex_1()
@@ -534,7 +530,7 @@ fn ModalOptions() -> impl IntoElement {
             .animation(ModalAnimation::Slide)
             .status_bar_translucent(translucent)
             .supported_orientations([Orientation::Portrait, Orientation::Landscape])
-            .on_request_close(show(false))
+            .on_cancel(show(false))
             .child(
                 view()
                     .flex_1()
@@ -770,11 +766,10 @@ pub(crate) fn Components() -> impl IntoElement {
             .child(Inset::new().padding(0.0).gap(0.0).child(link_row(
                 IconName::Form,
                 "KeyboardAvoidingView",
-                "padding / height / position",
+                "padding / height",
                 |_: &()| {
                     nav::push("keyboard-avoiding", || {
-                        header(screen().title("KeyboardAvoidingView"))
-                            .child(AvoidingPage::element(()))
+                        titled("KeyboardAvoidingView").child(AvoidingPage::element(()))
                     });
                 },
             )))

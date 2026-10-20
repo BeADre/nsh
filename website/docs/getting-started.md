@@ -59,8 +59,8 @@ function App() {
       <Text style={{ fontSize: 28, fontWeight: "600" }}>{count()}</Text>
       <View
         onPress={() => count.update((c) => c + 1)}
-        activeOpacity={0.6}
-        accessibilityRole="button"
+        activeStyle={{ opacity: 0.6 }}
+        role="button"
         style={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10, backgroundColor: "#0969da" }}
       >
         <Text style={{ color: "white", fontSize: 17 }}>Tap</Text>
@@ -78,7 +78,7 @@ Line by line:
 - **`import { SafeAreaView } from "nsh/base"`**: the unstyled foundation of an app's UI (navigation stacks, modals, safe areas, dialogs, the keyboard and the status bar), on every platform. [`SafeAreaView`](../modules/nsh-base.md#safeareaview) pads its content so it stays clear of the notch, the status bar and the home indicator; on desktops, where the safe area is 0, it adds no padding.
 - **`function App()`** is a component: a function that returns JSX. It runs **once**. `signal(0)` makes a value that changes over time.
 - **`{count()}`** reads the signal inside JSX. The compiler sees a call and makes this text follow the signal: when `count` changes, the runtime updates this one text, nothing else.
-- **`<View onPress>`** is a native view that reacts to presses; `activeOpacity` fades it while pressed, natively. `View`, `Text`, `Image`, `Scroll`, `Input` and the other [host elements](../elements/index.md) are imported from NSH's modules, like any component; only `If` and `Each` need no import. The button is the app's own: NSH provides the primitives and the capabilities, and an app draws its UI from them, with `style`, Tailwind classes or Rust components of its own.
+- **`<View onPress>`** is a native view that reacts to presses; `activeStyle` is its style while pressed, applied natively. `View`, `Text`, `Image`, `Scroll`, `Input` and the other [host elements](../elements/index.md) are imported from NSH's modules, like any component; only `If` and `Each` need no import. The button is the app's own: NSH provides the primitives and the capabilities, and an app draws its UI from them, with `style`, Tailwind classes or Rust components of its own.
 - **`style={{ … }}`** takes an object of camelCase style properties, with numbers in points. Layout is flexbox, and children stack in a column by default ([Layout](./layout.md)).
 - **`mount(App)`** renders the component into the app's surface.
 
@@ -166,7 +166,7 @@ Save. The CLI rebuilds and sends a patch; the host runs the changed module again
 ```tsx
 function TapButton(props: { onPress: () => void }) {
   return (
-    <View onPress={props.onPress} activeOpacity={0.6} style={{ padding: 12, borderRadius: 10, backgroundColor: "#0969da" }}>
+    <View onPress={props.onPress} activeStyle={{ opacity: 0.6 }} style={{ padding: 12, borderRadius: 10, backgroundColor: "#0969da" }}>
       <Text style={{ color: "white", fontSize: 17 }}>Tap</Text>
     </View>
   );

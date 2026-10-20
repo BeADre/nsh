@@ -77,7 +77,7 @@ fn navigation_pushes_its_screens() {
         "Top",
         "Bottom",
         "Screens",
-        "ios.headerLargeTitle",
+        "headerLargeTitle",
         "Modals",
         "See-through",
         "Back button",

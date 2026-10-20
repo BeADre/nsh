@@ -5117,6 +5117,13 @@ name = "nsh-animation"
 version = "0.1.1"
 
 [[package]]
+name = "nsh-base"
+version = "0.1.1"
+dependencies = [
+ "nsh-core",
+]
+
+[[package]]
 name = "nsh-core"
 version = "0.1.1"
 dependencies = [
@@ -5205,6 +5212,7 @@ dependencies = [
  "lb-wry",
  "log",
  "nsh-animation",
+ "nsh-base",
  "nsh-core",
  "nsh-engine",
  "raw-window-handle",

@@ -57,8 +57,8 @@ pub(crate) enum Compiled {
     /// The renderer's list (`nsh:rt`'s `list`).
     List,
     /// A call of the export, a native component rendering the host element
-    /// of this core tag with more to it (`Canvas`'s drawing, `Modal`'s
-    /// `visible`, `InputAccessoryView` only on iOS).
+    /// of this core tag with more to it (`Canvas`'s drawing, `Dialog`'s
+    /// `open`, `InputAccessoryView` only on iOS).
     Component(&'static str),
 }
 
@@ -74,7 +74,7 @@ pub(crate) const PRIMITIVES: &[(&str, &str, Compiled)] = &[
     ("nsh/video", "Video", Compiled::Host("video")),
     ("nsh/list", "List", Compiled::List),
     ("nsh/canvas", "Canvas", Compiled::Component("canvas")),
-    ("nsh/base", "Modal", Compiled::Component("modal")),
+    ("nsh/base", "Dialog", Compiled::Component("modal")),
     (
         "nsh/ios",
         "InputAccessoryView",
@@ -383,7 +383,7 @@ fn is_function(e: &Expression<'_>) -> bool {
     )
 }
 
-/// `onPress`, `onChangeText`: an event handler prop.
+/// `onPress`, `onChange`: an event handler prop.
 fn is_event(name: &str) -> bool {
     name.len() > 2 && name.starts_with("on") && name.as_bytes()[2].is_ascii_uppercase()
 }

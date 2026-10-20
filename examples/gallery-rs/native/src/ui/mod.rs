@@ -39,8 +39,9 @@ pub(crate) use self::{
     layout::{SIDEBAR, columns_for, desktop, pane_width},
     page::DemoPage,
     parts::{
-        Badge, Button, ButtonVariant, Card, Figure, IconTile, Inset, Meter, RoundButton, Row,
-        Section, Stat, caption, code, header, legend,
+        Badge, Button, ButtonVariant, Card, Figure, IconTile, Inset, Meter, PageHeader,
+        RoundButton, Row, Section, Stat, caption, code, header, header_style, legend, titled,
+        with_header,
     },
     sheet::{Sheet, SheetEvent, SheetProps},
     theme::{Finish, Finished, MONO, Tone, colors, inset_shadow, motion, radius, rgb_a, tints},

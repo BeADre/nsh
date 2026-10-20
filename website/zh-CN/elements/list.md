@@ -58,11 +58,12 @@ mount(App);
 | `numColumns` | `number` | `1` | 每行的条目数（纵向列表）。 |
 | `inverted` | `boolean` | `false` | 从末端开始布局，第 0 项在最后（聊天样式）：初始滚动到末端，内容变化时保持与末端的距离。 |
 | `stickyHeaderIndices` | `number[]` | | 滚动经过时吸附在起始端的条目（单列、非倒序）。 |
-| `contentContainerStyle` | `ListContentStyle` | | 内容的内边距和间距（点）：`padding`、`paddingHorizontal`、`paddingVertical`、`paddingTop`、`paddingRight`、`paddingBottom`、`paddingLeft`、`gap`、`rowGap`、`columnGap`。 |
-| `ListHeaderComponent` | `ListSlot` | | 条目之前的内容：一个组件（`Header`）或一个元素（`<Header />`）。 |
-| `ListFooterComponent` | `ListSlot` | | 条目之后的内容。 |
-| `ListEmptyComponent` | `ListSlot` | | `each` 为空时代替条目显示。 |
-| `ItemSeparatorComponent` | `ListSlot` | | 条目之间的分隔（单列）。 |
+| `contentStyle` | `ListContentStyle` | | 内容的内边距和间距（点）：`padding`、`paddingHorizontal`、`paddingVertical`、`paddingTop`、`paddingRight`、`paddingBottom`、`paddingLeft`、`gap`、`rowGap`、`columnGap`。 |
+| `contentClass` | `string` | | 以类名（`p-*`、`gap-*`）给出的内容内边距和间距；`contentStyle` 优先。 |
+| `header` | `ListSlot` | | 条目之前的内容：一个组件（`Header`）或一个元素（`<Header />`）。 |
+| `footer` | `ListSlot` | | 条目之后的内容。 |
+| `empty` | `ListSlot` | | `each` 为空时代替条目显示。 |
+| `separator` | `ListSlot` | | 条目之间的分隔（单列）。 |
 | `initialScrollIndex` | `number` | | 第一帧之前先滚动到该条目。 |
 | `keyExtractor` | `(item: T, index: number) => string` | `item.key`、`item.id` 或索引 | 条目在可见性 token 中的 key。 |
 | `onEndReached` | `() => void` | | 快到末端了：加载更多。 |
@@ -123,10 +124,10 @@ let list!: YNode;
   each={photos}
   numColumns={3}
   estimatedItemSize={120}
-  contentContainerStyle={{ padding: 12, gap: 8 }}
+  contentStyle={{ padding: 12, gap: 8 }}
   viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
   onViewableItemsChanged={({ viewableItems }) => visible.set(`${viewableItems.length} visible`)}
-  ListHeaderComponent={<Text onPress={() => list.scrollToIndex({ index: 60, viewPosition: 0.5 })}>Jump to 60</Text>}
+  header={<Text onPress={() => list.scrollToIndex({ index: 60, viewPosition: 0.5 })}>Jump to 60</Text>}
   style={{ flex: 1 }}
 >
   {(photo) => <Image src={photo().url} style={{ height: 120, borderRadius: 8 }} />}

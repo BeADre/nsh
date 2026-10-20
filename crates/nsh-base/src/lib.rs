@@ -1,6 +1,6 @@
 //! `nsh/base`: the behavior and infrastructure foundation of NSH apps' UI,
 //! written in Rust, with no look of its own (as `gpui-base` is GPUI Kit's):
-//! controls (`Button`), navigation (stacks, screens, modals), safe areas,
+//! controls (`Button`), navigation (stacks and pages), dialogs, safe areas,
 //! the system's dialogs, the software keyboard and the status bar.
 //!
 //! What it renders lays out or tells the platform, never styles: the look
@@ -9,8 +9,7 @@
 //! declarations) is generated from the components' props and events and the
 //! modules' functions. Every host serves it.
 
-mod action_sheet;
-mod alert;
+mod alert_dialog;
 mod button;
 mod keyboard;
 mod safe_area;
@@ -21,14 +20,14 @@ use std::sync::Arc;
 use nsh_core::ui::{ComponentSpec, Registry};
 
 pub use crate::{
-    action_sheet::{ActionSheet, ActionSheetOptions},
-    alert::{Alert, AlertButton, AlertButtonStyle, AlertOptions},
+    alert_dialog::{
+        AlertDialog, AlertDialogAction, AlertDialogOptions, AlertDialogPresentation,
+        AlertDialogRole,
+    },
     button::{Button, ButtonEvent, ButtonProps},
     keyboard::{AvoidBehavior, Keyboard, KeyboardAvoidingView, KeyboardAvoidingViewProps},
     safe_area::{Edge, SafeAreaView, SafeAreaViewProps},
-    status_bar::{
-        BarAnimation, BarStyle, StatusBar, StatusBarAndroid, StatusBarProps, StatusBarWeb,
-    },
+    status_bar::{Foreground, StatusBar, StatusBarProps, StatusBarWeb},
 };
 
 /// The JS module apps import the foundation as.
@@ -42,14 +41,15 @@ pub fn registry() -> Registry {
         .register::<SafeAreaView>()
         .register::<KeyboardAvoidingView>()
         .register::<StatusBar>()
-        .module::<Alert>()
-        .module::<ActionSheet>()
+        .module::<AlertDialog>()
         .module::<Keyboard>()
-        .module::<StatusBar>()
         // The environment's accessors and hooks, as they are.
-        .reexport(&["safeArea", "safeAreaInsets", "keyboard"], &["Insets"])
+        .reexport(
+            &["safeArea", "safeAreaInsets", "keyboardFrame"],
+            &["Insets"],
+        )
         // Navigation: made by `nsh-js` (`navigation.rs`), declared by hand.
-        .native_values(&["Stack", "Screen", "Modal", "createNavigator"]);
+        .native_values(&["NavStack", "NavPage", "Dialog", "createNavStack"]);
     registry
 }
 
@@ -77,6 +77,6 @@ mod tests {
             ]
         );
         let modules: Vec<_> = registry.module_specs().iter().map(|m| m.name).collect();
-        assert_eq!(modules, ["ActionSheet", "Alert", "Keyboard", "StatusBar"]);
+        assert_eq!(modules, ["AlertDialog", "Keyboard"]);
     }
 }

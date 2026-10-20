@@ -482,13 +482,8 @@ fn run(app: App, width: f32, height: f32, environment: Environment) -> f64 {
         network: Some(std::sync::Arc::new(net::WebNetwork)),
         assets: Some(std::sync::Arc::new(PageAssets)),
         environment,
-        // A desktop browser's headers are as tall as the desktop backends'
-        // (`navigation::HEADER_HEIGHTS` there).
-        header_heights: if environment.idiom == Idiom::Desktop {
-            (47.0, 94.0)
-        } else {
-            (44.0, 96.0)
-        },
+        // NSH draws no header: a page's `header` sits at its top.
+        header_heights: nsh_core::NO_NATIVE_HEADER,
         limits: Limits::default(),
         ui_sets: ui_sets(),
         runtime: None,

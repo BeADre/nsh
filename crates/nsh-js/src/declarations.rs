@@ -31,7 +31,7 @@ export type RecursiveArray<T> = readonly (T | RecursiveArray<T>)[];
 export type StyleProp<T> = T | RecursiveArray<T | false | null | undefined> | false | null | undefined;
 
 /** Props every host element accepts. */
-export interface CommonProps extends TouchProps, HostProps {
+export interface CommonProps extends TouchProps, HostProps, StateStyleProps {
   ref?: YNode | ((node: YNode) => void);
   children?: JSX.Element;
   /** iOS-only props (ignored elsewhere). */
@@ -43,6 +43,21 @@ export interface CommonProps extends TouchProps, HostProps {
   desktop?: DesktopProps;
   /** Web-only props (ignored elsewhere). */
   web?: WebProps;
+}
+
+/** Styles while the element is in a state, over its own `style` and
+ * classes, applied natively (no JS runs): as the `<state>:` classes.
+ * Later states win (hover, focus, active); `disabledStyle` wins over all,
+ * and the others do not apply while disabled. */
+export interface StateStyleProps {
+  /** While pressed (`active:`). */
+  activeStyle?: StyleProp<ViewStyle>;
+  /** While a pointer is over it (`hover:`). */
+  hoverStyle?: StyleProp<ViewStyle>;
+  /** While it has focus (`focus:`). */
+  focusStyle?: StyleProp<ViewStyle>;
+  /** While `disabled` (`disabled:`). */
+  disabledStyle?: StyleProp<ViewStyle>;
 }
 
 /** iOS-only props of every element (`ios={{…}}`); elements add their own. */
@@ -82,14 +97,14 @@ export interface ImageProps extends CommonProps, ImageHostProps {
 /** `<Scroll>` */
 export interface ScrollProps extends CommonProps, ScrollingHostProps, ScrollHostProps {
   style?: StyleProp<ViewStyle>;
-  /** The style of a view around the content (React Native's content
-   * container): it scrolls with the content, `flexGrow: 1` makes it at
-   * least as tall as the viewport (a centered empty state). Without it or
-   * `contentContainerClass`, the children are the scroll view's own. */
-  contentContainerStyle?: StyleProp<ViewStyle>;
-  /** The classes of the content container (`contentContainerStyle`), e.g.
+  /** The style of a view around the content: it scrolls with the
+   * content, `flexGrow: 1` makes it at least as tall as the viewport (a
+   * centered empty state). Without it or `contentClass`, the children are
+   * the scroll view's own. */
+  contentStyle?: StyleProp<ViewStyle>;
+  /** The classes of the content (`contentStyle`), e.g.
    * `"grow justify-center p-4"`. */
-  contentContainerClass?: string;
+  contentClass?: string;
 }
 
 /** `<Input>` */
@@ -102,9 +117,9 @@ export interface InputProps extends CommonProps, InputHostProps {
 export interface IOSInputProps extends IOSProps, IOSInputHostProps {}
 
 /** What JS sets on a Rust component's host itself: the app's classes
- * (appended to the component's own), its inline style, its test id, layout
+ * (appended to the component's own), its inline and state styles, its test id, layout
  * events and the ref (`ref.command(name, args)`). */
-export type ComponentHostProps = Pick<ViewProps, "class" | "classList" | "style" | "testID" | "onLayout" | "ref">;
+export type ComponentHostProps = Pick<ViewProps, "class" | "classList" | "style" | "activeStyle" | "hoverStyle" | "focusStyle" | "disabledStyle" | "testID" | "onLayout" | "ref">;
 
 export interface Insets {
   top: number;

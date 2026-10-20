@@ -50,10 +50,12 @@ Rust 组件（`SafeAreaView`、`KeyboardAvoidingView` 以及应用自己 crate �
 | `focus:`、`focus-visible:` | 输入框获得焦点 |
 | `focus-within:` | 视图或其后代获得焦点 |
 | `disabled:`、`enabled:` | 元素的 `disabled` 属性为 true / false |
-| `group-active:`、`group-hover:`、`group-focus:`、`group-focus-within:`、`group-disabled:` | 最近的带 `group` 类的祖先处于该状态 |
+| `selected:` | 元素处于选中状态（`Button` 的 `selected`、`accessibilityState.selected`） |
+| `group-active:`、`group-hover:`、`group-focus:`、`group-focus-within:`、`group-disabled:`、`group-selected:` | 最近的带 `group` 类的祖先处于该状态 |
 | `group-active/name:` ... | 同上，针对标记为 `group/name` 的祖先 |
 | `first:`、`last:`、`odd:`、`even:`、`only:` | 元素自身在兄弟节点中的位置。要按行的位置给行内标签上色，把 `last:text-*` 写在行上，标签会继承它 |
 | `placeholder:` | 设置输入框占位文字的样式（`placeholder:text-zinc-400`） |
+| `selection:` | 设置输入框或可选文本的选区样式（`selection:text-violet-500`） |
 | `dark:` | 系统外观为深色 |
 | `sm:`、`md:`、`lg:`、`xl:`、`2xl:` | 窗口宽度至少为 640、768、1024、1280、1536 点 |
 | `max-sm:`、`max-md:` ... | 窗口宽度小于该断点 |

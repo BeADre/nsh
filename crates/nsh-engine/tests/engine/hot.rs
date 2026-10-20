@@ -243,10 +243,10 @@ fn edits_replace_modules_and_keep_unrelated_state() {
 
 const NAV_APP: &str = r#"
 import { mount, signal, Text, View } from "nsh";
-import { Screen, Stack, createNavigator } from "nsh/base";
+import { NavPage, NavStack, createNavStack } from "nsh/base";
 
 type Route = { name: string };
-const nav = createNavigator<Route>([{ name: "home" }]);
+const nav = createNavStack<Route>([{ name: "home" }]);
 const taps = signal(0);
 
 function Label(props: { route: string }) {
@@ -262,17 +262,17 @@ function App() {
   return (
     <View style={{ flex: 1 }}>
     <Local />
-    <Stack navigator={nav} style={{ flex: 1 }}>
+    <NavStack state={nav} style={{ flex: 1 }}>
       {(route) => (
-        <Screen title={route.name}>
+        <NavPage title={route.name}>
           <View>
             <Text onPress={() => nav.push({ name: `page${nav.routes().length}` })}>push {route.name}</Text>
             <Text onPress={() => taps.set(taps() + 1)}>taps {taps()}</Text>
             <Label route={route.name} />
           </View>
-        </Screen>
+        </NavPage>
       )}
-    </Stack>
+    </NavStack>
     </View>
   );
 }
@@ -357,8 +357,8 @@ fn entry_edits_keep_navigation_and_state() {
         // components' own state starts afresh), from the kept navigator and
         // signal: the pushed screen stays.
         let edited = edited.replace(
-            "<Stack navigator={nav} style={{ flex: 1 }}>",
-            "<Stack navigator={nav} style={{ flex: 1, gap: 1 }}>",
+            "<NavStack state={nav} style={{ flex: 1 }}>",
+            "<NavStack state={nav} style={{ flex: 1, gap: 1 }}>",
         );
         std::fs::write(dir.join("App.tsx"), &edited).unwrap();
         control.hot_update(update(&dir, &mut bundle, 2).unwrap());

@@ -32,8 +32,8 @@ crates/
                        Rust and what comes back, typed (`ui/call.rs`: ops carrying closures, the event stream, posts); the runtime's Rust
                        modules (`runtime/`: `nsh/android`'s Toast, `nsh/image`, `nsh/clipboard`, ...; their JS face is made from their specs)
   nsh-base/            `nsh/base`, NSH's `gpui-base`: unstyled base components (behavior, state, focus, accessibility; the look is the
-                       app's): navigation, safe areas, dialogs, the keyboard, the status bar, written in Rust; JS face and declarations
-                       made from their specs
+                       app's): navigation (`NavStack`, `NavPage`), `Dialog`, `AlertDialog`, `Button`, safe areas, the keyboard, the status
+                       bar, written in Rust (the navigation and `Dialog` in `nsh-js`); JS face and declarations made from their specs
   nsh-macros/          `#[component]`, derives of Rust components (`Props`, `PropEnum`, `Event`, `JsObject`), `#[methods]`, `#[module]`, `#[class]`,
                        `#[native_module("…")]` (an app crate's UI set, which `rust_app.rs`'s generated code calls), `Styled`'s spacing methods;
                        `HostProps` (the host elements' props: decoding, defaults and TS), `JsOps` (recorded operations: canvas)
@@ -131,6 +131,7 @@ crate.
 | threads, the JS → native data flow, text pipeline | `docs/dev/architecture.md` |
 | how apps are compiled and run: the JSX compiler, the renderer | `docs/dev/native-pipeline.md` |
 | the native modules, where a new API goes, platform props | `docs/dev/js-modules.md` |
+| API names: anything apps use, its props, events, slots and parts | `docs/dev/api-naming.md` |
 | elements, touch, accessibility, the environment | `docs/dev/elements.md`, `text.md` |
 | styles, Tailwind, effects | `docs/dev/styles.md` |
 | scroll views, zooming, `List` | `docs/dev/scrolling-and-lists.md` |
@@ -231,15 +232,19 @@ repository's `target/`; dependencies only it uses are declared in `crates/gpui/C
 - **Three layers, as GPUI Kit's (an architecture rule).** `nsh-core` ↔ `gpui`: the primitives and the environment,
   `nsh` / `nsh/<module>` (native in `crates/nsh-js` or Rust modules of the runtime, `crates/nsh-core/src/runtime/`).
   `nsh-base` ↔ `gpui-base`: `nsh/base` (`crates/nsh-base`), unstyled base components of `gpui-base`'s scope that own
-  behavior, state, focus, keyboard and accessibility and leave every visual choice to the app (navigation, safe areas,
-  system dialogs, the keyboard and the status bar today; controls such as buttons, toggles, sliders, selects, popovers
-  and sheets as their behavior is written). `gpui-component` ↔ nothing: a styled component library is never part of
+  behavior, state, focus, keyboard and accessibility and leave every visual choice to the app (navigation, dialogs, a
+  button, safe areas, system alerts, the keyboard and the status bar today; controls such as toggles, sliders,
+  selects, popovers and sheets as their behavior is written). Names follow `gpui-base`'s (`docs/dev/api-naming.md`). `gpui-component` ↔ nothing: a styled component library is never part of
   NSH; apps and the community build theirs on `nsh-base`, or style the UI in the app itself. Each export has one home
   (two registries exporting one name panic, `Registry::merged`). Platform-only APIs go to `nsh/ios` / `nsh/android`,
   platform-only props into `ios={{…}}` / `android={{…}}` / `desktop={{…}}`. `nsh` has no catch-all re-exports.
 - **No styles in NSH.** Nothing NSH ships has a look of its own: no default colors, paddings, radii, fonts or variants
   in `nsh-base`; a component takes the app's styles (`class`, `style`, styles per state) and children, and exposes its
-  parts instead of fixed markup. Its state is controlled (it reports changes, the app owns the value). React Native and
+  parts instead of fixed markup. Its state is controlled (it reports changes, the app owns the value). The platforms
+  draw nothing of NSH's either: no header where the system has none (the desktops and the web place a page's `header`
+  slot), no dialog card, scrim or shadow, no native press fade (press feedback is the app's `activeStyle` /
+  `active:`), no built-in strings (every label comes from the app); system UI keeps the platform's look (iOS / Android
+  headers; `AlertDialog`, drawn in the platform's dialog style where the system has no dialog to show). React Native and
   UIKit are references for which capabilities exist, not APIs to be compatible with.
 - **Components are Rust.** Rust components live in `crates/nsh-base` or in an app's own crate (its UI set,
   `#[native_module("…")]`), run in the core and render primitives with typed styles (GPUI-style `Styled` methods,
@@ -273,7 +278,7 @@ repository's `target/`; dependencies only it uses are declared in `crates/gpui/C
 - TSX tags are PascalCase, everywhere (examples, docs, tests): every tag names a binding in scope, only `<If>` and
   `<Each>` are globals that need no import. The primitives have one home each: `View`, `Text`, `Scroll`, `Input` from
   `nsh`, `Image` from `nsh/image`, `List` from `nsh/list`, `Canvas` from `nsh/canvas`, `WebView` from `nsh/webview`,
-  `Video` from `nsh/video`, `Modal` from `nsh/base`, `InputAccessoryView` from `nsh/ios`; the compiler makes
+  `Video` from `nsh/video`, `Dialog` from `nsh/base`, `InputAccessoryView` from `nsh/ios`; the compiler makes
   their tags in place (`jsx::PRIMITIVES`). Lowercase tags are compile errors: TypeScript checks a lowercase tag
   against one global type per name, so generic components (`List`, `Each`) and local ones would lose their types.
 - Workspace lints: `missing_docs = warn`, `unreachable_pub = deny`, `private_interfaces = deny`. New crates must set `[lints] workspace = true`.

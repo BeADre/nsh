@@ -3,7 +3,7 @@
 use nsh_core::ui::prelude::*;
 
 /// A view padded by the insets of system UI or headers where it renders
-/// (the surface's safe area, a modal's, or a screen's, below its header),
+/// (the surface's safe area, a dialog's, or a page's, below its header),
 /// on top of its own padding.
 #[derive(Debug, Clone, PartialEq, Props)]
 pub struct SafeAreaViewProps {

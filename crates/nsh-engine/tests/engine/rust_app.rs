@@ -141,7 +141,7 @@ fn Navigation() -> impl IntoElement {
             screen()
                 .title(format!("page {route}"))
                 .header_right(text("more"))
-                .on_dismiss(move |_: &()| routes.update(|r| r.retain(|r| *r < route)))
+                .on_pop(move |_: &()| routes.update(|r| r.retain(|r| *r < route)))
                 .child(text(format!("content {route}")))
         },
     ))

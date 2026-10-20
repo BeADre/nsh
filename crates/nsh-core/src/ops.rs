@@ -86,7 +86,7 @@ impl Tag {
 }
 
 macro_rules! events {
-    ($($variant:ident = $prop:literal: $doc:literal,)*) => {
+    ($($variant:ident = $prop:literal $(as $js:literal)?: $doc:literal,)*) => {
         /// An event a node can listen to.
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         #[repr(u8)]
@@ -98,7 +98,8 @@ macro_rules! events {
             /// Every kind, in discriminant order (`ALL[k as usize] == k`).
             pub const ALL: &'static [EventKind] = &[$(EventKind::$variant,)*];
 
-            /// Parses an event prop name such as `onPress`.
+            /// Parses an event's protocol name such as `onPress` (what
+            /// platforms send and log; [`EventKind::prop_name`]).
             #[inline]
             pub fn from_prop(name: &str) -> Option<EventKind> {
                 match name {
@@ -107,15 +108,43 @@ macro_rules! events {
                 }
             }
 
-            /// The JS prop name of this event.
+            /// The protocol name of this event (platforms send and log it;
+            /// apps name handlers with [`EventKind::handler_name`]).
             #[inline]
             pub const fn prop_name(self) -> &'static str {
                 match self {
                     $(EventKind::$variant => $prop,)*
                 }
             }
+
+            /// The handler prop apps set for this event (`onChange` for
+            /// [`EventKind::ChangeText`]); empty for the events only the
+            /// runtime listens to (a dialog's dismissal, the root's back
+            /// button), which no prop name sets.
+            #[inline]
+            pub const fn handler_name(self) -> &'static str {
+                match self {
+                    $(EventKind::$variant => events!(@js $prop $($js)?),)*
+                }
+            }
+
+            /// Parses a handler prop name such as `onPress`
+            /// ([`EventKind::handler_name`]).
+            #[inline]
+            pub fn from_handler(name: &str) -> Option<EventKind> {
+                if name.is_empty() {
+                    return None;
+                }
+                #[allow(unreachable_patterns)]
+                match name {
+                    $(events!(@js $prop $($js)?) => Some(EventKind::$variant),)*
+                    _ => None,
+                }
+            }
         }
     };
+    (@js $prop:literal) => { $prop };
+    (@js $prop:literal $js:literal) => { $js };
 }
 
 // The order is part of the platform protocols (`encode.rs`, `Native.java`):
@@ -130,8 +159,8 @@ events! {
     ScrollEnd = "onScrollEnd": "Scrolling came to rest (payload: [`EventPayload::Scroll`]).",
     Load = "onLoad": "An image loaded (payload: [`EventPayload::Image`]).",
     Error = "onError": "An image failed to load (payload: [`EventPayload::Error`]).",
-    ChangeText = "onChangeText": "The user edited an input (payload: [`EventPayload::Text`]).",
-    SubmitEditing = "onSubmitEditing": "The return key was pressed in an input (payload: [`EventPayload::Text`]).",
+    ChangeText = "onChangeText" as "onChange": "The user edited an input (payload: [`EventPayload::Text`]).",
+    SubmitEditing = "onSubmitEditing" as "onSubmit": "The return key was pressed in an input (payload: [`EventPayload::Text`]).",
     Focus = "onFocus": "An input became focused.",
     Blur = "onBlur": "An input lost focus.",
     PressIn = "onPressIn": "A finger went down on a pressable view.",
@@ -142,9 +171,9 @@ events! {
     RotationStart = "onRotationStart": "A two-finger rotation started (payload: `rotation`, `velocity`).",
     RotationEnd = "onRotationEnd": "A two-finger rotation ended (payload: `rotation`, `velocity`).",
     AccessibilityAction = "onAccessibilityAction": "An assistive technology performed an action (payload: `actionName`).",
-    Dismiss = "onDismiss": "A screen was popped or a modal dismissed by the user or the system.",
-    RequestClose = "onRequestClose": "The user asked to close a modal (back button, swipe down).",
-    Show = "onShow": "A modal finished appearing.",
+    Dismiss = "onDismiss" as "": "A screen was popped or a modal dismissed by the user or the system (`NavPage`'s `onPop`, `Dialog`'s `onClose`).",
+    RequestClose = "onRequestClose" as "": "The user tried to close a modal natively (Escape or the back button, a sheet swiped down; payload: `reason`: `\"cancel\"` or `\"swipe\"`, `\"cancel\"` when none); `Dialog`'s `onCancel` and `onOpenChange` (a press on its backdrop part is handled in JS).",
+    Show = "onShow" as "": "A modal finished appearing (`Dialog`'s `onOpen`).",
     Insets = "onInsets": "The insets of a screen or modal changed (payload: `top`, `right`, `bottom`, `left`).",
     LoadStart = "onLoadStart": "A web view, video or image started loading.",
     Message = "onMessage": "A web page posted a message (payload: `data`).",
@@ -153,7 +182,7 @@ events! {
     End = "onEnd": "A video played to its end.",
     Buffer = "onBuffer": "A video started or stopped buffering (payload: `isBuffering`).",
     ViewableItemsChanged = "onViewableItemsChanged": "The range of visible list items changed (payload: `first`, `last`).",
-    BackPress = "onBackPress": "The Android back button was pressed and nothing native handled it (root only).",
+    BackPress = "onBackPress" as "": "The Android back button was pressed and nothing native handled it (root only).",
     Scroll = "onScroll": "A scroll view moved, at most once per frame (payload: `x`, `y`, `contentWidth`, `contentHeight`, `width`, `height`).",
     ScrollBeginDrag = "onScrollBeginDrag": "The user started dragging a scroll view (payload: [`EventPayload::Scroll`]).",
     ScrollEndDrag = "onScrollEndDrag": "The user let go of a scroll view (payload: [`EventPayload::Scroll`]).",
@@ -167,7 +196,7 @@ events! {
     ImageInfo = "onImageInfo": "An `Image.getSize` / `Image.prefetch` request finished (root only; payload: `id`, `width` and `height` in pixels, or `error`).",
     TextLayout = "onTextLayout": "A text block was laid out (payload: [`EventPayload::TextLayout`]).",
     ContentSizeChange = "onContentSizeChange": "The size of an input's text changed (payload: `width`, `height`; raised by the core).",
-    BackRequest = "onBackRequest": "The user tried to leave a screen with `preventBack` (back button, header back button).",
+    BackRequest = "onBackRequest" as "onBackPress": "The user pressed back on a screen (the header's back button, Android back, the desktops' back keys and mouse button, the browser's back), whether or not `popOnBack` let it pop.",
     NativeEvent = "onNativeEvent": "A registered native component emitted an event (payload: [`EventPayload::Native`]).",
     Clipboard = "onClipboard": "A clipboard read finished (root only; payload: `id`, `has`: whether it holds text, `text`: the text, unless only `has` was asked).",
     KeyCommand = "onKeyCommand": "A key matched a binding of `nsh/keymap` (root only; payload: the binding's id, [`crate::keymap::KeyBinding::id`]).",
@@ -568,9 +597,9 @@ pub enum ReturnKeyType {
 /// What return does in an input (`submitBehavior`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PropEnum)]
 pub enum SubmitBehavior {
-    /// Reports `onSubmitEditing` and keeps the focus.
+    /// Reports `onSubmit` and keeps the focus.
     Submit,
-    /// Reports `onSubmitEditing` and unfocuses the input.
+    /// Reports `onSubmit` and unfocuses the input.
     #[default]
     BlurAndSubmit,
     /// Inserts a line break (multiline inputs; a single line submits).
@@ -716,15 +745,15 @@ pub enum ScrollProp {
 pub enum CellSlot {
     /// A recycled item cell in this slot.
     Item(u32),
-    /// `ListHeaderComponent`.
+    /// `header`.
     Header,
-    /// `ListFooterComponent`.
+    /// `footer`.
     Footer,
-    /// `ListEmptyComponent` (shown while there are no items).
+    /// `empty` (shown while there are no items).
     Empty,
 }
 
-/// A list's `contentContainerStyle`: padding around the content and gaps
+/// A list's `contentStyle` (or `contentClass`): padding around the content and gaps
 /// between rows and columns.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct ListContentStyle {
@@ -756,13 +785,17 @@ pub enum HeaderSlot {
     Right,
     /// Replaces the title.
     Title,
+    /// Replaces the whole bar (`header`), where the platform draws it.
+    Header,
 }
 
 /// How a screen enters and leaves (`animation`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PropEnum)]
 pub enum ScreenAnimation {
-    /// The platform's push / pop transition.
+    /// The platform's push / pop transition (`"slide"` too: a
+    /// dialog's default, which shares the prop).
     #[default]
+    #[prop(alias = "slide")]
     Default,
     /// Cross-fade.
     Fade,
@@ -770,55 +803,52 @@ pub enum ScreenAnimation {
     None,
 }
 
-/// A screen option (`<screen title headerShown ...>`).
+/// A screen option (`<NavPage title headerShown ...>`).
 #[derive(Debug, Clone, PartialEq, HostProps)]
 pub enum ScreenProp {
-    /// `title`: the header's title.
+    /// `title`: the header's title (iOS and Android: the system header;
+    /// ignored on the desktops and the web, which show the app's `header`).
     #[prop(js = "title", on = SCREEN)]
     Title(Option<Arc<str>>),
-    /// `headerShown`: the header shows (default true).
+    /// `headerShown`: the system header shows (default true; iOS and
+    /// Android).
     #[prop(js = "headerShown", default = true, on = SCREEN)]
     HeaderShown(bool),
-    /// `headerLargeTitle` (iOS, desktop): a large title; the content scrolls under
-    /// the header.
-    #[prop(ios = "headerLargeTitle", desktop = "headerLargeTitle", on = SCREEN)]
+    /// `headerLargeTitle` (iOS: the system header; ignored elsewhere): a
+    /// large title; the content scrolls under the header.
+    #[prop(js = "headerLargeTitle", on = SCREEN)]
     HeaderLargeTitle(bool),
-    /// `headerTransparent`: the content extends under the header.
+    /// `headerTransparent`: the content extends under the system header
+    /// (iOS and Android).
     #[prop(js = "headerTransparent", on = SCREEN)]
     HeaderTransparent(bool),
-    /// `headerTintColor`: the back button and bar buttons.
-    #[prop(js = "headerTintColor", on = SCREEN)]
-    HeaderTintColor(Option<Color>),
-    /// `headerBackgroundColor`.
-    #[prop(js = "headerBackgroundColor", on = SCREEN)]
-    HeaderBackgroundColor(Option<Color>),
-    /// `headerTitleColor`.
-    #[prop(js = "headerTitleColor", on = SCREEN)]
-    HeaderTitleColor(Option<Color>),
-    /// `headerBackTitle` (iOS, desktop): the label of the back button leading back
-    /// to this screen.
-    #[prop(ios = "headerBackTitle", desktop = "headerBackTitle", on = SCREEN)]
+    /// `headerBackTitle` (iOS: the system header; ignored elsewhere): the
+    /// label of the back button leading back to this page.
+    #[prop(js = "headerBackTitle", on = SCREEN)]
     HeaderBackTitle(Option<Arc<str>>),
-    /// `headerBackVisible`: the back button shows (default true).
+    /// `headerBackVisible`: the system header's back button shows (default
+    /// true; iOS and Android).
     #[prop(js = "headerBackVisible", default = true, on = SCREEN)]
     HeaderBackVisible(bool),
-    /// `gestureEnabled`: the interactive back gesture (iOS swipe back, Android
-    /// predictive back following the finger); the back buttons pop either way
-    /// (default true).
-    #[prop(js = "gestureEnabled", default = true, on = SCREEN)]
-    GestureEnabled(bool),
-    /// `preventBack`: the user cannot leave the screen: no swipe back, and the back
-    /// buttons (header, Android back) call `onBackRequest` instead of popping, e.g.
-    /// to confirm discarding changes and then `pop()`. Decided natively when the
-    /// system asks, so set it before the user acts.
-    #[prop(js = "preventBack", on = SCREEN)]
-    PreventBack(bool),
-    /// `animation`: how the screen enters and leaves.
+    /// `popOnSwipe`: the interactive back gesture pops (iOS swipe back,
+    /// Android predictive back following the finger); the back buttons pop
+    /// either way (default true).
+    #[prop(js = "popOnSwipe", default = true, on = SCREEN)]
+    PopOnSwipe(bool),
+    /// `popOnBack`: the user leaves the page with the back buttons (header,
+    /// Android back, the desktops' back keys and mouse button, the
+    /// browser's back) and the swipe back (default true). False keeps it,
+    /// e.g. to confirm discarding changes in `onBackPress` (called on every
+    /// back press) and then `pop()`. Decided natively when the system asks,
+    /// so set it before the user acts.
+    #[prop(js = "popOnBack", default = true, on = SCREEN)]
+    PopOnBack(bool),
+    /// `animation`: how the page enters and leaves.
     #[prop(js = "animation", on = SCREEN)]
     Animation(ScreenAnimation),
 }
 
-/// How a modal appears (`animationType`).
+/// How a modal appears (`animation`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PropEnum)]
 pub enum ModalAnimation {
     /// Slides up from the bottom (default).
@@ -830,7 +860,7 @@ pub enum ModalAnimation {
     None,
 }
 
-/// How a modal covers the screen (`presentationStyle`, iOS and desktop).
+/// How a modal covers the screen (`presentation`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PropEnum)]
 pub enum ModalPresentation {
     /// Covers the whole screen (default).
@@ -842,20 +872,19 @@ pub enum ModalPresentation {
     FormSheet,
 }
 
-/// A modal option.
+/// A modal option (`<Dialog …>`).
 #[derive(Debug, Clone, Copy, PartialEq, HostProps)]
 pub enum ModalProp {
-    /// `animationType`: how the modal appears.
-    #[prop(js = "animationType", on = MODAL)]
+    /// `animation`: how the dialog appears. Pages and dialogs share the
+    /// name, so JS's value arrives as [`ScreenProp::Animation`], which the
+    /// core takes for this on a dialog.
     Animation(ModalAnimation),
-    /// `presentationStyle` (iOS, desktop, web): `"pageSheet"` / `"formSheet"` keep what
-    /// is behind visible (on a desktop: a card centered in the window; in a phone
-    /// browser: a card from just below the top, as on iPhones).
-    #[prop(ios = "presentationStyle", desktop = "presentationStyle", web = "presentationStyle", on = MODAL)]
+    /// `presentation`: `"pageSheet"` / `"formSheet"` keep what is behind
+    /// visible (iOS; ignored on Android, the desktops and the web, where a
+    /// dialog is a transparent layer over the window and the app's popup
+    /// and backdrop are all it shows).
+    #[prop(js = "presentation", on = MODAL)]
     Presentation(ModalPresentation),
-    /// `transparent`: the background shows what is behind.
-    #[prop(js = "transparent", on = MODAL)]
-    Transparent(bool),
     /// `statusBarTranslucent` (Android): the content reaches under the status bar
     /// (default: it starts below).
     #[prop(android = "statusBarTranslucent", on = MODAL)]
@@ -866,11 +895,19 @@ pub enum ModalProp {
     /// [`crate::ModalConfig::PORTRAIT`] bits.
     #[prop(ios = "supportedOrientations", with = crate::js::host_values::orientations, reset = ModalProp::Orientations(0), ts = "(\"portrait\" | \"portrait-upside-down\" | \"landscape\" | \"landscape-left\" | \"landscape-right\")[]", on = MODAL)]
     Orientations(u8),
-    /// `dismissible`: the user closes it natively (iOS sheet swiped down, Android
-    /// back button), then `onRequestClose` and `onDismiss` follow. Without it
-    /// (default) those only ask to close.
-    #[prop(js = "dismissible", on = MODAL)]
-    Dismissible(bool),
+    /// `closeOnEscape`: Escape and the Android back button close it natively
+    /// (default true); either way they call `onCancel`.
+    #[prop(js = "closeOnEscape", default = true, on = MODAL)]
+    CloseOnEscape(bool),
+    /// `closeOnBackdropPress`: a press on the backdrop part
+    /// (`backdropClass` / `backdropStyle`, rendered by the runtime) closes
+    /// it (default true); either way it calls `onCancel`.
+    #[prop(js = "closeOnBackdropPress", default = true, on = MODAL)]
+    CloseOnBackdropPress(bool),
+    /// `closeOnSwipe`: swiping a sheet down (iOS, phone browsers) closes it
+    /// natively (default true); either way it calls `onCancel`.
+    #[prop(js = "closeOnSwipe", default = true, on = MODAL)]
+    CloseOnSwipe(bool),
 }
 
 /// An imperative call on a native view (`ref.focus()` and the like).
@@ -894,7 +931,7 @@ pub enum Command {
     /// Leave the app (Android back handling; on the root).
     ExitApp,
     /// What the back button does when none of the app's listeners took
-    /// it: the innermost stack pops (or asks, with `preventBack`); with
+    /// it: the innermost stack pops (or asks, with `popOnBack` false); with
     /// none, the app leaves on Android (on the root).
     Back,
     /// Reload a web view.
@@ -1013,9 +1050,6 @@ pub enum Command {
         args: crate::JsonValue,
     },
 }
-
-/// The children's opacity while an underlay shows, by default.
-pub const UNDERLAY_OPACITY: f32 = 0.85;
 
 /// The status bar's look.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1176,9 +1210,12 @@ pub enum Prop {
     /// (one column, not inverted).
     #[prop(js = "stickyHeaderIndices", with = crate::js::host_values::sticky, reset = Prop::StickyIndices(Vec::new()), on = LIST)]
     StickyIndices(Vec<u32>),
-    /// `contentContainerStyle`: padding and gaps of the content.
-    #[prop(js = "contentContainerStyle", on = LIST)]
+    /// `contentStyle`: padding and gaps of the content.
+    #[prop(js = "contentStyle", on = LIST)]
     ListContent(ListContentStyle),
+    /// `contentClass`: padding and gaps of the content as classes (`p-*`,
+    /// `gap-*`); `contentStyle` wins over them (set by the runtime).
+    ListContentClass(Box<str>),
     /// `viewabilityConfig`: when items count as viewable.
     #[prop(js = "viewabilityConfig", on = LIST)]
     Viewability(Viewability),
@@ -1211,11 +1248,11 @@ pub enum Prop {
     /// `placeholder`: shown while the input is empty.
     #[prop(js = "placeholder", on = INPUT)]
     Placeholder(String),
-    /// `placeholderTextColor`.
-    #[prop(js = "placeholderTextColor", on = INPUT)]
+    /// The placeholder's color (Rust components; TS sets the
+    /// `placeholderColor` style key or `placeholder:text-*`).
     PlaceholderColor(Option<Color>),
-    /// `secureTextEntry`: the text is hidden (passwords).
-    #[prop(js = "secureTextEntry", on = INPUT)]
+    /// `masked`: the text is hidden (passwords).
+    #[prop(js = "masked", on = INPUT)]
     Secure(bool),
     /// `keyboardType`: the keyboard layout.
     #[prop(js = "keyboardType", on = INPUT)]
@@ -1239,16 +1276,11 @@ pub enum Prop {
     /// `maxLength`: the most characters the user can enter.
     #[prop(js = "maxLength", on = INPUT)]
     MaxLength(Option<u32>),
-    /// `editable`: the user can change the text (default true).
-    #[prop(js = "editable", default = true, on = INPUT)]
-    Editable(bool),
-    /// `blurOnSubmit`: return unfocuses a single-line input (default true); false
-    /// keeps the keyboard up, e.g. to send several messages. `submitBehavior`
-    /// wins over it.
-    #[prop(js = "blurOnSubmit", default = true, on = INPUT)]
-    BlurOnSubmit(bool),
+    /// `readonly`: the user can select and copy the text but not change it.
+    #[prop(js = "readonly", on = INPUT)]
+    Readonly(bool),
     /// `submitBehavior`: what return does: `"submit"` (reports
-    /// `onSubmitEditing`, keeps the focus), `"blurAndSubmit"` (also
+    /// `onSubmit`, keeps the focus), `"blurAndSubmit"` (also
     /// unfocuses), `"newline"` (inserts a line break; multiline inputs
     /// only). Default: `"blurAndSubmit"` for one line, `"newline"` for
     /// several. A multiline input that submits still takes line breaks
@@ -1269,9 +1301,9 @@ pub enum Prop {
     /// `inputAccessoryViewID`).
     #[prop(js = "nativeID")]
     NativeId(Option<Box<str>>),
-    /// `selectionColor`: an input's caret and selection, the highlight of a
-    /// `selectable` text's selection.
-    #[prop(js = "selectionColor", on = INPUT | TEXT)]
+    /// An input's caret and selection, the highlight of a `selectable`
+    /// text's selection (Rust components; TS sets the `selectionColor`
+    /// style key or `selection:text-*`).
     SelectionColor(Option<Color>),
     /// `autoComplete` (iOS: also `textContentType`): what an input holds, for
     /// autofill (React Native's values, e.g. "username", "current-password",
@@ -1279,9 +1311,9 @@ pub enum Prop {
     /// "off").
     #[prop(js = "autoComplete", ios = "textContentType", on = INPUT)]
     AutoFill(AutoFill),
-    /// `selection`: the controlled selection (UTF-16 units; `end` defaults to
+    /// `selectedRange`: the controlled selection (UTF-16 units; `end` defaults to
     /// `start`, a caret).
-    #[prop(js = "selection", with = crate::js::host_values::selection, once, ts = "{ start: number; end?: number }", on = INPUT)]
+    #[prop(js = "selectedRange", with = crate::js::host_values::selection, once, ts = "{ start: number; end?: number }", on = INPUT)]
     Selection(u32, u32),
     /// `keyboardDismissMode`: whether dragging dismisses the keyboard.
     #[prop(js = "keyboardDismissMode", on = SCROLL | LIST)]
@@ -1299,17 +1331,26 @@ pub enum Prop {
     /// it keep the touches until then.
     #[prop(js = "panActivation")]
     PanActivation(Option<crate::props::PanActivation>),
-    /// `activeOpacity`: the opacity while pressed (native, no JS round trip).
-    #[prop(js = "activeOpacity", min = 0, max = 1)]
-    ActiveOpacity(Option<f32>),
-    /// `underlayColor`: the background while pressed; the children fade to
-    /// `underlayOpacity` (native, no JS round trip).
-    #[prop(js = "underlayColor")]
-    UnderlayColor(Option<Color>),
-    /// `underlayOpacity`: the children's opacity while `underlayColor` shows
-    /// (default 0.85).
-    #[prop(js = "underlayOpacity", default = UNDERLAY_OPACITY, min = 0, max = 1)]
-    UnderlayOpacity(f32),
+    /// `activeStyle`: the style while pressed (and not disabled), over the
+    /// view's style; applied natively, no JS round trip.
+    ActiveStyle(Option<Arc<StylePatch>>),
+    /// `hoverStyle`: the style while a pointer is over the view (and it is
+    /// not disabled).
+    HoverStyle(Option<Arc<StylePatch>>),
+    /// `focusStyle`: the style while the view has focus (and is not
+    /// disabled).
+    FocusStyle(Option<Arc<StylePatch>>),
+    /// `disabledStyle`: the style while `disabled`, over every other state's.
+    DisabledStyle(Option<Arc<StylePatch>>),
+    /// `selectedStyle`: the style while `accessibilityState.selected` (a
+    /// `Button`'s `selected`), and not disabled.
+    SelectedStyle(Option<Arc<StylePatch>>),
+    /// `headerStyle` of a page: `backgroundColor`, `color` (the title's) and
+    /// `tintColor` (the buttons') of its header.
+    HeaderStyle(Option<Arc<StylePatch>>),
+    /// `headerClass` of a page: the header's colors as classes (`bg-*`,
+    /// `text-*`, `tint-*`); `headerStyle` wins over them.
+    HeaderClass(Box<str>),
     /// The surface lays out right to left (on the root, from
     /// `I18nManager`).
     #[prop(js = "layoutDirectionRtl", internal)]

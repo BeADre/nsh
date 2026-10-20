@@ -1,8 +1,6 @@
 //! The software keyboard: `Keyboard` and `KeyboardAvoidingView`.
 
-use nsh_core::ui::{
-    LayoutAnimation, LayoutCurve, LayoutProperty, LayoutTransition, Style, prelude::*,
-};
+use nsh_core::ui::{LayoutAnimation, LayoutCurve, LayoutProperty, LayoutTransition, prelude::*};
 
 /// The software keyboard.
 #[derive(Debug)]
@@ -30,17 +28,13 @@ pub struct KeyboardAvoidingViewProps {
     pub enabled: Prop<bool>,
     /// `padding` (default) pads the bottom by the keyboard's height;
     /// `height` shrinks the view instead (a bottom margin, so its
-    /// background ends at the keyboard); `position` moves an inner content
-    /// view (`contentContainerStyle`) up.
+    /// background ends at the keyboard).
     #[prop(default)]
     pub behavior: Prop<AvoidBehavior>,
     /// Added to the keyboard's height while it shows (a tab bar below the
     /// view, say).
     #[prop(default)]
-    pub keyboard_vertical_offset: Prop<f32>,
-    /// The inner view's style with `behavior="position"`.
-    #[prop(default)]
-    pub content_container_style: Prop<Style>,
+    pub offset: Prop<f32>,
     /// The content.
     pub children: Prop<Children>,
 }
@@ -53,8 +47,6 @@ pub enum AvoidBehavior {
     Padding,
     /// Shrinks.
     Height,
-    /// Moves its content up.
-    Position,
 }
 
 /// A view keeping its content above the keyboard ([`KeyboardAvoidingViewProps`]).
@@ -87,7 +79,7 @@ pub fn KeyboardAvoidingView(props: KeyboardAvoidingViewProps) -> impl IntoElemen
         if !props.enabled.get() || height == 0.0 {
             0.0
         } else {
-            (height + props.keyboard_vertical_offset.get()).max(0.0)
+            (height + props.offset.get()).max(0.0)
         }
     });
     // The room it makes, by `behavior`.
@@ -101,20 +93,8 @@ pub fn KeyboardAvoidingView(props: KeyboardAvoidingViewProps) -> impl IntoElemen
             ..EdgeInsets::default()
         }
     };
-    let children = props.children.get_untracked();
     view()
         .inset_padding(room(AvoidBehavior::Padding))
         .inset_margin(room(AvoidBehavior::Height))
-        .child(dynamic(move || {
-            if props.behavior.get() == AvoidBehavior::Position {
-                view()
-                    .inline_style(props.content_container_style)
-                    .relative()
-                    .bottom(move || px(lift.get()))
-                    .child(children)
-                    .into_element()
-            } else {
-                children.into_element()
-            }
-        }))
+        .child(props.children)
 }

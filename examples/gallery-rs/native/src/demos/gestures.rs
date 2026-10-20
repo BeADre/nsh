@@ -6,7 +6,7 @@
 use std::rc::Rc;
 
 use nsh_core::{
-    Rect, Ripple, TouchPhase, TouchPoint, UNDERLAY_OPACITY,
+    Rect, Ripple, TouchPhase, TouchPoint,
     nsh_animation::{Curve, EaseMode},
     ui::{Animation, BoxShadow, TouchEvent, prelude::*},
 };
@@ -503,7 +503,8 @@ fn PressEvents() -> impl IntoElement {
         .on_press(fire("ripple"))
         .on_long_press(fire("fast long press"))
         .long_press_delay(250.0)
-        .underlay(|| color(colors::BORDER), UNDERLAY_OPACITY)
+        .group()
+        .active(|s| s.bg(colors::BORDER))
         .ripple(Ripple {
             color: Some(rgb_a(0xc8f26d, 0.25)),
             ..Ripple::default()
@@ -519,11 +520,17 @@ fn PressEvents() -> impl IntoElement {
         .items_center()
         .justify_center()
         .gap(px(2.0))
-        .child(text("Ripple").text_size(px(14.0)).text_color(colors::TEXT))
+        .child(
+            text("Ripple")
+                .text_size(px(14.0))
+                .text_color(colors::TEXT)
+                .group_active(|s| s.opacity(0.85)),
+        )
         .child(
             text("Long press after 250 ms")
                 .text_size(px(12.0))
-                .text_color(colors::FAINT),
+                .text_color(colors::FAINT)
+                .group_active(|s| s.opacity(0.85)),
         );
     Card::new()
         .icon(IconName::Components)
@@ -536,7 +543,7 @@ fn PressEvents() -> impl IntoElement {
                 .on_press_out(fire("pressOut"))
                 .on_press(fire("press"))
                 .on_long_press(fire("longPress"))
-                .active_opacity(0.55)
+                .active(|s| s.opacity(0.55))
                 .role(AccessibilityRole::Button)
                 .h(px(64.0))
                 .rounded(px(radius::CONTROL))
@@ -577,7 +584,7 @@ fn PressEvents() -> impl IntoElement {
                         radius: Some(40.0),
                         ..Ripple::default()
                     })
-                    .active_opacity(0.4)
+                    .active(|s| s.opacity(0.4))
                     .role(AccessibilityRole::Button)
                     .label("Star")
                     .size(px(56.0))
@@ -589,7 +596,7 @@ fn PressEvents() -> impl IntoElement {
         .child(
             text("Pressable text, dimmed while pressed")
                 .on_press(fire("text"))
-                .active_opacity(0.3)
+                .active(|s| s.opacity(0.3))
                 .self_start()
                 .text_size(px(15.0))
                 .text_color(colors::ACCENT)

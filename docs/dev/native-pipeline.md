@@ -64,8 +64,8 @@ One Oxc pass removes TypeScript and lowers JSX (`plugin.rs` `compile_native`):
   `jsx::PRIMITIVES` imported from its module (alias-aware: `import { View as V } from "nsh"`) compiles to what it is,
   with no component call: `View`, `Text`, `Scroll`, `Input` (`nsh`), `Image` (`nsh/image`), `WebView`, `Video` to
   their host elements made in place, `List` to `nsh:rt`'s `list`, `If` / `Each` to `cond` / `each`; `Canvas`,
-  `Modal` and `InputAccessoryView` are native components that do more than make their element (the drawing,
-  `visible` and the insets, iOS only) and are called. The exports are callable components too (`dom.rs`
+  `Dialog` (`nsh/base`) and `InputAccessoryView` are native components that do more than make their element (the
+  drawing, `open`, the popup and backdrop parts and the insets, iOS only) and are called. The exports are callable components too (`dom.rs`
   `host_component`; `If` and `Each` are real globals), so `const C = cond ? View : Text; <C />` works through the
   component path. Lowercase tags are errors with the import to write (`<view>`: write `<View>` and `import { View }
   from "nsh"`; for another, the closest binding, primitive or registry component). Why: TypeScript checks a lowercase
@@ -124,11 +124,15 @@ One Oxc pass removes TypeScript and lowers JSX (`plugin.rs` `compile_native`):
 
 ## Navigation
 
-`createNavigator`, `Stack`, `Screen` and `Modal` are natives (`navigation.rs`), which `nsh/base` exports
-(`Registry::native_values`). A stack renders each route (by identity) with the app's function into a screen, the app's
-`<Screen>` or one around what it rendered (also when a hot component returns an accessor); a screen the user pops
-natively removes its route; screens and modals provide the insets they report to what they render
-(`safeAreaInsets`).
+`createNavStack`, `NavStack`, `NavPage` and `Dialog` are natives (`navigation.rs`), which `nsh/base` exports
+(`Registry::native_values`). A stack renders each route (each push its own entry, the same route pushed twice
+included) with the app's function into a page, the app's `<NavPage>` or one around what it rendered (also when a hot
+component returns an accessor); a page the user pops natively removes its route and calls `onPop`; pages and dialogs
+provide the insets they report to what they render (`safeAreaInsets`). The handlers of a page's and a dialog's native
+events are the runtime's: they keep the stack in step and call the app's props (`onPop`, `onBackPress`, `onOpen`,
+`onClose`, `onCancel`, `onOpenChange`), so the app's names are not the core's events' (`onDismiss`,
+`onRequestClose`, ...). A dialog renders the app's popup (`class` / `style`) and, while the app styles one
+(`backdropClass` / `backdropStyle`), a backdrop part behind it whose presses are close attempts.
 
 ## Runtime modules
 
@@ -184,7 +188,7 @@ Development bundles (CommonJS, one chunk per module) need nothing: rolldown rend
 
 Development bundles are compiled by the same compiler, after the bundler's hot transform (`crates/nsh-bundler/src/hot.rs`)
 has wrapped the components, the functions passed to top-level `mount()` and the top-level `context()`, `signal()` and
-`createNavigator()` calls, one CommonJS chunk per module, and run by the native hot
+`createNavStack()` calls, one CommonJS chunk per module, and run by the native hot
 runtime (`crates/nsh-js/src/hot.rs`, see `tooling.md`). The script is an ES module: it imports `nsh:hot` (which makes the
 `__nsh_hot` global; only development bundles import it) and the namespaces of the native modules the app imports, which
 factories `require` by specifier; an edit that imports a native module the running script did not makes the host

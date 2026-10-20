@@ -66,7 +66,7 @@ pub trait HostList {
 /// Where decoding reports what it could not take.
 #[derive(Debug, Default)]
 pub struct HostCx {
-    /// Warnings for the app's console (`unknown accessibilityRole`).
+    /// Warnings for the app's console (`unknown role`).
     pub warnings: Vec<String>,
 }
 
@@ -575,7 +575,7 @@ pub const EVENTS: &[(EventKind, u32, &str, &str)] = &[
         EventKind::ContentSizeChange,
         on::INPUT,
         "(e: { width: number; height: number }) => void",
-        "The size of the text (at the input's width when multiline): grow a multiline input with it.",
+        "The size of the text (at the input's width when `multiline`): grow a multiline input with it.",
     ),
     (
         EventKind::Message,
@@ -596,20 +596,6 @@ pub const EVENTS: &[(EventKind, u32, &str, &str)] = &[
         "(e: { isBuffering: boolean }) => void",
         "",
     ),
-    (
-        EventKind::BackRequest,
-        on::SCREEN,
-        "() => void",
-        "The user tried to leave a screen with `preventBack`.",
-    ),
-    (EventKind::Dismiss, on::SCREEN | on::MODAL, "() => void", ""),
-    (
-        EventKind::RequestClose,
-        on::MODAL,
-        "() => void",
-        "The user asked to close (Android back button, iOS sheet swipe): set `visible` to false to close it.",
-    ),
-    (EventKind::Show, on::MODAL, "() => void", ""),
 ];
 
 /// The events no element's props declare: the root's (`BackHandler`,
@@ -627,6 +613,13 @@ pub const INTERNAL_EVENTS: &[EventKind] = &[
     EventKind::KeyCommand,
     EventKind::Menu,
     EventKind::ViewableItemsChanged,
+    // `NavPage`'s `onPop` / `onBackPress` and `Dialog`'s `onClose` /
+    // `onCancel` / `onOpenChange` / `onOpen`: the navigation's handlers
+    // (`nsh-js` `navigation.rs`), declared with its components.
+    EventKind::BackRequest,
+    EventKind::Dismiss,
+    EventKind::RequestClose,
+    EventKind::Show,
 ];
 
 /// The interfaces of the host props, by the elements their props apply
@@ -643,8 +636,8 @@ const GROUPS: &[(u32, &str, &str)] = &[
     (on::SCROLL, "Scroll", "`<Scroll>`"),
     (on::LIST, "List", "lists"),
     (on::INPUT, "Input", "`<Input>`"),
-    (on::SCREEN, "Screen", "the screens of a stack"),
-    (on::MODAL, "Modal", "modals"),
+    (on::SCREEN, "NavPage", "the pages of a `NavStack`"),
+    (on::MODAL, "Dialog", "dialogs"),
     (on::WEBVIEW, "WebView", "web views"),
     (on::VIDEO, "Video", "videos"),
     (on::INPUT_ACCESSORY, "InputAccessory", "input accessories"),
@@ -697,7 +690,7 @@ pub fn declarations() -> String {
                 if !doc.is_empty() {
                     let _ = writeln!(out, "  /** {doc} */");
                 }
-                let _ = writeln!(out, "  {}?: {handler};", kind.prop_name());
+                let _ = writeln!(out, "  {}?: {handler};", kind.handler_name());
             }
             out.push_str("}\n");
         }

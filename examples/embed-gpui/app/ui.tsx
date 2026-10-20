@@ -8,7 +8,7 @@ import { Input, type JSX, Text, View } from "nsh";
 export function Button(props: { title: string; variant?: "primary" | "danger"; onPress?: () => void }) {
   return (
     <View
-      accessibilityRole="button"
+      role="button"
       accessibilityLabel={props.title}
       onPress={props.onPress}
       class={
@@ -40,7 +40,7 @@ export function TextField(props: { label: string; value?: string; placeholder?: 
       <Input
         value={props.value}
         placeholder={props.placeholder}
-        onChangeText={props.onChange}
+        onChange={props.onChange}
         class="min-h-11 rounded-lg border border-zinc-300 px-3 text-base text-zinc-900 focus:border-blue-500 dark:border-zinc-700 dark:text-zinc-100"
       />
     </View>
@@ -52,7 +52,7 @@ export function Stepper(props: { value: number; min: number; max: number; onChan
   const step = (by: number) => props.onChange(Math.min(props.max, Math.max(props.min, props.value + by)));
   const button = (label: string, name: string, by: number) => (
     <View
-      accessibilityRole="button"
+      role="button"
       accessibilityLabel={name}
       onPress={() => step(by)}
       class="size-10 items-center justify-center rounded-lg bg-zinc-100 active:bg-zinc-200 dark:bg-zinc-800 dark:active:bg-zinc-700"

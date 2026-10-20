@@ -10,9 +10,9 @@ the styled layer, GPUI Kit's `gpui-component`, is never part of NSH. The look of
 come from two places:
 
 - **`nsh/base`**: unstyled base components of `gpui-base`'s scope, the crate `nsh-base` (`crates/nsh-base`,
-  `nsh_base::registry()`): `SafeAreaView`, `KeyboardAvoidingView`, `StatusBar` and the modules `Alert`, `ActionSheet`,
-  `Keyboard`, beside the navigation `nsh-js` makes for it (`Stack`, `Screen`, `Modal`, `createNavigator`); controls
-  (buttons, toggles, sliders, selects, popovers, sheets, ...) join as their behavior is written. It is a UI set
+  `nsh_base::registry()`): `SafeAreaView`, `KeyboardAvoidingView`, `StatusBar`, `Button` and the modules `AlertDialog`,
+  `Keyboard`, beside the navigation `nsh-js` makes for it (`NavStack`, `NavPage`, `Dialog`, `createNavStack`); controls
+  (toggles, sliders, selects, popovers, sheets, ...) join as their behavior is written. It is a UI set
   (`Registry::ui_set("nsh/base")`) every host serves by default (`set_ui_sets`' default; embedders with a list of their
   own add `nsh_base::registry()` to it); Rust apps use `nsh_base::{SafeAreaView, …}`. What goes in is behavior:
   - it owns behavior, state, focus, keyboard handling and accessibility (roles, states, actions), or tells the
@@ -70,13 +70,13 @@ come from two places:
   `spawn(async move { .. })`) and end with it. Methods a ref calls in JS are an API type (`#[methods]`, below).
 - **The surface is free functions** whose reads subscribe: `window()`, `safe_area()`, `keyboard_height()`, `dark()`,
   `font_scale()`, `rtl()`, `locale()`, `cx.insets()`, `global::<G>()`, `provide_context(v)` / `use_context::<T>()`.
-- **Modules are functions without a component**: `#[module] impl Alert { pub async fn alert(title: String, ..) ->
-  i32 }` is `await Alert.alert(title)` in JS (`nsh-base` `alert.rs`). A module named like a component adds static
-  functions to it (`StatusBar.setHidden`, `nsh-base` `status_bar.rs`).
-- **System UI**: `dialog(..)` (await the index chosen), `dismiss_keyboard()`, `add_status_bar(..)` /
+- **Modules are functions without a component**: `#[module] impl AlertDialog { pub async fn show(options:
+  AlertDialogOptions) -> Result<Option<SharedString>, String> }` is `await AlertDialog.show({ … })` in JS (`nsh-base`
+  `alert_dialog.rs`). A module named like a component adds static functions to it.
+- **System UI**: `dialog(..)` (await the index chosen, -1 when closed without one), `dismiss_keyboard()`, `add_status_bar(..)` /
   `update_status_bar(..)` for a component's setting (removed with it), `ModuleCx::set_status_bar(patch)` for a
   function's; `.inset_padding(..)` / `.inset_margin(..)` on an element (`SafeAreaView`, `KeyboardAvoidingView`).
-- **Platform-only props** are an `android` / `ios` prop of a `JsObject` struct (`StatusBarAndroid`).
+- **Platform-only props** are an `android` / `ios` / `web` prop of a `JsObject` struct (`StatusBarWeb`).
 - Changing an app's component rebuilds the app's hosts and runners (`rust_app.rs`; `nsh run` does it on save), a
   component of `nsh/base` the dev hosts, `nsh-ios-app` and the Android runtime; TSX using it reloads as usual.
 
@@ -127,7 +127,7 @@ child components go with it. The design and its reasons: `reactive-components.md
   components of one set with the same export panic at registration (`Registry::merged` likewise for the sets a
   host serves, the runtime's included, also for modules of the same name); components of different sets may share
   an export. A test pins the runtime's exports (`runtime` `the_exports_are_pinned`). A module's JS name is its type's
-  too (`#[module] impl Alert`: `Alert`).
+  too (`#[module] impl AlertDialog`: `AlertDialog`).
 - **Props** are a struct, **events** an enum; the derives produce a decoder per prop (`PropSpec::decode`: the JS
   value into the field's Rust type, when JS sets it), the conversion of an event's data to JS (`Event::data_js`),
   defaults, and the TypeScript types (doc comments included). Field and variant names become camel case in JS. Value types
@@ -156,7 +156,7 @@ child components go with it. The design and its reasons: `reactive-components.md
     the child's node: a child that stays keeps its wrapper; `at` is a `Position`: `index()`, `count()`,
     `is_first()`, `is_last()`, signals read in bindings).
   - `items: Items`: virtualized rows. In JS the component takes `List`'s data props (`each`, the row renderer as
-    children, `keyExtractor`, `onEndReached`, `ListHeaderComponent`, ... : `ListItemsProps<T>`, so the component is
+    children, `keyExtractor`, `onEndReached`, `header`, ... : `ListItemsProps<T>`, so the component is
     generic over the row type). `.list(props.items, |l| l.flex_1().estimated_item_size(48.0), |row, at|
     view().px_4().style_when(move || at.is_last(), |v| v.rounded_b(px(16.0))).child(row))` places the list, lays it
     out (size, columns, padding, gaps, direction; bound layout values update it in place) and wraps each row; only
@@ -211,7 +211,7 @@ child components go with it. The design and its reasons: `reactive-components.md
   | async work | `spawn(async move { timer(d).await; value.set(..) })` on the engine thread, tokio inside; `background(fut)` / `blocking(f)` for `Send` work on the runtime's threads (not in WebAssembly) |
   | `fetch(url)` | `fetch(url).await` / `fetch(HttpRequest::post(url, body).header(..)).await` in a task: an `HttpResponse` (`status()`, `ok()`, `header(..)`, `text()`, `body`) or the error; the engine's network stack and capability checks, as JS's, so it works on the web too; the request is cancelled with its task |
   | `cleanup` | `cleanup(f)` (runs before the owner runs again or goes) |
-  | `windowSize()`, `safeArea()`, `keyboard()`, `colorScheme()`, ... | `window()`, `safe_area()`, `keyboard_height()`, `dark()`, `font_scale()`, `reduce_motion()`, `screen_reader()`, `rtl()`: reading subscribes |
+  | `windowSize()`, `safeArea()`, `keyboardFrame()`, `colorScheme()`, ... | `window()`, `safe_area()`, `keyboard_height()`, `dark()`, `font_scale()`, `reduce_motion()`, `screen_reader()`, `rtl()`: reading subscribes |
   | `Window.setTitleBar(style, height)`, `titleBar()`, `Window.close()` (`nsh/desktop`) | `ui::desktop::set_title_bar(style, height)`, `title_bar()`, `close_window()`; the same root commands and native controls, with title-bar insets forwarded through `ui::Environment`; `.window_drag(bool)` on any interactive element marks or excludes a native drag region |
   | `PixelRatio.get()`, `roundToNearestPixel`, `Platform.OS` / `Version` / `isPad` / `isDesktop` | `pixel_ratio()`, `round_to_nearest_pixel(v)`, `os()`, `os_version()`, `idiom()`, `is_desktop()` |
   | `Intl.NumberFormat()`, `toLocaleString()` (the user's locale) | `locale()` (a `Locale`: `de-DE`; reading subscribes), formatted with a Rust crate: `Intl` and the locale-aware `toLocale*String`s are JS globals of TS apps |
@@ -233,15 +233,15 @@ child components go with it. The design and its reasons: `reactive-components.md
   | a class TS uses (`new Tally(3)`, `tally.add(2)`, `tally.count`, `await tally.save(p)`) | `#[class]` on the struct and its `impl`, `registry.class::<Tally>()`: synchronous members run in the call, `async fn`s return promises |
   | a function returning its value (`checksum(bytes)`) | a `#[module]` function without `cx` (not `async`): it runs in the call |
   | a callback TS passes (`items.sort((a, b) => ..)`, a listener) | a `Callback<A, R>` parameter: `call(args)` inside a synchronous call, `post(args)` / `call_async(args).await` from tasks; kept in a class's field, it is collected with a cycle through the object |
-  | a portal | none (TS has none either); overlays are `modal().transparent(true)` |
+  | a portal | none (TS has none either); overlays are `modal()` (a transparent layer over the window, the look the app's) |
   | `ref={el}`, `el.focus()`, `await el.measure()` | `element_ref()`, `.element_ref(&r)` on the element, `r.focus()` / `.scroll_to(..)` / `.seek(..)` / `.command(..)` from listeners and tasks; `r.measure()` is an `Answer<Option<Measurement>>` (frame, `page_x` / `page_y`) to await in a task |
   | `onStartShouldSetResponder`, `onMoveShouldSetResponder(Capture)`, `PanResponder.create` | `.claim_touches(TouchClaim::on_start())` (`::on_move()`, `.capture()`, `.ask(\|request: &ClaimRequest\| request.claim())` to decide with state and the gesture, `.block_native(false)`; `TouchClaim::on_pan(PanActivation::horizontal(10.0, 10.0))` (`panActivation`) claims when the platform activates a pan, deciding on the main thread, `elements.md`), `.keep_touches(true)` (`onResponderTerminationRequest` → false); `.on_responder_grant` / `_move` / `_release` / `_terminate` / `_start` / `_end` / `_reject` get a `ResponderEvent` (the finger's `location_x`, `page_x`, ... and `gesture: PanGesture`: `dx`, `dy`, `vx`, `vy`, the centroid; `PanGesture::begin` / `update` follow one from `on_touch`) |
   | a ref to a component, `await counter.value()`, `counter.setValue(5)` | `component_ref::<Counter>()`, `Counter::element(..).component_ref(&r)`, `r.api::<CounterApi>()`: the API its view registered, its methods called directly |
-  | `<List ListHeaderComponent ListFooterComponent ListEmptyComponent ItemSeparatorComponent stickyHeaderIndices viewabilityConfig onViewableItemsChanged onEndReachedThreshold initialScrollIndex>` | `virtual_list(count, row).header(..).footer(..).empty(..).separator(\|\| ..).sticky_header_indices(..).viewability(..).minimum_view_time(..).on_viewable_items_changed(..).end_reached_threshold(..).initial_scroll_index(..)`: the header, footer and empty view are part of the view, never recycled |
+  | `<List header footer empty separator stickyHeaderIndices viewabilityConfig onViewableItemsChanged onEndReachedThreshold initialScrollIndex>` | `virtual_list(count, row).header(..).footer(..).empty(..).separator(\|\| ..).sticky_header_indices(..).viewability(..).minimum_view_time(..).on_viewable_items_changed(..).end_reached_threshold(..).initial_scroll_index(..)`: the header, footer and empty view are part of the view, never recycled |
   | `<List maintainVisibleContentPosition={{ autoscrollToBottomThreshold: 40 }}>` | `.follow_end(40.0)` (`ListLayout`: on `virtual_list(..)` and on a placed `ListElement`) |
-  | `<Feed each={rows} keyExtractor ListHeaderComponent={Header}>{row}</Feed>` (a component with an `Items` prop) | `Feed::element(props).items(virtual_list(n, row).keys(move \|\| ids).header(..))` |
+  | `<Feed each={rows} keyExtractor header={Header}>{row}</Feed>` (a component with an `Items` prop) | `Feed::element(props).items(virtual_list(n, row).keys(move \|\| ids).header(..))` |
   | `<Text>a <Text style={link} onPress={f}>b</Text> <View/></Text>` | `text("a ").child(link("b").on_press(..)).child(" ").child(view())`: one paragraph, links and inline views |
-  | `class="group"`, `group-active:`, `dark:`, `disabled:` | `.group()`, `.group_active(\|s\| ..)`, `.dark(\|s\| ..)`, `.disabled_style(\|s\| ..)` (native, no binding) |
+  | `class="group"`, `group-active:`, `dark:`, `disabled:`, `activeStyle` / `hoverStyle` / `focusStyle` / `disabledStyle` | `.group()`, `.group_active(\|s\| ..)`, `.dark(\|s\| ..)`, `.disabled_style(\|s\| ..)` (native, no binding) |
   | `bg-sky-500` (the palette) | `.bg(palette::SKY.shade(500))` |
 
 - **Platform services** are free functions (`ui/ambient.rs`): `dialog(Dialog)` shows an alert or action sheet and
@@ -272,7 +272,7 @@ child components go with it. The design and its reasons: `reactive-components.md
   to the platform.
 - **Element attributes for system UI**: `.inset_padding(insets)` / `.inset_margin(insets)` add to the padding /
   margin the styles resolve to (what `SafeAreaView` and `KeyboardAvoidingView` use, so the app's own padding stays),
-  `.inline_style(props.content_container_style)` applies a `ui::Style` prop (a value or a binding) (`KeyboardAvoidingView`'s `contentContainerStyle`).
+  `.inline_style(props.style)` applies a `ui::Style` prop (a value or a binding).
 - An app's own types become static values for setters with `nsh_core::static_reactive!(Tone: Tone);`. A closure
   returning a bare float literal for an `f32` setter needs its type: `move || if on { 0.5_f32 } else { 1.0 }`.
 
@@ -291,7 +291,7 @@ the same frame's commit rounds. Rust calls them directly: `ComponentRef::api::<C
 
 ## Modules
 
-Functions a registry exports without a component (`Alert.alert`, `Keyboard.dismiss`, `StatusBar.setHidden`) are a
+Functions a registry exports without a component (`AlertDialog.show`, `Keyboard.dismiss`) are a
 `#[module]` `impl` block of a unit struct: `pub fn`s are the functions, typed from their signatures (`Option`
 parameters at the end may be left out). The signature decides how a call runs (`FunctionCall`):
 
@@ -303,16 +303,16 @@ parameters at the end may be left out). The signature decides how a call runs (`
   (`RustCall::Op`, in order with the ops before it); one returning a value gives JS a `Promise`, settled like a
   method's, and a conversion error rejects it.
 - **`async fn`** (`Async`): no context; it runs as a root task, reaching the platform with the same free functions
-  views use (`Alert.alert` awaits `dialog(..)`), sent as the op above; a `Promise` of its value, rejected with an
+  views use (`AlertDialog.show` awaits `dialog(..)`), sent as the op above; a `Promise` of its value, rejected with an
   `Err`'s message or a panic's.
 
 Parameters are `Arg`s: the `JsValue` types, instances (`Instance<T>`) and `Callback`s; results are `Ret`s. In an op
 or a task, instances and functions ride in its closure as they are (`docs/dev/rust-classes.md`, "How calls
 cross"). A panic in an op rejects it (its actions dropped). `Registry::module::<M>()` registers it; `components.rs` builds
-the object. A module with a component's name is merged into it (`StatusBar` is a component with static
-functions). `Registry::reexport` re-exports environment values (`safeArea`, `safeAreaInsets`, `keyboard` in `nsh/base`:
+the object. A module with a component's name is merged into it (the component gets static
+functions). `Registry::reexport` re-exports environment values (`safeArea`, `safeAreaInsets`, `keyboardFrame` in `nsh/base`:
 `nsh-js` `env.rs`) under the registry's module, and `Registry::native_values` names the
-values `nsh-js` makes for it (`nsh/base`'s `Stack`, `Screen`, `Modal`, `createNavigator`: `navigation.rs`).
+values `nsh-js` makes for it (`nsh/base`'s `NavStack`, `NavPage`, `Dialog`, `createNavStack`: `navigation.rs`).
 
 The runtime's Rust modules are written the same way (`crates/nsh-core/src/runtime/`,
 `runtime::registries()`): one `Registry` per JS module (`Registry::runtime("nsh/clipboard")`), always served, which the
@@ -320,7 +320,7 @@ core always serves (`Core::set_components` merges the UI sets after them); a cal
 runtime module's functions never clash with an app set's of the same name. Runtime modules
 use the same services as components (`cx.toast`, `cx.announce_for_accessibility`, `image_size`), and the core's
 internal actions for the rest (exiting the app, a ref's accessibility focus).
-`#[module(flat)]` exports functions one by one (`setStatusBarBackgroundColor`); a function returning `Result` rejects
+`#[module(flat)]` exports functions one by one (top-level exports, not an object's); a function returning `Result` rejects
 the promise with the error (throws, when it runs in the call); a `NodeRef` parameter is a `YNode` in TS (the node's
 id, and its object again as a result).
 
@@ -373,8 +373,7 @@ statics, and `async fn`s (`this: Instance<Self>` first, for a method) members re
 
 `ui/status_bar.rs` layers the surface's settings (`StatusBarSetting`: style, hidden, animated, background, each
 optional), one `StatusBars` per surface shared by its components, modules and tasks. At the bottom is what functions
-set: `ModuleCx::set_status_bar(patch)` and JS's root `statusBar` command (`nsh/android`'s
-`setStatusBarBackgroundColor`) both become `Command::SetStatusBar(patch)`. Over it, the settings views add
+set: `ModuleCx::set_status_bar(patch)` becomes `Command::SetStatusBar(patch)`. Over it, the settings views add
 (`add_status_bar(setting)` → `StatusBarEntry`, removed when the current owner goes; `update_status_bar(entry, ..)`
 from an effect on the props); the most recently added wins, field by field. Each change only marks the layers;
 `commit` sends one `Command::StatusBar` with the merged result when it differs from the last one sent.
@@ -576,7 +575,7 @@ what changed.
 bundle first imports the module, and `classes.rs` each class's from its `ClassDef`. `nsh_core::ui::declarations(registry,
 omit)` writes their declarations (into the registry's module file, `nsh/base.d.ts`, `app/native.d.ts`; `nsh-js` `declarations.rs` adds
 the re-exports and native values it makes): the named types the props, events, methods and functions use (`export
-type BarStyle = ...` for a `PropEnum`, `export interface AlertButton` for a `JsObject`, each once, with its doc
+type Foreground = ...` for a `PropEnum`, `export interface AlertDialogAction` for a `JsObject`, each once, with its doc
 comment; `JsValue::ts_type(&mut TsTypes)` declares them), the props interfaces, the components, the module objects
 (each of type `<Name>Module`; a synchronous function returns its type, an op's or task's a `Promise`) and the
 classes (`export declare class`). The JS face runs for every instance, so it is kept minimal: **one render effect reading every prop

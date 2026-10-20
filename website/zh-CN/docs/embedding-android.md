@@ -155,7 +155,7 @@ setContentView(column);
 | `runPackage(NshPackage pkg)` | 运行一个已验证的签名包，替换正在运行的应用。一个包只能运行一次。 |
 | `registerComponent(String name, NshComponent.Factory factory)` | 注册一个[原生组件](./native-components.md)。 |
 | `connectDevServer(String url)` | 开发用：从 `nsh dev` 服务器加载，每次修改后重新加载。使用 release 版 AAR 时返回 `false`。 |
-| `handleBack()` | 让应用处理返回键（关闭模态框、弹出页面、执行 `BackHandler` 监听器）；返回它是否处理了。 |
+| `handleBack()` | 让应用处理返回键（关闭对话框、弹出页面、执行 `BackHandler` 监听器）；返回它是否处理了。 |
 | `destroy()` | 停止应用。此后该视图不能再使用。 |
 
 > [!IMPORTANT]
@@ -235,7 +235,7 @@ adb reverse tcp:8790 tcp:8790
 
 ## Activity 配置
 
-- **返回键。** 在 Android 13 及更高版本上，当应用需要处理返回键时（有打开的模态框、有被推入的页面、有 `BackHandler`
+- **返回键。** 在 Android 13 及更高版本上，当应用需要处理返回键时（有打开的对话框、有被推入的页面、有 `BackHandler`
   监听器），`NshView` 会注册自己的返回回调。在 Android 12 及更早版本上，需要手动转发返回键：
 
   ```java

@@ -85,7 +85,7 @@ fn system_shows_the_environment_and_the_status_bar() {
         "Bottom",
         "Light scheme",
         "Status bar",
-        "barStyle: \"dark-content\"",
+        "foreground: \"dark\"",
         "Alerts and sheets",
         "None yet",
         "Frames and timers",
@@ -101,7 +101,7 @@ fn system_shows_the_environment_and_the_status_bar() {
     );
     crate::common::press(&engine, &rx, &mut screen, "Light");
     assert!(
-        shows(&screen, "barStyle: \"light-content\""),
+        shows(&screen, "foreground: \"light\""),
         "{:?}",
         screen.texts
     );
@@ -109,12 +109,8 @@ fn system_shows_the_environment_and_the_status_bar() {
         status_bar(&screen).map(|s| s.style),
         Some(nsh_core::StatusBarStyle::Light)
     );
-    crate::common::press(&engine, &rx, &mut screen, "Default");
-    assert!(
-        shows(&screen, "barStyle: \"default\""),
-        "{:?}",
-        screen.texts
-    );
+    crate::common::press(&engine, &rx, &mut screen, "Auto");
+    assert!(shows(&screen, "foreground: \"auto\""), "{:?}", screen.texts);
 
     // The toggle next to "Hidden" hides it.
     let hidden = screen.find("Hidden").unwrap();

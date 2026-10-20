@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use nsh_base::{BarStyle, StatusBar, StatusBarProps};
+use nsh_base::{Foreground, StatusBar, StatusBarProps};
 use nsh_core::{
     keymap::When,
     nsh_animation::{Curve, EaseMode},
@@ -19,10 +19,10 @@ use crate::ui::{
 };
 
 /// The status bar's styles, in the segments' order.
-const BAR_STYLES: [(BarStyle, &str, &str); 3] = [
-    (BarStyle::LightContent, "light-content", "Light"),
-    (BarStyle::DarkContent, "dark-content", "Dark"),
-    (BarStyle::Default, "default", "Default"),
+const BAR_STYLES: [(Foreground, &str, &str); 3] = [
+    (Foreground::Light, "light", "Light"),
+    (Foreground::Dark, "dark", "Dark"),
+    (Foreground::Auto, "auto", "Auto"),
 ];
 
 /// The posts the network card asks for.
@@ -215,10 +215,9 @@ fn StatusBarCard() -> impl IntoElement {
         .title("Status bar")
         .subtitle("StatusBar: style and visibility, animated")
         .child(StatusBar::element(StatusBarProps {
-            bar_style: Prop::bind(move || Some(BAR_STYLES[index.get()].0)),
+            foreground: Prop::bind(move || Some(BAR_STYLES[index.get()].0)),
             hidden: Prop::bind(move || Some(hidden.get())),
             animated: Some(true).into(),
-            android: None.into(),
             web: None.into(),
         }))
         .child(
@@ -239,7 +238,7 @@ fn StatusBarCard() -> impl IntoElement {
                         .gap(px(2.0))
                         .child(text("Hidden").text_size(px(15.0)).text_color(colors::TEXT))
                         .child(
-                            text(move || format!("barStyle: \"{}\"", BAR_STYLES[index.get()].1))
+                            text(move || format!("foreground: \"{}\"", BAR_STYLES[index.get()].1))
                                 .text_size(px(12.0))
                                 .text_color(colors::MUTED)
                                 .font_family(MONO),

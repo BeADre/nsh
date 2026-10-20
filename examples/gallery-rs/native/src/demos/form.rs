@@ -11,8 +11,8 @@ use nsh_base::{KeyboardAvoidingView, KeyboardAvoidingViewProps, SafeAreaView, Sa
 use nsh_core::{
     Size,
     ui::{
-        AutoCapitalize, AutoFill, KeyboardDismissMode, LayoutAnimation, ReturnKeyType, View,
-        prelude::*,
+        AutoCapitalize, AutoFill, KeyboardDismissMode, LayoutAnimation, ReturnKeyType,
+        SubmitBehavior, View, prelude::*,
     },
 };
 
@@ -21,7 +21,7 @@ use crate::{
     ui::{
         Badge, Button, ButtonVariant, Card, DemoPage, Finish, Finished, IconName, IconTile, Inset,
         MONO, Meter, PressProps, RoundButton, Section, Segment, SegmentedEvent, Tone, appear,
-        caption, colors, header, hint, icon, press_with, radius, segmented, tints,
+        caption, colors, hint, icon, press_with, radius, segmented, tints, titled,
     },
 };
 
@@ -145,7 +145,7 @@ impl Field {
             .selection_color(|| color(colors::ACCENT))
             .return_key_type(ReturnKeyType::Done)
             .multiline(self.multiline)
-            .editable(self.editable)
+            .readonly(!self.editable)
             .on_focus(move |_: &()| {
                 focus_in.timing(1.0, 160.0, Easing::EaseInOut);
             })
@@ -486,7 +486,7 @@ pub(crate) fn Form() -> impl IntoElement {
             let refs = refs.clone();
             input
                 .return_key_type(ReturnKeyType::Next)
-                .on_submit_editing(move |_: &str| {
+                .on_submit(move |_: &str| {
                     if let Some(next) = refs.get(i + 1) {
                         next.focus();
                     }
@@ -541,7 +541,7 @@ pub(crate) fn Form() -> impl IntoElement {
                         .render(|i| {
                             chained(0, i)
                                 .value(move || name.get())
-                                .on_change_text(set(name))
+                                .on_change(set(name))
                                 .auto_capitalize(AutoCapitalize::Words)
                                 .auto_fill(AutoFill::Name)
                                 .placeholder("Ada Lovelace")
@@ -555,7 +555,7 @@ pub(crate) fn Form() -> impl IntoElement {
                         .render(|i| {
                             chained(1, i)
                                 .value(move || email.get())
-                                .on_change_text(set(email))
+                                .on_change(set(email))
                                 .keyboard_type(KeyboardType::Email)
                                 .auto_capitalize(AutoCapitalize::None)
                                 .auto_correct(false)
@@ -568,19 +568,19 @@ pub(crate) fn Form() -> impl IntoElement {
                         .gap_2()
                         .child(
                             field(&fx[f::PASSWORD], "Password")
-                                .api("secureTextEntry")
+                                .api("masked")
                                 .error(password_err)
                                 .on_blur(touch(|t| t.password = true))
                                 .render(|i| {
                                     chained(2, i)
                                         .value(move || password.get())
-                                        .on_change_text(move |v: &str| {
+                                        .on_change(move |v: &str| {
                                             if strength(v) != score.get_untracked() {
                                                 animate_layout(LayoutAnimation::EASE_IN_EASE_OUT);
                                             }
                                             password.set(v.to_owned());
                                         })
-                                        .secure(true)
+                                        .masked(true)
                                         .auto_fill(AutoFill::NewPassword)
                                         .placeholder("At least 8 characters")
                                 }),
@@ -666,7 +666,7 @@ pub(crate) fn Form() -> impl IntoElement {
                         .render(|i| {
                             chained(7, i)
                                 .value(move || code.get())
-                                .on_change_text(set(code))
+                                .on_change(set(code))
                                 .keyboard_type(KeyboardType::Number)
                                 .max_length(6)
                                 .placeholder("······")
@@ -718,13 +718,13 @@ pub(crate) fn Form() -> impl IntoElement {
                         .render(|i| {
                             chained(12, i)
                                 .value(move || shout.get())
-                                .on_change_text(move |t: &str| shout.set(t.to_uppercase()))
+                                .on_change(move |t: &str| shout.set(t.to_uppercase()))
                                 .placeholder("TYPE IN LOWER CASE")
                         }),
                 )
                 .child(
                     field(&fx[f::READ_ONLY], "Read only")
-                        .api("editable={false}")
+                        .api("readonly")
                         .read_only()
                         .render(|i| i.value("Not editable")),
                 )
@@ -749,7 +749,7 @@ pub(crate) fn Form() -> impl IntoElement {
                                     chained(14, i)
                                         .max_length(280)
                                         .value(move || notes.get())
-                                        .on_change_text(set(notes))
+                                        .on_change(set(notes))
                                         .placeholder("Return adds a line")
                                         .min_h(px(100.0))
                                 }),
@@ -875,7 +875,7 @@ pub(crate) fn Form() -> impl IntoElement {
                         false,
                         |_: &()| {
                             nav::push("message-bar", || {
-                                header(screen().title("Message bar")).child(MessageBar::element(()))
+                                titled("Message bar").child(MessageBar::element(()))
                             });
                         },
                     )),
@@ -910,7 +910,7 @@ fn sheet_view(open: Signal<bool>, fx: &[FieldFx]) -> Modal {
         .map(|(label, fx)| field(fx, *label).render(|i| i.placeholder(format!("{label} field"))));
     modal()
         .presentation(ModalPresentation::PageSheet)
-        .on_request_close(close)
+        .on_cancel(close)
         .child(
             SafeAreaView::element(SafeAreaViewProps::default())
                 .flex_1()
@@ -1063,7 +1063,7 @@ fn SelectionDemo() -> impl IntoElement {
                 .render(|i| {
                     i.element_ref(&input)
                         .value(move || content.get())
-                        .on_change_text(move |v: &str| content.set(v.to_owned()))
+                        .on_change(move |v: &str| content.set(v.to_owned()))
                         .on_selection_change(move |s: &Selection| {
                             range.set(*s);
                             // The input has it: "Select all" sets it again.
@@ -1219,9 +1219,9 @@ fn MessageBar(cx: Scope<NoEvent>) -> impl IntoElement {
                     .child(
                         input()
                             .value(move || draft.get())
-                            .on_change_text(move |v: &str| draft.set(v.to_owned()))
-                            .on_submit_editing(move |_: &str| send())
-                            .blur_on_submit(false)
+                            .on_change(move |v: &str| draft.set(v.to_owned()))
+                            .on_submit(move |_: &str| send())
+                            .submit_behavior(SubmitBehavior::Submit)
                             .placeholder("Message")
                             .placeholder_color(|| color(colors::FAINT))
                             .selection_color(|| color(colors::ACCENT))

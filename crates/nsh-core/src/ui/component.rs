@@ -803,7 +803,7 @@ impl Registry {
         (&self.reexports.0, &self.reexports.1)
     }
 
-    /// Exports `values` `nsh-js` makes for the set (`Stack`, `Screen`),
+    /// Exports `values` `nsh-js` makes for the set (`NavStack`, `NavPage`),
     /// declared by hand rather than generated from a spec.
     pub fn native_values(&mut self, values: &[&'static str]) -> &mut Self {
         Arc::make_mut(&mut self.native_values).extend_from_slice(values);

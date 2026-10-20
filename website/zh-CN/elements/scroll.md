@@ -41,6 +41,8 @@ demo: el-scroll
 | `decelerationRate` | `"normal" \| "fast" \| number` | 平台默认 | 惯性滑动减速的快慢：每毫秒保留的速度比例（`normal` 为 0.998，`fast` 为 0.99）。 |
 | `contentInset` | `{ top?, right?, bottom?, left? }` | | 内容四周的留白。 |
 | `contentOffset` | `{ x?, y? }` | | 初始位置。 |
+| `contentStyle` | `ViewStyle` | | 包住子元素、随它们一起滚动的视图的样式；`flexGrow: 1` 让它至少和视口一样高（居中的空状态）。 |
+| `contentClass` | `string` | | 同上，写成类名，例如 `"grow justify-center p-4"`。 |
 | `keyboardDismissMode` | `"none" \| "on-drag" \| "interactive"` | `"none"` | 拖动时是否收起键盘。 |
 | `keyboardShouldPersistTaps` | `"never" \| "always" \| "handled" \| boolean` | `"never"` | 点击是否收起键盘：`never`（点击只收起键盘）、`always`（键盘保持）、`handled`（点击被某个元素处理时键盘保持）。 |
 | `scrollValue` | `NativeValue` | | 接收滚动偏移量（主轴方向）的原生值，用于随滚动变化的动画。 |

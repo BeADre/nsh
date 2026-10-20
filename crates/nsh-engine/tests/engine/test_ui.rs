@@ -363,7 +363,7 @@ pub(crate) fn TextField(props: TextFieldProps, cx: Scope<TextFieldEvent>) -> imp
                 .element_ref(&field)
                 .flex_1()
                 .value(move || props.value.get().as_str().to_owned())
-                .on_change_text(move |text: &str| change(text.to_owned())),
+                .on_change(move |text: &str| change(text.to_owned())),
         )
         .child(If::new(
             move || !props.value.with(|v| v.is_empty()),
@@ -400,17 +400,14 @@ pub(crate) struct SheetProps {
 pub(crate) fn Sheet(props: SheetProps) -> impl IntoElement {
     let children = props.children;
     view().child(If::new(props.open, move || {
-        modal()
-            .transparent(true)
-            .animation(ModalAnimation::None)
-            .child(
-                view()
-                    .absolute()
-                    .left_0()
-                    .right_0()
-                    .bottom_0()
-                    .p_4()
-                    .child(children),
-            )
+        modal().animation(ModalAnimation::None).child(
+            view()
+                .absolute()
+                .left_0()
+                .right_0()
+                .bottom_0()
+                .p_4()
+                .child(children),
+        )
     }))
 }

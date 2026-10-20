@@ -22,7 +22,7 @@ NSH 应用用 JSX 描述界面，但其中没有 React，也没有虚拟 DOM。N
 | `<Scroll>` | `nsh` | `UIScrollView` / `ScrollView` | [Scroll](../elements/scroll.md) |
 | `<Input>` | `nsh` | `UITextField` / `UITextView` / `EditText` | [Input](../elements/input.md) |
 | `<List>` | `nsh/list` | 虚拟化、可复用单元格的列表 | [List](../elements/list.md) |
-| `<Canvas>`、`<WebView>`、`<Video>`、`<Modal>` | `nsh/canvas`、`nsh/webview`、`nsh/video`、`nsh/base` | 绘图、网页、视频播放器、弹出层 | [元素](../elements/index.md) |
+| `<Canvas>`、`<WebView>`、`<Video>`、`<Dialog>` | `nsh/canvas`、`nsh/webview`、`nsh/video`、`nsh/base` | 绘图、网页、视频播放器、弹出层 | [元素](../elements/index.md) |
 | `<If>`、`<Each>` | 无：全局组件 | 控制流，本身不产生视图 | [控制流](../elements/control-flow.md) |
 
 ```tsx
@@ -222,7 +222,7 @@ function Field(props: InputProps & { label: string }) {
   );
 }
 
-<Field label="Email" value={email()} onChangeText={(t) => email.set(t)} keyboardType="email-address" />
+<Field label="Email" value={email()} onChange={(t) => email.set(t)} keyboardType="email-address" />
 ```
 
 `split(props, keys)` 返回 `[picked, rest]`，两者都仍然读取原始 props（而解构 `{ label, ...rest } = props` 会把每个 prop 都读取一次）。在 JSX 中靠后的元素 props 会覆盖靠前的。
@@ -238,7 +238,7 @@ import { Text, View } from "nsh";
 
 function Button(props: { title: string; onPress: () => void }) {
   return (
-    <View onPress={props.onPress} activeOpacity={0.6} accessibilityRole="button" class="rounded-lg bg-blue-600 px-5 py-3">
+    <View onPress={props.onPress} activeStyle={{ opacity: 0.6 }} role="button" class="rounded-lg bg-blue-600 px-5 py-3">
       <Text class="text-base font-semibold text-white">{props.title}</Text>
     </View>
   );

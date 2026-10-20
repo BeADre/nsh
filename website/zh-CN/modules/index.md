@@ -24,7 +24,7 @@ NSH 的界面分为三层，与 GPUI Kit 的分层（`gpui`、`gpui-base`、`gpu
 | 层 | 模块 | 为应用提供什么 |
 |---|---|---|
 | 基础元素 | `nsh`、`nsh/<module>` | 响应式、宿主元素、布局、列表、画布、动画、手势、设备信息以及各平台自己的 API |
-| 基础组件 | [`nsh/base`](./nsh-base.md) | 无样式的组件，负责行为、状态、焦点和无障碍：导航栈与模态框、安全区域、系统对话框、软键盘和状态栏，各平台通用 |
+| 基础组件 | [`nsh/base`](./nsh-base.md) | 无样式的组件，负责行为、状态、焦点和无障碍：按钮、导航栈与对话框、安全区域、系统对话框、软键盘和状态栏，各平台通用 |
 | 组件库 | 你的应用自己的，或社区提供的 | 带有外观的按钮、卡片、列表行和页面 |
 
 应用的外观由应用自己决定。它的组件库就是第三层：用[宿主元素](../elements/index.md)和 `nsh/base` 写成的组件，通过 `style`、[Tailwind](../docs/tailwind.md) 类和主题设置样式；或者是它在[自己的 crate](../docs/rust.md) 中提供的 Rust 组件；也可以是社区基于同一基础发布的组件库。
@@ -38,7 +38,7 @@ NSH 没有“大而全”的汇总模块：每个 API 只存在于一个地方�
 | 模块 | 导出 | 页面 |
 |---|---|---|
 | `nsh` | `signal`、`computed`、`effect`、`batch`、`untracked`、`cleanup`、`context`、`split`、`mount`；`View`、`Text`、`Scroll`、`Input`；元素、样式、事件和 JSX 的类型（`YNode`、`ViewStyle` 等） | [nsh](./nsh.md) |
-| `nsh/base` | `createNavigator`、`Stack`、`Screen`、`Modal`；`SafeAreaView`、`safeArea`、`safeAreaInsets`；`Alert`、`ActionSheet`；`Keyboard`、`keyboard`、`KeyboardAvoidingView`；`StatusBar` | [nsh/base](./nsh-base.md) |
+| `nsh/base` | `Button`；`createNavStack`、`NavStack`、`NavPage`、`Dialog`；`SafeAreaView`、`safeArea`、`safeAreaInsets`；`AlertDialog`；`Keyboard`、`keyboardFrame`、`KeyboardAvoidingView`；`StatusBar` | [nsh/base](./nsh-base.md) |
 | `nsh/animated` | `createNativeValue`、`NativeValue`、`NativeNode`、`Animated`、`Easing`、`LayoutAnimation` | [nsh/animated](./nsh-animated.md) |
 | `nsh/list` | `List`（虚拟化、可复用单元格的列表） | [nsh/list](./nsh-list.md) |
 | `nsh/canvas` | `Canvas`、`Path2D`、`CanvasRenderingContext2D`、`CanvasGradient` | [nsh/canvas](./nsh-canvas.md) |
@@ -50,7 +50,7 @@ NSH 没有“大而全”的汇总模块：每个 API 只存在于一个地方�
 | `nsh/native` | `nativeComponent`（宿主应用注册的原生组件） | [nsh/native](./nsh-native.md) |
 | `nsh/accessibility` | `AccessibilityInfo`、`screenReaderEnabled`、`reduceMotion` | [nsh/accessibility](./nsh-accessibility.md) |
 | `nsh/ios` | `isAvailable`、`InputAccessoryView` | [nsh/ios](./nsh-ios.md) |
-| `nsh/android` | `isAvailable`、`Toast`、`BackHandler`、`setStatusBarBackgroundColor` | [nsh/android](./nsh-android.md) |
+| `nsh/android` | `isAvailable`、`Toast`、`BackHandler` | [nsh/android](./nsh-android.md) |
 | `nsh/desktop` | `isAvailable`、`Window`（标题、标题栏、最大化、全屏）、`titleBar`、`Menu`（应用菜单、右键菜单） | [nsh/desktop](./nsh-desktop.md) |
 | `nsh/webview` | `WebView` | [nsh/webview](./nsh-webview.md) |
 | `nsh/video` | `Video` | [nsh/video](./nsh-video.md) |
@@ -65,4 +65,4 @@ NSH 没有“大而全”的汇总模块：每个 API 只存在于一个地方�
 
 ## 宿主元素
 
-宿主元素和其他一切一样是需要导入的组件：`View`、`Text`、`Scroll`、`Input` 来自 `nsh`，`Image` 来自 `nsh/image`，`List` 来自 `nsh/list`，`Canvas`、`WebView`、`Video` 来自各自的模块，`Modal` 来自 `nsh/base`，`InputAccessoryView` 来自 `nsh/ios`。只有 `If` 和 `Each` 是全局组件。编译器会就地创建这些元素，所以导入在运行时没有任何开销。它们的属性见[元素](../elements/index.md)。
+宿主元素和其他一切一样是需要导入的组件：`View`、`Text`、`Scroll`、`Input` 来自 `nsh`，`Image` 来自 `nsh/image`，`List` 来自 `nsh/list`，`Canvas`、`WebView`、`Video` 来自各自的模块，`Dialog` 来自 `nsh/base`，`InputAccessoryView` 来自 `nsh/ios`。只有 `If` 和 `Each` 是全局组件。编译器会就地创建这些元素，所以导入在运行时没有任何开销。它们的属性见[元素](../elements/index.md)。

@@ -16,7 +16,7 @@ fn components_render_and_answer_presses() {
     for label in [
         "Press feedback",
         "Fades while pressed",
-        "activeOpacity={0.4}",
+        "activeStyle={{ opacity: 0.4 }}",
         "Enabled",
         "On",
         "Last pressed",
@@ -108,10 +108,13 @@ fn components_push_the_keyboard_avoiding_view() {
         "{:?}",
         screen.texts
     );
-    crate::common::press(&engine, &rx, &mut screen, "position");
+    crate::common::press(&engine, &rx, &mut screen, "height");
     assert!(
-        shows(&screen, "behavior=\"position\"")
-            && shows(&screen, "The inner content view moves up as a whole."),
+        shows(&screen, "behavior=\"height\"")
+            && shows(
+                &screen,
+                "The view shrinks: its background ends at the keyboard."
+            ),
         "{:?}",
         screen.texts
     );

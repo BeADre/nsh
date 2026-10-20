@@ -176,7 +176,7 @@ channel.addEventListener("message", (e) => console.log((e as CustomEvent<string>
 channel.send("hello");
 ```
 
-These events are unrelated to the events of elements (`onPress`, `onChangeText`, ...), which are props; see [Touch and gestures](../docs/touch-and-gestures.md).
+These events are unrelated to the events of elements (`onPress`, `onChange`, ...), which are props; see [Touch and gestures](../docs/touch-and-gestures.md).
 
 `AbortSignal` cancels `fetch` requests and stream pipes, and removes listeners added with `{ signal }`:
 

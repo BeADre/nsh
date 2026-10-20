@@ -420,7 +420,7 @@ impl Host {
                     return;
                 }
                 let payload = match (event, payload) {
-                    // `onChangeText` receives the text itself, as in React Native.
+                    // `onChange` receives the text itself, as in React Native.
                     (EventKind::ChangeText, EventPayload::Text { text, .. }) => {
                         rquickjs::String::from_str(ctx.clone(), text).map(|s| s.into_value())
                     }

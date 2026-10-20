@@ -23,7 +23,8 @@
 //!
 //! Presses follow React Native and the other backends: the innermost view
 //! listening to press events gets them (or the pressable text span under
-//! the pointer); `activeOpacity` fades the view natively; inside scroll
+//! the pointer; how it looks while pressed is the app's `activeStyle`,
+//! applied by the core from the reported states); inside scroll
 //! views a touch reports `onPressIn` only after ~130 ms, as it may start a
 //! scroll. A move beyond 6 pt starts the innermost pan or scroll view that
 //! takes that direction (only touches drag scroll views: the mouse scrolls
@@ -81,10 +82,6 @@ const SCROLL_PRESS_DELAY: u64 = 130;
 const LONG_PRESS: f32 = 500.0;
 /// Velocities are measured over this many milliseconds.
 const VELOCITY_WINDOW: f64 = 100.0;
-/// Duration of the `activeOpacity` fade when pressed.
-const FADE_IN_MS: f64 = 100.0;
-/// Duration of the fade back.
-const FADE_OUT_MS: f64 = 250.0;
 
 /// Which device a pointer is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,8 +117,6 @@ pub(crate) struct Input {
     hovered: RefCell<Vec<NshView>>,
     /// Native gesture values by view.
     gestures: RefCell<FxHashMap<NodeId, (glib::WeakRef<NshView>, GestureValues)>>,
-    /// Running `activeOpacity` fades.
-    fades: RefCell<FxHashMap<NodeId, Fade>>,
     /// The JS responder blocks native scrolling and pans.
     js_block: Cell<bool>,
     /// Where the pointer last was (root coordinates), for events GTK
@@ -129,7 +124,7 @@ pub(crate) struct Input {
     last: Cell<Option<(f32, f32)>>,
     /// Next touch identifier.
     next_id: Cell<u32>,
-    /// Next press / fade generation (invalidates callbacks of earlier ones).
+    /// Next press generation (invalidates callbacks of earlier ones).
     next_gen: Cell<u64>,
 }
 
@@ -181,8 +176,6 @@ struct Press {
     /// The node that gets the events.
     node: NodeId,
     events: EventMask,
-    /// `activeOpacity` (none for spans).
-    feedback: Option<f32>,
     /// Milliseconds before a long press.
     long_delay: f32,
     /// `onPressIn` was reported.
@@ -283,14 +276,6 @@ struct Wheel {
     held: bool,
 }
 
-/// An `activeOpacity` fade.
-struct Fade {
-    /// The view's fade before the press.
-    base: f32,
-    tick: Option<gtk::TickCallbackId>,
-    generation: u64,
-}
-
 /// Estimates a pointer's velocity from its recent positions.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct VelocityTracker {
@@ -372,11 +357,6 @@ pub(crate) fn reset(surface: &Surface) {
     input.hover_tracked.borrow_mut().clear();
     input.hovered.borrow_mut().clear();
     input.gestures.borrow_mut().clear();
-    for (_, fade) in input.fades.borrow_mut().drain() {
-        if let Some(tick) = fade.tick {
-            tick.remove();
-        }
-    }
     input.js_block.set(false);
 }
 
@@ -454,8 +434,7 @@ pub(crate) fn events_changed(surface: &Rc<Surface>, view: &NshView) {
 
 /// The view's props changed.
 pub(crate) fn props_changed(_surface: &Rc<Surface>, _view: &NshView) {
-    // `pointerEvents`, `hitSlop`, `activeOpacity` and `delayLongPress` are
-    // read from the state when a pointer goes down.
+    // `pointerEvents`, `hitSlop` and `delayLongPress` are read from the state when a pointer goes down.
 }
 
 /// The view's style changed (cursor).
@@ -1426,7 +1405,6 @@ fn find_press(
                     view: target.clone(),
                     node: link.node,
                     events: link.events,
-                    feedback: None,
                     long_delay: s.props.long_press_delay.unwrap_or(LONG_PRESS),
                     pressed: false,
                     long: false,
@@ -1441,7 +1419,6 @@ fn find_press(
             view: v.clone(),
             node: s.id,
             events: s.events,
-            feedback: s.props.active_opacity.filter(|o| *o < 1.0),
             long_delay: s.props.long_press_delay.unwrap_or(LONG_PRESS),
             pressed: false,
             long: false,
@@ -1455,9 +1432,6 @@ fn press_in(surface: &Rc<Surface>, press: &mut Press) {
         return;
     }
     press.pressed = true;
-    if let Some(opacity) = press.feedback {
-        fade(surface, &press.view, Some(opacity));
-    }
     if press.events.contains(EventKind::PressIn) {
         press_event(surface, press.node, EventKind::PressIn);
     }
@@ -1470,9 +1444,6 @@ fn press_out(surface: &Rc<Surface>, press: &mut Press, fire: bool) {
         return;
     }
     press.pressed = false;
-    if press.feedback.is_some() {
-        fade(surface, &press.view, None);
-    }
     if press.events.contains(EventKind::PressOut) {
         press_event(surface, press.node, EventKind::PressOut);
     }
@@ -1503,59 +1474,6 @@ fn released_inside(surface: &Surface, view: &NshView, x: f32, y: f32) -> bool {
         && ly >= -slop.top - r
         && lx <= s.frame.width + slop.right + r
         && ly <= s.frame.height + slop.bottom + r
-}
-
-/// Fades `view` to `opacity` times its fade before the press, or back
-/// (`None`), over a few frames.
-fn fade(surface: &Rc<Surface>, view: &NshView, opacity: Option<f32>) {
-    let (id, from) = {
-        let s = view.state();
-        (s.id, s.fade)
-    };
-    let generation = surface.input.next_gen.get();
-    surface.input.next_gen.set(generation + 1);
-    let mut fades = surface.input.fades.borrow_mut();
-    let entry = fades.entry(id).or_insert(Fade {
-        base: from,
-        tick: None,
-        generation,
-    });
-    entry.generation = generation;
-    if let Some(tick) = entry.tick.take() {
-        tick.remove();
-    }
-    let to = opacity.map_or(entry.base, |o| entry.base * o);
-    let duration = if opacity.is_some() {
-        FADE_IN_MS
-    } else {
-        FADE_OUT_MS
-    };
-    let releasing = opacity.is_none();
-    let weak = Rc::downgrade(surface);
-    let start = Cell::new(None::<f64>);
-    entry.tick = Some(view.add_tick_callback(move |view, clock| {
-        let now = clock.frame_time() as f64 / 1000.0;
-        let t0 = start.get().unwrap_or(now);
-        start.set(Some(t0));
-        let k = ((now - t0) / duration).min(1.0) as f32;
-        let eased = 1.0 - (1.0 - k) * (1.0 - k);
-        view.state_mut().fade = from + (to - from) * eased;
-        view.changed();
-        if k < 1.0 {
-            return glib::ControlFlow::Continue;
-        }
-        if let Some(surface) = weak.upgrade() {
-            let mut fades = surface.input.fades.borrow_mut();
-            if fades.get(&id).is_some_and(|f| f.generation == generation) {
-                if releasing {
-                    fades.remove(&id);
-                } else if let Some(f) = fades.get_mut(&id) {
-                    f.tick = None;
-                }
-            }
-        }
-        glib::ControlFlow::Break
-    }));
 }
 
 // --- Pans ---------------------------------------------------------------------------

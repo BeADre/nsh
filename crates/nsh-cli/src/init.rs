@@ -17,8 +17,8 @@ function App() {
       <Text style={{ fontSize: 28, fontWeight: "600" }}>{count()}</Text>
       <View
         onPress={() => count.update((c) => c + 1)}
-        activeOpacity={0.6}
-        accessibilityRole="button"
+        activeStyle={{ opacity: 0.6 }}
+        role="button"
         style={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10, backgroundColor: "#0969da" }}
       >
         <Text style={{ color: "white", fontSize: 17 }}>Tap</Text>

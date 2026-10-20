@@ -149,7 +149,7 @@ before every `cargo run`): `✓` lines for its builds, cargo's and the tools' ou
   keyed by module and name, with a signature of their code plus the module's other code: a proxy is a memo over a
   version signal, so instances render again only when their signature changed (or a dependency module changed) and the
   rest of the app keeps its state. Top-level `context()` results keep their identity (taking the new default), and
-  top-level `const`s made by `signal()` or `createNavigator()` (matched by the callee's name, as `context`) keep their
+  top-level `const`s made by `signal()` or `createNavStack()` (matched by the callee's name, as `context`) keep their
   value while their initializer's code is the same (`__nsh_hot.keep`, keyed by module and name; a changed initializer
   starts afresh). A function passed to a top-level `mount()` is a component too (`mount#<n>`). When a module runs
   again, a `mount` call with the same component as its previous run's next one (the same proxy: `mount(App)`, or the

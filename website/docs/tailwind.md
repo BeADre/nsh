@@ -50,10 +50,12 @@ Rust components (`SafeAreaView`, `KeyboardAvoidingView` and those of an app's ow
 | `focus:`, `focus-visible:` | An input has focus |
 | `focus-within:` | The view or a descendant has focus |
 | `disabled:`, `enabled:` | The element's `disabled` prop is true / false |
-| `group-active:`, `group-hover:`, `group-focus:`, `group-focus-within:`, `group-disabled:` | The nearest ancestor with the `group` class is in that state |
+| `selected:` | The element is selected (a `Button`'s `selected`, `accessibilityState.selected`) |
+| `group-active:`, `group-hover:`, `group-focus:`, `group-focus-within:`, `group-disabled:`, `group-selected:` | The nearest ancestor with the `group` class is in that state |
 | `group-active/name:` ... | The same, for an ancestor marked `group/name` |
 | `first:`, `last:`, `odd:`, `even:`, `only:` | The element's own position among its siblings. To color a row's label by the row's position, put `last:text-*` on the row: the label inherits it |
 | `placeholder:` | Styles an input's placeholder (`placeholder:text-zinc-400`) |
+| `selection:` | Styles the selection of an input or a selectable text (`selection:text-violet-500`) |
 | `dark:` | The system appearance is dark |
 | `sm:`, `md:`, `lg:`, `xl:`, `2xl:` | The window is at least 640, 768, 1024, 1280, 1536 points wide |
 | `max-sm:`, `max-md:`, ... | The window is narrower than the breakpoint |
@@ -88,7 +90,7 @@ Breakpoints compare against the window (the surface NSH renders into), not the d
 - **`flex` is a row**, as in CSS: `class="flex"` lays out its children in a row unless a direction class says otherwise (anywhere in the string: `flex-col flex` is a column). A view without `flex` or `inline-flex` keeps NSH's default column. `block` and `flow-root` use block layout; `inline` and `inline-block` lay out as views (there is no inline formatting context).
 - **Text classes on views are inherited.** `text-*`, `font-*`, `leading-*`, `tracking-*` and the other text utilities on a view pass to the `<Text>` and `<Input>` elements inside it, as CSS inheritance does: `<View class="text-white">` makes its labels white.
 - **`space-x-*` / `space-y-*` are gaps** (`gap-x` / `gap-y`).
-- **State backgrounds show over gradients.** In CSS a gradient covers `background-color`, so `active:bg-*` on a `bg-linear-*` surface would never be seen; in NSH a background color from `active:`, `hover:`, `focus:` or `group-*:` replaces the gradient while that state holds (unless the state sets a gradient of its own, such as `active:from-*`). So do `underlayColor` and animated background colors.
+- **State backgrounds show over gradients.** In CSS a gradient covers `background-color`, so `active:bg-*` on a `bg-linear-*` surface would never be seen; in NSH a background color from `active:`, `hover:`, `focus:` or `group-*:` replaces the gradient while that state holds (unless the state sets a gradient of its own, such as `active:from-*`). So do `activeStyle` and the other state styles, and animated background colors.
 - **Classes for settings that are props in NSH**: `line-clamp-*`, `truncate`, `whitespace-nowrap`, `pointer-events-*`, `object-*` (image resize mode), `select-text`, `caret-*` and `placeholder:text-*` work, and lose to the explicit props (`numberOfLines`, `pointerEvents`, `resizeMode`, ...) when both are set.
 - **Not supported**: `peer-*` variants, pseudo-elements (`before:`, `after:`), arbitrary properties (`[mask-type:luminance]`). Web-only utilities that need nothing natively (`antialiased`, `will-change-*`, `touch-*`, `scroll-*`, `snap-*`, `overscroll-*`, `box-border`, ...) are accepted and ignored.
 

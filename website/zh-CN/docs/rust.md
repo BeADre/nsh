@@ -208,7 +208,7 @@ function Overview() {
     <View className="p-4 gap-2">
       <Text>Balance: {balance()}</Text>
       <Chart symbol="NSH" range="1M" onSelect={(e) => balance.set(ledger.add(e.price))} />
-      <View onPress={() => ledger.upload("https://example.com/ledger")} accessibilityRole="button" class="rounded-lg bg-blue-600 px-4 py-2 active:bg-blue-700">
+      <View onPress={() => ledger.upload("https://example.com/ledger")} role="button" class="rounded-lg bg-blue-600 px-4 py-2 active:bg-blue-700">
         <Text class="text-white">Upload</Text>
       </View>
     </View>

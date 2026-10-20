@@ -41,7 +41,8 @@ const FORWARDED: &[&str] = &[
     "inverted",
     "maintainVisibleContentPosition",
     "stickyHeaderIndices",
-    "contentContainerStyle",
+    "contentStyle",
+    "contentClass",
     "viewabilityConfig",
     "pagingEnabled",
     "snapToInterval",
@@ -76,9 +77,9 @@ pub(crate) const ITEMS_PROPS: &[&str] = &[
     "onRefresh",
     "onEndReached",
     "onEndReachedThreshold",
-    "ListHeaderComponent",
-    "ListFooterComponent",
-    "ListEmptyComponent",
+    "header",
+    "footer",
+    "empty",
 ];
 
 struct Cell {
@@ -248,10 +249,7 @@ pub(crate) fn render(ctx: *mut JsContext, props: JsValue) -> Result<JsValue, JsV
     let r = reactive::render_effect(ctx, func);
     unsafe { qjs::JS_FreeValue(ctx, r) };
     // Header and footer cells (always rendered), and the empty one.
-    for (role, key) in [
-        ("header", "ListHeaderComponent"),
-        ("footer", "ListFooterComponent"),
-    ] {
+    for (role, key) in [("header", "header"), ("footer", "footer")] {
         if has(ctx, props, key) {
             let owner = extra_cell(ctx, id, role, key).map_err(fail)?;
             if let Some(d) = lists(ctx).map.borrow_mut().get_mut(&id) {
@@ -259,7 +257,7 @@ pub(crate) fn render(ctx: *mut JsContext, props: JsValue) -> Result<JsValue, JsV
             }
         }
     }
-    if has(ctx, props, "ListEmptyComponent") {
+    if has(ctx, props, "empty") {
         // SAFETY: a placeholder for the empty cell's state (owner, node).
         let state = unsafe { qjs::JS_NewArray(ctx) };
         let func = native(ctx, empty_run, 0, &mut [node, props, state]);
@@ -571,7 +569,7 @@ unsafe extern "C" fn empty_run(
                     cell_node = cell;
                     set(ctx, cell, "slot", new_string(ctx, "empty"))?;
                     dom::insert_node(ctx, list, cell, None)?;
-                    let key = new_string(ctx, "ListEmptyComponent");
+                    let key = new_string(ctx, "empty");
                     let reader = native(ctx, slot_run, 0, &mut [props, key]);
                     qjs::JS_FreeValue(ctx, key);
                     let r = dom::insert_value_at(ctx, cell, reader, None);
@@ -688,7 +686,7 @@ fn make_cell(ctx: *mut JsContext, list: NodeId, slot: u32, first: u32) -> Result
                 return Err(content);
             }
         }
-        let r = if has(ctx, props, "ItemSeparatorComponent") {
+        let r = if has(ctx, props, "separator") {
             // SAFETY: a placeholder for the separator once made.
             let holder = unsafe { qjs::JS_NewArray(ctx) };
             let between = native(ctx, separated_run, 0, &mut [content, props, index, holder]);
@@ -778,7 +776,7 @@ unsafe extern "C" fn separated_run(
         let each = get(ctx, props, "each");
         let len = length(ctx, each);
         qjs::JS_FreeValue(ctx, each);
-        let component = get(ctx, props, "ItemSeparatorComponent");
+        let component = get(ctx, props, "separator");
         let shown =
             (n as i64) < len - 1 && !qjs::JS_IsNull(component) && !qjs::JS_IsUndefined(component);
         if !shown {
@@ -1056,18 +1054,23 @@ export interface ViewabilityConfig {
 
 export interface ListProps<T> extends ScrollingHostProps, ListHostProps {
   each: readonly T[];
-  ListHeaderComponent?: ListSlot;
-  ListFooterComponent?: ListSlot;
+  /** Above the items, scrolling with them. */
+  header?: ListSlot;
+  /** Below the items, scrolling with them. */
+  footer?: ListSlot;
   /** Shown instead of the items while `each` is empty. */
-  ListEmptyComponent?: ListSlot;
+  empty?: ListSlot;
   /** Rendered between items (one column). */
-  ItemSeparatorComponent?: ListSlot;
+  separator?: ListSlot;
   /** Scrolls to this item before the first frame. */
   initialScrollIndex?: number;
   /** Key of an item in `onViewableItemsChanged` tokens (default: `item.key`, `item.id`, or the index). */
   keyExtractor?: (item: T, index: number) => string;
   onViewableItemsChanged?: (info: { viewableItems: ViewToken<T>[]; changed: ViewToken<T>[] }) => void;
   style?: StyleProp<ViewStyle>;
+  /** Padding and gaps of the content as classes (`p-*`, `gap-*`);
+   * `contentStyle` wins over them. */
+  contentClass?: string;
   /** How close to the end (in viewports) `onEndReached` fires; default 1. */
   onEndReachedThreshold?: number;
   ref?: YNode | ((node: YNode) => void);
@@ -1079,5 +1082,5 @@ export interface ListProps<T> extends ScrollingHostProps, ListHostProps {
 /** What an app passes to a Rust component that lays out a list of rows
  * (an `Items` prop): the data and the rows; the component decides the
  * layout. */
-export type ListItemsProps<T> = Pick<ListProps<T>, "each" | "children" | "keyExtractor" | "stickyHeaderIndices" | "initialScrollIndex" | "onViewableItemsChanged" | "viewabilityConfig" | "refreshing" | "onRefresh" | "onEndReached" | "onEndReachedThreshold" | "ListHeaderComponent" | "ListFooterComponent" | "ListEmptyComponent">;
+export type ListItemsProps<T> = Pick<ListProps<T>, "each" | "children" | "keyExtractor" | "stickyHeaderIndices" | "initialScrollIndex" | "onViewableItemsChanged" | "viewabilityConfig" | "refreshing" | "onRefresh" | "onEndReached" | "onEndReachedThreshold" | "header" | "footer" | "empty">;
 "#;

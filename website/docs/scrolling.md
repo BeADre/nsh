@@ -38,10 +38,10 @@ function App() {
 mount(App);
 ```
 
-The child view above can also be the scroll view's own content container: `contentContainerStyle` (or `contentContainerClass`) wraps the children in a view with that style, which scrolls with them. `flexGrow: 1` makes it at least as tall as the viewport, so a short content can be centered and a long one still scrolls:
+The child view above can also be the scroll view's own content container: `contentStyle` (or `contentClass`) wraps the children in a view with that style, which scrolls with them. `flexGrow: 1` makes it at least as tall as the viewport, so a short content can be centered and a long one still scrolls:
 
 ```tsx
-<Scroll style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: 16 }}>
+<Scroll style={{ flex: 1 }} contentStyle={{ flexGrow: 1, justifyContent: "center", padding: 16 }}>
   <If when={messages().length > 0} else={<Text>No messages yet</Text>}>
     <Each of={messages()}>{(m) => <Text>{m().text}</Text>}</Each>
   </If>

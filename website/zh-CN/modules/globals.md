@@ -176,7 +176,7 @@ channel.addEventListener("message", (e) => console.log((e as CustomEvent<string>
 channel.send("hello");
 ```
 
-它们与元素的事件（`onPress`、`onChangeText` 等）无关，后者是 props，参见[触摸与手势](../docs/touch-and-gestures.md)。
+它们与元素的事件（`onPress`、`onChange` 等）无关，后者是 props，参见[触摸与手势](../docs/touch-and-gestures.md)。
 
 `AbortSignal` 可以取消 `fetch` 请求和流的管道传输，也可以移除用 `{ signal }` 添加的监听器：
 

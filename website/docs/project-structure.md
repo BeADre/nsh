@@ -142,7 +142,7 @@ NSH does not need `node_modules`. Instead, every command that builds the app (`i
 | `globals.d.ts` | `If` and `Each`; `console`, timers, `requestAnimationFrame`, `fetch` and the other [global APIs](../modules/globals.md) |
 | `assets.d.ts` | What importing an image or font gives |
 | `list.d.ts`, `animated.d.ts`, `device.d.ts`, ... | One file per module (`nsh/list`, `nsh/animated`, `nsh/device`, ...) |
-| `ui.d.ts` | `nsh/base` |
+| `base.d.ts` | `nsh/base` |
 
 `lib` is `ES2023` without `DOM`: there is no `document` or `window`. The files are regenerated (only when their contents change), so do not edit them and do not commit them; `.gitignore` already excludes `.nsh/`. If your editor shows `nsh` as missing after cloning a project, run any build command once, e.g. `nsh trace App.tsx`.
 
@@ -180,7 +180,7 @@ Imports of `nsh` and `nsh/...` are not bundled: the runtime provides them native
 | Module | What it has |
 |---|---|
 | `nsh` | Reactivity (`signal`, `computed`, `effect`, ...), `mount`, `split`, `context`; `View`, `Text`, `Scroll`, `Input` ([reference](../modules/nsh.md)) |
-| `nsh/base` | The unstyled foundation of an app's UI: navigation stacks, screens and modals (`Stack`, `Screen`, `Modal`, `createNavigator`), safe areas (`SafeAreaView`), the system's dialogs (`Alert`, `ActionSheet`), the software keyboard (`Keyboard`, `keyboard`, `KeyboardAvoidingView`) and the status bar (`StatusBar`) ([reference](../modules/nsh-base.md)) |
+| `nsh/base` | The unstyled foundation of an app's UI: navigation stacks and their pages (`NavStack`, `NavPage`, `createNavStack`), dialogs (`Dialog`), a press target (`Button`), safe areas (`SafeAreaView`, `safeArea`, `safeAreaInsets`), the system's alert dialog (`AlertDialog`), the software keyboard (`Keyboard`, `keyboardFrame`, `KeyboardAvoidingView`) and the status bar (`StatusBar`) ([reference](../modules/nsh-base.md)) |
 | `nsh/list` | `List`: virtualized, recycling lists |
 | `nsh/animated` | Native animations |
 | `nsh/canvas` | 2D drawing |

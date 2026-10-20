@@ -85,8 +85,8 @@ Examples:
 ```
 tailwind: Make flex a row and block use block layout, as in CSS
 list: Keep the visible rows in place when items are inserted above them
-mobile: Answer the back gesture from preventBack without asking JS
-desktop: Keep the keyboard focus inside the newest modal
+mobile: Answer the back gesture from popOnBack without asking JS
+desktop: Keep the keyboard focus inside the newest dialog
 cli: Add `nsh package --target ios` for signed .ipa files
 docs: Describe the capability checks of fetch redirects
 ```

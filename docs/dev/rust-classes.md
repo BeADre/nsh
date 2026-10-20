@@ -128,7 +128,7 @@ so a class's methods can run directly inside the JS call, as the web classes nsh
 
 ## Functions
 
-Rust exports functions through `#[module]` (an object, `Alert.alert(..)`, or `#[module(flat)]`, top-level
+Rust exports functions through `#[module]` (an object, `AlertDialog.show(..)`, or `#[module(flat)]`, top-level
 functions). Every call used to be an op ordered with the UI's, so every result was a promise. The class's split
 applies to functions too, decided by the signature (`FunctionCall::Sync` / `Op` / `Async`):
 

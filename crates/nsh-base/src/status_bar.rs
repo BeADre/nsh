@@ -1,4 +1,4 @@
-//! `StatusBar`: what the status bar shows, rendered or set.
+//! `StatusBar`: what the status bar shows while it renders.
 
 use nsh_core::{
     platform::Os,
@@ -6,28 +6,19 @@ use nsh_core::{
 };
 
 /// What the status bar shows while this renders: the most recently
-/// mounted `StatusBar` wins, prop by prop, over what the functions set. In
-/// an app embedded in a native one, the host app's view controller
-/// decides on iOS.
+/// mounted `StatusBar` wins, prop by prop. In an app embedded in a native
+/// one, the host app's view controller decides on iOS.
 #[derive(Debug, Clone, PartialEq, Props)]
 pub struct StatusBarProps {
-    /// The content's color.
-    pub bar_style: Prop<Option<BarStyle>>,
+    /// The color of the bar's content: `"light"` for dark backgrounds,
+    /// `"dark"` for light ones, `"auto"` the platform's for the appearance.
+    pub foreground: Prop<Option<Foreground>>,
     /// Hidden.
     pub hidden: Prop<Option<bool>>,
-    /// Animate changes of `barStyle` and `hidden`.
+    /// Animate changes of `foreground` and `hidden`.
     pub animated: Prop<Option<bool>>,
-    /// What only Android has.
-    pub android: Prop<Option<StatusBarAndroid>>,
     /// What only the web has.
     pub web: Prop<Option<StatusBarWeb>>,
-}
-
-/// The props of a [`StatusBar`] only Android has.
-#[derive(Debug, Clone, Default, PartialEq, JsObject)]
-pub struct StatusBarAndroid {
-    /// The bar's color (before edge-to-edge, API 35).
-    pub background_color: Option<Color>,
 }
 
 /// The props of a [`StatusBar`] only the web has.
@@ -40,49 +31,35 @@ pub struct StatusBarWeb {
 
 /// The color of the status bar's content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PropEnum)]
-pub enum BarStyle {
-    /// The platform's default for the appearance.
-    #[prop(rename = "default")]
-    Default,
+pub enum Foreground {
+    /// The platform's for the appearance.
+    Auto,
     /// Light content, for dark backgrounds.
-    #[prop(rename = "light-content")]
-    LightContent,
+    Light,
     /// Dark content, for light backgrounds.
-    #[prop(rename = "dark-content")]
-    DarkContent,
+    Dark,
 }
 
-impl From<BarStyle> for StatusBarStyle {
-    fn from(style: BarStyle) -> Self {
-        match style {
-            BarStyle::Default => StatusBarStyle::Default,
-            BarStyle::LightContent => StatusBarStyle::Light,
-            BarStyle::DarkContent => StatusBarStyle::Dark,
+impl From<Foreground> for StatusBarStyle {
+    fn from(foreground: Foreground) -> Self {
+        match foreground {
+            Foreground::Auto => StatusBarStyle::Default,
+            Foreground::Light => StatusBarStyle::Light,
+            Foreground::Dark => StatusBarStyle::Dark,
         }
     }
 }
 
-/// How hiding or showing the status bar animates.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PropEnum)]
-pub enum BarAnimation {
-    /// At once.
-    None,
-    /// Fades.
-    Fade,
-    /// Slides.
-    Slide,
-}
-
 /// What `props` set (reading subscribes): the background is the
-/// browser's theme color on the web, the bar's color on Android.
+/// browser's theme color on the web.
 fn setting(props: &StatusBarProps) -> StatusBarSetting {
     let background = if os() == Os::Web {
         props.web.get().and_then(|w| w.theme_color)
     } else {
-        props.android.get().and_then(|a| a.background_color)
+        None
     };
     StatusBarSetting {
-        style: props.bar_style.get().map(Into::into),
+        style: props.foreground.get().map(Into::into),
         hidden: props.hidden.get(),
         animated: props.animated.get(),
         background,
@@ -97,26 +74,4 @@ pub fn StatusBar(props: StatusBarProps) -> impl IntoElement {
     effect(move || update_status_bar(entry, setting(&props)));
     // Nothing to lay out.
     view().hidden()
-}
-
-/// The status bar, set imperatively (under the rendered `StatusBar`s).
-#[module]
-impl StatusBar {
-    /// Sets the color of the status bar's content.
-    pub fn set_bar_style(bar_style: BarStyle, animated: Option<bool>, cx: &mut ModuleCx) {
-        cx.set_status_bar(StatusBarSetting {
-            style: Some(bar_style.into()),
-            animated: Some(animated.unwrap_or(false)),
-            ..Default::default()
-        });
-    }
-
-    /// Hides or shows the status bar.
-    pub fn set_hidden(hidden: bool, animation: Option<BarAnimation>, cx: &mut ModuleCx) {
-        cx.set_status_bar(StatusBarSetting {
-            hidden: Some(hidden),
-            animated: Some(animation.is_some_and(|a| a != BarAnimation::None)),
-            ..Default::default()
-        });
-    }
 }

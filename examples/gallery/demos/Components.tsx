@@ -3,7 +3,7 @@ import { AccessibilityInfo, reduceMotion, screenReaderEnabled } from "nsh/access
 import { LayoutAnimation } from "nsh/animated";
 import { PixelRatio, Platform } from "nsh/device";
 import { InputAccessoryView } from "nsh/ios";
-import { KeyboardAvoidingView, Modal, SafeAreaView, Screen } from "nsh/base";
+import { Dialog, KeyboardAvoidingView, NavPage, SafeAreaView } from "nsh/base";
 import { Icon, type IconName } from "../icons";
 import { nav } from "../nav";
 import {
@@ -21,6 +21,7 @@ import {
   Inset,
   isDark,
   mono,
+  PageHeader,
   Press,
   radius,
   Row,
@@ -39,12 +40,12 @@ function Field(props: InputProps) {
   const focused = signal(false);
   return (
     <Input
-      placeholderTextColor={colors.faint}
-      selectionColor={colors.accent}
       onFocus={() => focused.set(true)}
       onBlur={() => focused.set(false)}
       {...props}
       style={{
+        placeholderColor: colors.faint,
+        selectionColor: colors.accent,
         height: 48,
         paddingHorizontal: 14,
         fontSize: 15,
@@ -136,21 +137,14 @@ function PressableSheet() {
     <Card icon="components" title="Sheet" subtitle="A Tailwind active: variant opens it">
       <View
         onPress={() => sheet.set(true)}
-        accessibilityRole="button"
+        role="button"
         style={{ boxShadow: finish.accent.boxShadow }}
         class="h-12 flex-row items-center justify-center gap-2 rounded-[12px] bg-[#c8f26d] transition active:scale-[0.97] active:bg-[#a9d14f]"
       >
         <Text style={{ fontSize: 15, fontWeight: "600", color: colors.onAccent }}>Open a sheet</Text>
       </View>
       <Caption label="Scales and darkens while pressed" note="active:scale-[0.97]" />
-      <Modal
-        visible={sheet()}
-        ios={{ presentationStyle: "pageSheet" }}
-        desktop={{ presentationStyle: "pageSheet" }}
-        web={{ presentationStyle: "pageSheet" }}
-        animationType="slide"
-        onRequestClose={() => sheet.set(false)}
-      >
+      <Dialog open={sheet()} presentation="pageSheet" animation="slide" onOpenChange={(open) => sheet.set(open)}>
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
           <View style={{ flex: 1, padding: 16, gap: 16 }}>
             <View style={{ gap: 8, paddingHorizontal: 4, paddingTop: 8 }}>
@@ -166,7 +160,7 @@ function PressableSheet() {
             <Button label="Close" onPress={() => sheet.set(false)} />
           </View>
         </SafeAreaView>
-      </Modal>
+      </Dialog>
     </Card>
   );
 }
@@ -201,13 +195,13 @@ function PressFeedback() {
   const disabled = signal(false);
   return (
     <Card icon="gestures" title="Press feedback" subtitle={hint("Drawn natively while the finger is down", "Drawn natively while the button is down")}>
-      <View style={tile()} activeOpacity={0.4} onPress={() => last.set("Fading tile")}>
-        <Tile title="Fades while pressed" note="activeOpacity={0.4}" />
+      <View style={tile()} activeStyle={{ opacity: 0.4 }} onPress={() => last.set("Fading tile")}>
+        <Tile title="Fades while pressed" note="activeStyle={{ opacity: 0.4 }}" />
       </View>
-      <View style={tile()} underlayColor={colors.raised} onPress={() => last.set("Underlay tile")}>
-        <Tile title="Lights up while pressed" note="underlayColor" />
+      <View style={tile()} activeStyle={{ backgroundColor: colors.raised }} onPress={() => last.set("Underlay tile")}>
+        <Tile title="Lights up while pressed" note="activeStyle={{ backgroundColor }}" />
       </View>
-      <View style={tile()} disabled={disabled()} underlayColor={tints.danger} class="disabled:opacity-40" onPress={() => last.set("Enabled tile")}>
+      <View style={tile()} disabled={disabled()} activeStyle={{ backgroundColor: tints.danger }} class="disabled:opacity-40" onPress={() => last.set("Enabled tile")}>
         <Tile title={disabled() ? "Takes no presses" : "Enabled"} note="disabled + disabled:opacity-40">
           <Badge label={disabled() ? "Off" : "On"} tone={disabled() ? "neutral" : "up"} />
         </Tile>
@@ -230,7 +224,7 @@ function Accessory() {
       <Field
         ref={(node) => (input = node)}
         value={text()}
-        onChangeText={(v) => text.set(v)}
+        onChange={(v) => text.set(v)}
         placeholder="Focus me"
         ios={{ inputAccessoryViewID: "counter" }}
       />
@@ -260,20 +254,18 @@ function Accessory() {
 const behaviors = [
   { value: "padding", label: "padding" },
   { value: "height", label: "height" },
-  { value: "position", label: "position" },
 ] as const;
 
 const behaviorNote = {
   padding: "The bottom pads: the tinted background stays under the keyboard.",
   height: "The view shrinks: its background ends at the keyboard.",
-  position: "The inner content view moves up as a whole.",
 } as const;
 
 function AvoidingPage() {
-  const behavior = signal<"padding" | "height" | "position">("padding");
+  const behavior = signal<"padding" | "height">("padding");
   return (
-    <Screen title="KeyboardAvoidingView" {...header}>
-      <KeyboardAvoidingView behavior={behavior()} style={{ flex: 1, backgroundColor: tints.info }} contentContainerStyle={{ flex: 1 }}>
+    <NavPage title="KeyboardAvoidingView" {...header} header={<PageHeader title="KeyboardAvoidingView" />}>
+      <KeyboardAvoidingView behavior={behavior()} style={{ flex: 1, backgroundColor: tints.info }}>
         <View style={{ flex: 1, padding: 16, gap: 16 }}>
           <Appear>
             <Card icon="form" title={`behavior="${behavior()}"`} subtitle="Focus the field at the bottom">
@@ -285,7 +277,7 @@ function AvoidingPage() {
           <Field placeholder="Type here" />
         </View>
       </KeyboardAvoidingView>
-    </Screen>
+    </NavPage>
   );
 }
 
@@ -295,28 +287,28 @@ function ModalOptions() {
   return (
     <Card
       icon="system"
-      title="Modal options"
+      title="Dialog options"
       subtitle="statusBarTranslucent, orientations"
       right={<Toggle value={translucent()} onChange={(v) => translucent.set(v)} label="statusBarTranslucent" />}
     >
       <Text style={{ fontSize: 14, lineHeight: 20, color: colors.muted }}>
-        Android: translucent content reaches under the status bar. iOS: this modal allows portrait and landscape.
+        Android: translucent content reaches under the status bar. iOS: this dialog allows portrait and landscape.
       </Text>
       <Caption label="statusBarTranslucent" note={String(translucent())} />
-      <Button label="Open the modal" variant="secondary" onPress={() => visible.set(true)} />
-      <Modal
-        visible={visible()}
-        animationType="slide"
+      <Button label="Open the dialog" variant="secondary" onPress={() => visible.set(true)} />
+      <Dialog
+        open={visible()}
+        animation="slide"
         android={{ statusBarTranslucent: translucent() }}
         ios={{ supportedOrientations: ["portrait", "landscape"] }}
-        onRequestClose={() => visible.set(false)}
+        onOpenChange={(open) => visible.set(open)}
       >
         <View style={{ flex: 1, backgroundColor: isDark() ? "#16200d" : "#eef5dc" }}>
           <SafeAreaView style={{ flex: 1, padding: 16, gap: 12 }}>
             <View style={{ flexDirection: "row", paddingTop: 8 }}>
               <Badge label={translucent() ? "translucent" : "opaque bar"} tone="accent" />
             </View>
-            <Text style={{ fontSize: 28, fontWeight: "700", letterSpacing: -0.5, color: colors.text }}>A modal</Text>
+            <Text style={{ fontSize: 28, fontWeight: "700", letterSpacing: -0.5, color: colors.text }}>A dialog</Text>
             <Text style={{ fontSize: 15, lineHeight: 21, color: colors.muted }}>
               The olive background starts {translucent() ? "under" : "below"} the status bar on Android.
             </Text>
@@ -324,7 +316,7 @@ function ModalOptions() {
             <Button label="Close" onPress={() => visible.set(false)} />
           </SafeAreaView>
         </View>
-      </Modal>
+      </Dialog>
     </Card>
   );
 }
@@ -389,7 +381,7 @@ export function Components() {
         () => (
           <Card title="Keyboard avoidance" subtitle="Content outside scroll views" flush>
             <Inset padding={0} gap={0}>
-              <LinkRow icon="form" title="KeyboardAvoidingView" note="padding / height / position" onPress={() => nav.push({ name: "page", page: AvoidingPage })} />
+              <LinkRow icon="form" title="KeyboardAvoidingView" note="padding / height" onPress={() => nav.push({ name: "page", page: AvoidingPage })} />
             </Inset>
           </Card>
         ),

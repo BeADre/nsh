@@ -254,13 +254,8 @@ fn a_sheet_makes_its_content_when_it_opens() {
 }
 
 #[test]
-fn rendered_status_bars_win_over_what_functions_set() {
-    rendered_status_bars_win_over_what_functions_set_on(start(STATUS_BAR));
-}
-
-fn rendered_status_bars_win_over_what_functions_set_on(
-    (_engine, rx): (Engine, Receiver<MountBatch>),
-) {
+fn the_latest_rendered_status_bar_wins() {
+    let (_engine, rx) = start(STATUS_BAR);
     let mut configs = Vec::new();
     until(&rx, |batch| {
         for item in &batch.items {
@@ -272,22 +267,18 @@ fn rendered_status_bars_win_over_what_functions_set_on(
                 configs.push(*c);
             }
         }
-        configs.len() >= 3
+        configs.len() >= 4
     });
-    let red = nsh_core::Color::parse("#ff0000");
-    let green = nsh_core::Color::parse("#00ff00");
-    let seen: Vec<_> = configs
-        .iter()
-        .map(|c| (c.style, c.hidden, c.background))
-        .collect();
-    // One per turn: the functions' and the rendered setting merged, then
-    // the hidden bar, then the functions' alone.
+    let seen: Vec<_> = configs.iter().map(|c| (c.style, c.hidden)).collect();
+    // One per turn: the first bar, the one mounted later over it, then
+    // hidden, then the first one alone.
     assert_eq!(
         seen,
         [
-            (StatusBarStyle::Light, false, green),
-            (StatusBarStyle::Light, true, green),
-            (StatusBarStyle::Dark, true, red),
+            (StatusBarStyle::Dark, false),
+            (StatusBarStyle::Light, false),
+            (StatusBarStyle::Light, true),
+            (StatusBarStyle::Dark, false),
         ]
     );
 }
@@ -557,48 +548,87 @@ fn calls_of_a_components_methods() {
 }
 
 const ALERT: &str = r#"import { mount, signal, Text } from "nsh";
-import { Alert } from "nsh/base";
+import { AlertDialog } from "nsh/base";
 
 const shown = signal("waiting");
 setTimeout(async () => {
-  const i = await Alert.alert("Delete the photo?", "It is gone then.", [
-    { text: "Cancel", style: "cancel" },
-    { text: "Delete", style: "destructive" },
-  ], { cancelable: true });
-  shown.set(`answer ${i}`);
+  const a = await AlertDialog.show({
+    title: "Delete the photo?",
+    description: "It is gone then.",
+    actions: [
+      { label: "Cancel", role: "cancel" },
+      { label: "Delete", role: "destructive", id: "delete" },
+    ],
+  });
+  const b = await AlertDialog.show({
+    presentation: "actionSheet",
+    actions: [{ label: "Share" }, { label: "Copy" }],
+  });
+  const c = await AlertDialog.show({ actions: [{ label: "OK" }], closeOnEscape: true });
+  let d = "resolved";
+  try {
+    await AlertDialog.show({ actions: [] });
+  } catch (e) {
+    d = "rejected";
+  }
+  shown.set(`answers ${a} ${b} ${c} ${d}`);
 }, 0);
 
 mount(() => <Text>{shown()}</Text>);
 "#;
 
+/// `AlertDialog.show` resolves with the chosen action's id, else its
+/// label, and with null when it closed without one.
 #[test]
-fn alert_resolves_with_the_button_pressed() {
+fn alert_dialogs_resolve_with_the_action_chosen() {
     let (engine, rx) = start(ALERT);
-    let mut dialog = None;
-    until(&rx, |batch| {
-        dialog = dialog.take().or_else(|| {
-            batch.items.iter().find_map(|i| match i {
-                MountItem::Command {
-                    id: ROOT_ID,
-                    command: Command::Dialog(d),
-                } => Some(d.clone()),
-                _ => None,
-            })
+    let next_dialog = || {
+        let mut dialog = None;
+        until(&rx, |batch| {
+            dialog = dialog.take().or_else(|| {
+                batch.items.iter().find_map(|i| match i {
+                    MountItem::Command {
+                        id: ROOT_ID,
+                        command: Command::Dialog(d),
+                    } => Some(d.clone()),
+                    _ => None,
+                })
+            });
+            dialog.is_some()
         });
-        dialog.is_some()
-    });
-    let dialog = dialog.expect("the alert");
-    assert_eq!(dialog.title.as_deref(), Some("Delete the photo?"));
-    engine.control().dispatch_event(
-        ROOT_ID,
-        EventKind::Dialog,
-        EventPayload::Map(vec![
-            ("id", PayloadValue::Number(dialog.id as f64)),
-            ("index", PayloadValue::Number(1.0)),
-        ]),
+        dialog.expect("a dialog")
+    };
+    let answer = |dialog: &nsh_core::Dialog, index: f64| {
+        engine.control().dispatch_event(
+            ROOT_ID,
+            EventKind::Dialog,
+            EventPayload::Map(vec![
+                ("id", PayloadValue::Number(dialog.id as f64)),
+                ("index", PayloadValue::Number(index)),
+            ]),
+        );
+    };
+    let alert = next_dialog();
+    assert_eq!(alert.title.as_deref(), Some("Delete the photo?"));
+    assert_eq!(alert.message.as_deref(), Some("It is gone then."));
+    assert!(!alert.sheet && !alert.cancelable);
+    assert_eq!(
+        alert.buttons[1].style,
+        nsh_core::DialogButtonStyle::Destructive
     );
-    let batches = until(&rx, |b| shows(b, "answer 1"));
-    assert!(batches.iter().any(|b| shows(b, "answer 1")));
+    answer(&alert, 1.0);
+    let sheet = next_dialog();
+    assert!(sheet.sheet && sheet.cancelable);
+    answer(&sheet, 0.0);
+    let ok = next_dialog();
+    assert!(ok.cancelable);
+    answer(&ok, -1.0);
+    let batches = until(&rx, |b| shows(b, "answers delete Share null rejected"));
+    assert!(
+        batches
+            .iter()
+            .any(|b| shows(b, "answers delete Share null rejected"))
+    );
 }
 
 const SAFE_AREA: &str = r#"import { mount, Text } from "nsh";
@@ -908,8 +938,15 @@ const INPUT_TRAITS: &str = r##"import { mount, Input, Text } from "nsh";
 mount(() => (
   <>
     <Input keyboardType="numeric" ios={{ keyboardAppearance: "dark" }} />
-    <Input keyboardType="numbers-and-punctuation" />
-    <Text selectable selectionColor="#ff0000">Pick me</Text>
+    <Input
+      keyboardType="numbers-and-punctuation"
+      masked
+      readonly
+      multiline
+      style={{ placeholderColor: "#00ff00", selectionColor: "#0000ff" }}
+    />
+    <Input class="placeholder:text-white selection:text-black" />
+    <Text selectable style={{ selectionColor: "#ff0000" }}>Pick me</Text>
   </>
 ));
 "##;
@@ -924,20 +961,35 @@ fn inputs_and_selectable_text_carry_their_traits() {
         .items
         .iter()
         .filter_map(|i| match i {
-            MountItem::Input { config, .. } => Some((config.keyboard, config.keyboard_appearance)),
+            MountItem::Input { config, .. } => Some(config.clone()),
             _ => None,
         })
         .collect();
+    let traits: Vec<_> = inputs
+        .iter()
+        .map(|c| (c.keyboard, c.keyboard_appearance))
+        .collect();
     assert_eq!(
-        inputs,
+        traits,
         [
             (KeyboardType::Numeric, KeyboardAppearance::Dark),
             (
                 KeyboardType::NumbersAndPunctuation,
                 KeyboardAppearance::Default
             ),
+            (KeyboardType::Default, KeyboardAppearance::Default),
         ]
     );
+    let c = &inputs[1];
+    assert!(c.secure && !c.editable && c.multiline);
+    assert_eq!(c.placeholder_color, nsh_core::Color::parse("#00ff00"));
+    assert_eq!(c.selection_color, nsh_core::Color::parse("#0000ff"));
+    assert!(!inputs[0].secure && inputs[0].editable && inputs[0].placeholder_color.is_none());
+    assert_eq!(
+        inputs[2].placeholder_color,
+        nsh_core::Color::parse("#ffffff")
+    );
+    assert_eq!(inputs[2].selection_color, nsh_core::Color::parse("#000000"));
     let text = first
         .items
         .iter()
@@ -961,7 +1013,7 @@ const rows = Array.from({ length: 100 }, (_, i) => ({ id: i, label: `Row ${i}` }
 mount(() => (
   <ListView
     each={rows}
-    ListHeaderComponent={() => (
+    header={() => (
       <Group>
         <Text>First</Text>
         <Text>Second</Text>
@@ -1023,20 +1075,22 @@ mount(() => (
 ));
 "#;
 
-const STATUS_BAR: &str = r##"import { signal, mount } from "nsh";
-import { setStatusBarBackgroundColor } from "nsh/android";
+const STATUS_BAR: &str = r##"import { signal, mount, View } from "nsh";
 import { StatusBar } from "nsh/base";
 
-const rendered = signal(true);
-setStatusBarBackgroundColor("#ff0000");
-StatusBar.setBarStyle("dark-content");
-setTimeout(() => StatusBar.setHidden(true), 50);
+const rendered = signal(false);
+const hidden = signal(false);
+setTimeout(() => rendered.set(true), 30);
+setTimeout(() => hidden.set(true), 60);
 setTimeout(() => rendered.set(false), 100);
 
 mount(() => (
-  <If when={rendered()}>
-    <StatusBar barStyle="light-content" android={{ backgroundColor: "#00ff00" }} />
-  </If>
+  <View>
+    <StatusBar foreground="dark" />
+    <If when={rendered()}>
+      <StatusBar foreground="light" hidden={hidden()} />
+    </If>
+  </View>
 ));
 "##;
 
@@ -1290,10 +1344,6 @@ fn a_base_button_has_behavior_and_no_look() {
     assert_eq!(
         first_props.accessibility.role,
         nsh_core::AccessibilityRole::Button
-    );
-    assert!(
-        first_props.active_opacity.is_none(),
-        "no press feedback of its own"
     );
     assert!(!first_props.accessibility.state.selected);
     engine

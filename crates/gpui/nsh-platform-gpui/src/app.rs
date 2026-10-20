@@ -258,7 +258,8 @@ impl AppView {
             network: Some(crate::net::network()),
             assets: Some(Arc::new(AssetReader(options.asset_base.clone()))),
             environment: self.surface.environment.get(),
-            header_heights: crate::navigation::HEADER_HEIGHTS,
+            // NSH draws no header: a page's `header` sits at its top.
+            header_heights: nsh_core::NO_NATIVE_HEADER,
             limits: options.limits,
             ui_sets: ui_sets(),
             runtime: None,

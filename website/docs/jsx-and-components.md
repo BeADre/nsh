@@ -22,7 +22,7 @@ Every tag is PascalCase and names something in scope. The **host elements**, eac
 | `<Scroll>` | `nsh` | `UIScrollView` / `ScrollView` | [Scroll](../elements/scroll.md) |
 | `<Input>` | `nsh` | `UITextField` / `UITextView` / `EditText` | [Input](../elements/input.md) |
 | `<List>` | `nsh/list` | A virtualized, recycling list | [List](../elements/list.md) |
-| `<Canvas>`, `<WebView>`, `<Video>`, `<Modal>` | `nsh/canvas`, `nsh/webview`, `nsh/video`, `nsh/base` | A drawing, a web page, a video player, a presented layer | [Elements](../elements/index.md) |
+| `<Canvas>`, `<WebView>`, `<Video>`, `<Dialog>` | `nsh/canvas`, `nsh/webview`, `nsh/video`, `nsh/base` | A drawing, a web page, a video player, a presented layer | [Elements](../elements/index.md) |
 | `<If>`, `<Each>` | nothing: globals | Control flow, no view of its own | [Control flow](../elements/control-flow.md) |
 
 ```tsx
@@ -222,7 +222,7 @@ function Field(props: InputProps & { label: string }) {
   );
 }
 
-<Field label="Email" value={email()} onChangeText={(t) => email.set(t)} keyboardType="email-address" />
+<Field label="Email" value={email()} onChange={(t) => email.set(t)} keyboardType="email-address" />
 ```
 
 `split(props, keys)` returns `[picked, rest]`, both still reading through to the original props (destructuring `{ label, ...rest } = props` would read every prop once). Element props that come later in the JSX win over earlier ones.
@@ -238,7 +238,7 @@ import { Text, View } from "nsh";
 
 function Button(props: { title: string; onPress: () => void }) {
   return (
-    <View onPress={props.onPress} activeOpacity={0.6} accessibilityRole="button" class="rounded-lg bg-blue-600 px-5 py-3">
+    <View onPress={props.onPress} activeStyle={{ opacity: 0.6 }} role="button" class="rounded-lg bg-blue-600 px-5 py-3">
       <Text class="text-base font-semibold text-white">{props.title}</Text>
     </View>
   );

@@ -85,7 +85,6 @@ pub struct Attrs {
     pub(crate) role: AccessibilityRole,
     pub(crate) state: AccessibilityState,
     pub(crate) pointer_events: PointerEvents,
-    pub(crate) active_opacity: Option<f32>,
     pub(crate) number_of_lines: u32,
     pub(crate) src: Option<super::ImageSrc>,
     pub(crate) inset_padding: Option<EdgeInsets>,
@@ -134,9 +133,6 @@ impl Attrs {
         }
         if self.pointer_events != old.pointer_events {
             out.push(Prop::PointerEvents(self.pointer_events));
-        }
-        if self.active_opacity != old.active_opacity {
-            out.push(Prop::ActiveOpacity(self.active_opacity));
         }
         if self.number_of_lines != old.number_of_lines {
             out.push(Prop::NumberOfLines(self.number_of_lines));
@@ -815,8 +811,8 @@ pub trait Accessible: Element {
     }
 
     /// What it is (a button, a header, ...).
-    fn role(mut self, role: AccessibilityRole) -> Self {
-        self.node().attrs.role = role;
+    fn role(mut self, role: impl IntoReactive<AccessibilityRole>) -> Self {
+        self.node().bind_attr(role, |a, role| a.role = role);
         self
     }
 
@@ -1097,14 +1093,6 @@ pub trait Interactive: Element {
         self
     }
 
-    /// Shows `color` as the background while pressed, fading the children
-    /// to `opacity`.
-    fn underlay(mut self, color: impl IntoReactive<Color>, opacity: f32) -> Self {
-        super::host::bind_prop(self.node(), color, |c| Prop::UnderlayColor(Some(c)));
-        super::host::set(self.node(), Prop::UnderlayOpacity(opacity));
-        self
-    }
-
     /// The press ripple (Android).
     fn ripple(mut self, ripple: crate::props::Ripple) -> Self {
         super::host::set(self.node(), Prop::Ripple(Some(ripple)));
@@ -1184,9 +1172,10 @@ pub trait Interactive: Element {
         self
     }
 
-    /// The opacity while pressed (a fade instead of `.active(…)` styles).
-    fn active_opacity(mut self, opacity: f32) -> Self {
-        self.node().attrs.active_opacity = Some(opacity);
+    /// An app's style while selected (`accessibility_state` `selected`;
+    /// TS: a `Button`'s `selectedStyle`), as `selected:` classes apply.
+    fn selected_style(mut self, style: impl IntoReactive<Style>) -> Self {
+        super::host::bind_prop(self.node(), style, |s: Style| Prop::SelectedStyle(s.0));
         self
     }
 }
@@ -1594,7 +1583,7 @@ impl<C: Component> ComponentElement<C> {
     }
 
     /// Fills its `Items` prop with rows of this view (TS: `each` and the
-    /// row renderer, `keyExtractor`, `ListHeaderComponent`, ...): the rows,
+    /// row renderer, `keyExtractor`, `header`, ...): the rows,
     /// their keys, header, footer, empty view, separators, sticky rows,
     /// viewability, the refresh and the end reached are `list`'s, rendered
     /// and handled by this component; the layout and the styles are the

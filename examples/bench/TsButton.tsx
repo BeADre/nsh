@@ -40,7 +40,7 @@ export function Button(props: ButtonProps): JSX.Element {
     <View
       onPress={() => props.onPress?.()}
       disabled={props.disabled}
-      accessibilityRole="button"
+      role="button"
       accessibilityLabel={props.accessibilityLabel ?? props.title}
       accessibilityState={{ disabled: !!props.disabled }}
       testID={props.testID}

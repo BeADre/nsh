@@ -141,7 +141,7 @@ NSH 不需要 `node_modules`。取而代之的是，每个构建应用的命令�
 | `globals.d.ts` | `If` 和 `Each`；`console`、定时器、`requestAnimationFrame`、`fetch` 及其他[全局 API](../modules/globals.md) |
 | `assets.d.ts` | 导入图片或字体得到的值 |
 | `list.d.ts`、`animated.d.ts`、`device.d.ts` 等 | 每个模块一个文件（`nsh/list`、`nsh/animated`、`nsh/device` 等） |
-| `ui.d.ts` | `nsh/base` |
+| `base.d.ts` | `nsh/base` |
 
 `lib` 是不含 `DOM` 的 `ES2023`：没有 `document` 或 `window`。这些文件会被重新生成（只在内容变化时），所以不要编辑，也不要提交；`.gitignore` 已经排除了 `.nsh/`。如果克隆项目后编辑器提示找不到 `nsh`，运行任意一个构建命令即可，例如 `nsh trace App.tsx`。
 
@@ -179,7 +179,7 @@ const open = async () => {
 | 模块 | 内容 |
 |---|---|
 | `nsh` | 响应式（`signal`、`computed`、`effect` 等）、`mount`、`split`、`context`；`View`、`Text`、`Scroll`、`Input`（[参考](../modules/nsh.md)） |
-| `nsh/base` | 应用界面的无样式基础：导航栈、页面和模态框（`Stack`、`Screen`、`Modal`、`createNavigator`）、安全区域（`SafeAreaView`）、系统对话框（`Alert`、`ActionSheet`）、软键盘（`Keyboard`、`keyboard`、`KeyboardAvoidingView`）和状态栏（`StatusBar`）（[参考](../modules/nsh-base.md)） |
+| `nsh/base` | 应用界面的无样式基础：导航栈及其页面（`NavStack`、`NavPage`、`createNavStack`）、对话框（`Dialog`）、按压目标（`Button`）、安全区域（`SafeAreaView`、`safeArea`、`safeAreaInsets`）、系统警告对话框（`AlertDialog`）、软键盘（`Keyboard`、`keyboardFrame`、`KeyboardAvoidingView`）和状态栏（`StatusBar`）（[参考](../modules/nsh-base.md)） |
 | `nsh/list` | `List`：虚拟化、可复用的列表 |
 | `nsh/animated` | 原生动画 |
 | `nsh/canvas` | 2D 绘图 |

@@ -194,7 +194,7 @@ pub fn safe_area() -> EdgeInsets {
 }
 
 /// The software keyboard's height over the surface, 0 when hidden (TS:
-/// `keyboard().height`).
+/// `keyboardFrame().height`).
 pub fn keyboard_height() -> f32 {
     env(|e| e.keyboard_height)
 }

@@ -1,8 +1,8 @@
 # JS modules
 
 NSH ships two layers of modules. `nsh` and `nsh/<module>` are the primitives every UI is made of, the environment and
-the capabilities. `nsh/base` (the crate `nsh-base`) is the unstyled foundation every app's UI builds on: navigation stacks,
-screens and modals, safe areas, the system's dialogs, the software keyboard and the status bar. NSH provides no styled
+the capabilities. `nsh/base` (the crate `nsh-base`) is the unstyled foundation every app's UI builds on: navigation stacks and
+pages, dialogs, safe areas, the system's alert dialog, the software keyboard and the status bar. NSH provides no styled
 components: the look of an app is the app's, drawn from the primitives, or from Rust components in the app's own crate,
 whose UI set is a module of its own (`app/native`; `docs/dev/components.md`, `tooling.md`). Each export has one home.
 
@@ -41,9 +41,9 @@ globals.
 | `nsh/webview`, `nsh/video` | `WebView`, `Video` | `platform_modules.rs` |
 | `nsh/native` | `nativeComponent(name, { props, events })`: a component for a native component the embedding app registered | `platform_modules.rs` |
 | `nsh/ios` | `isAvailable`, `InputAccessoryView` | `platform_modules.rs` |
-| `nsh/android` | `isAvailable`, `Toast.show(message, "short" \| "long")`, `BackHandler` (`addEventListener` native, `exitApp` Rust), `setStatusBarBackgroundColor` (the status bar's base layer) | `platform_modules.rs` + its registry |
+| `nsh/android` | `isAvailable`, `Toast.show(message, "short" \| "long")`, `BackHandler` (`addEventListener` native, `exitApp` Rust) | `platform_modules.rs` + its registry |
 | `nsh/desktop` | `isAvailable`, `titleBar()` (the environment's `title_bar`), `Menu.setApplicationMenu` / `Menu.popup` (decoded natively into `nsh_core::desktop::MenuItem`s, the items' functions kept by id, called on the root's `onMenu`), `Window` (Rust: `setTitle`, `setTitleBar`, `minimize`, `toggleMaximize`, `toggleFullScreen`, `setFrame`, `setLevel`, `close`); all of it is `Command::Desktop` on the root, which mobile platforms ignore | `desktop.rs` + its registry |
-| `nsh/base` | The unstyled foundation of an app's UI. Navigation: `Stack`, `Screen`, `createNavigator`, `Modal` (natives of `nsh-js`, `Registry::native_values`). Safe areas: `SafeAreaView` (Rust, with `Edge`), `safeArea()`, `safeAreaInsets()`, `Insets` (re-exported from the environment). Dialogs: `Alert.alert`, `ActionSheet.show` (promises of the index chosen; an action sheet is a list dialog on Android), the platform's own. The keyboard: `KeyboardAvoidingView` (Rust, with `AvoidBehavior`), `Keyboard.dismiss`, `keyboard()` (re-exported from the environment). The status bar: `StatusBar` (Rust: a component with `StatusBar.setBarStyle` / `setHidden`; `BarStyle`, `BarAnimation`) | `nsh_base::registry()` (`crates/nsh-base`); `navigation.rs`, `env.rs` |
+| `nsh/base` | The unstyled foundation of an app's UI. Navigation: `NavStack`, `NavPage`, `createNavStack`, `Dialog` (natives of `nsh-js`, `Registry::native_values`). Safe areas: `SafeAreaView` (Rust, with `Edge`), `safeArea()`, `safeAreaInsets()`, `Insets` (re-exported from the environment). Alerts: `AlertDialog.show({ title, description, actions, presentation })` (a promise of the chosen action's `id`, its `label` without one, `null` when closed without one; `presentation: "actionSheet"` is a list dialog on Android), the platform's own. A press target: `Button` (Rust; no look of its own). The keyboard: `KeyboardAvoidingView` (Rust, with `AvoidBehavior`), `Keyboard.dismiss`, `keyboardFrame()` (re-exported from the environment). The status bar: `StatusBar` (Rust: `foreground`, `hidden`, `animated`; `Foreground`) | `nsh_base::registry()` (`crates/nsh-base`); `navigation.rs`, `env.rs` |
 | an app's UI set (`app/native`) | The Rust components, modules and classes of the app's crate (`#[native_module("app/native")]`) | the registry (`components.rs`, `classes.rs`) |
 
 `nsh:hot` (hot module replacement, `hot.rs`) is only imported by development bundles. The same loader also compiles
@@ -57,17 +57,19 @@ the chunks of a split bundle (`Screen.js`: a name that is no native module, with
   props in them are the generated `IOS…HostProps` / `Android…HostProps`). The renderer
   (`platform_props` in `dom.rs`) sends only the current platform's object, each key as a prop of its own (keys removed
   from the object are cleared); the core knows them by those names. Android: `ripple`, `elevation`,
-  `accessibilityLiveRegion`, Modal `statusBarTranslucent`, StatusBar `backgroundColor` (a Rust component's `android`
-  prop). Alert's `cancelable` is an option of both platforms (iOS alerts are never dismissed by a tap outside). iOS:
-  input `inputAccessoryViewID` / `textContentType` / `keyboardAppearance`, Screen `headerLargeTitle` / `headerBackTitle`, Modal
-  `presentationStyle` / `supportedOrientations`, WebView `allowsBackForwardNavigationGestures`. Desktop: Screen
-  `headerLargeTitle` / `headerBackTitle`, Modal `presentationStyle`, WebView `allowsBackForwardNavigationGestures`
-  (macOS' trackpad swipes, Windows' touchscreen swipes). Web: Modal `presentationStyle` (a prop of several platforms names each:
-  `#[prop(ios = "x", desktop = "x")]`).
+  `accessibilityLiveRegion`, Dialog `statusBarTranslucent`. iOS: input `inputAccessoryViewID` / `textContentType` /
+  `keyboardAppearance`, Dialog `supportedOrientations`, WebView `allowsBackForwardNavigationGestures`. Desktop:
+  `windowDrag`, WebView `allowsBackForwardNavigationGestures` (macOS' trackpad swipes, Windows' touchscreen swipes; a
+  prop of several platforms names each: `#[prop(ios = "x", desktop = "x")]`). Web: StatusBar `themeColor` (a Rust
+  component's `web` prop). What two platforms do is a top-level prop, ignored where it does not apply (`presentation`,
+  `headerLargeTitle`, `headerBackTitle`, AlertDialog's `closeOnEscape` / `closeOnBackdropPress`; `api-naming.md`).
 - A module's exports are made when a bundle first imports it; what must always happen (the root's direction, the
   themes) is the renderer's (`dom.rs`, `setup`), not a module's.
 
 ## Where new things go
+
+Names follow `gpui-base`'s, translated to TSX: before naming anything apps use, read `api-naming.md` (the conventions
+and the renames decided so far).
 
 - A primitive, the environment or a capability: a module of NSH's own (`nsh/<module>`), natives in `crates/nsh-js`
   listed in `modules.rs` and `nsh_core::js::NATIVE_MODULES`, each export with its declaration (`Ts`) and the

@@ -62,7 +62,7 @@ function Counter() {
       <Text style={{ fontSize: 48, fontWeight: "700" }}>{count()}</Text>
       <View
         onPress={() => count.update((n) => n + 1)}
-        activeOpacity={0.6}
+        activeStyle={{ opacity: 0.6 }}
         class="rounded-lg bg-blue-600 px-5 py-3"
       >
         <Text class="text-white text-lg">Tap</Text>
@@ -74,7 +74,7 @@ function Counter() {
 mount(Counter);
 ```
 
-`<View>` 在 iOS 上变成 `UIView`，在 Android 上变成 `ViewGroup`，在 macOS 上变成 `NSView`，在 Linux 上变成 GTK 控件，`<Text>` 变成原生文本视图，按钮的按压反馈（`activeOpacity`）在主线程上完成，不需要往返 JavaScript。点击时，`count.update` 只修改一个信号，只有读取 `count()` 的那段文本会更新：组件函数不会重新执行。
+`<View>` 在 iOS 上变成 `UIView`，在 Android 上变成 `ViewGroup`，在 macOS 上变成 `NSView`，在 Linux 上变成 GTK 控件，`<Text>` 变成原生文本视图，按钮的按压反馈（`activeStyle`）在主线程上完成，不需要往返 JavaScript。点击时，`count.update` 只修改一个信号，只有读取 `count()` 的那段文本会更新：组件函数不会重新执行。
 
 宿主应用只需几行原生代码就能显示它（[iOS](./embedding-ios.md)、[Android](./embedding-android.md)、[macOS](./macos.md#嵌入-mac-应用)、[Windows](./windows.md#嵌入-win32-应用)、[Linux](./linux.md#嵌入-gtk-应用)）。在 iOS 上：
 
@@ -97,7 +97,7 @@ let info = try await app.loadPackage(at: downloadedFile, trust: trust)   // 先�
 由于 JavaScript 只描述界面、处理事件，解释器里的工作量很小。解析样式、解析 Tailwind 类名、差异比较、布局和文本处理都在 Rust 中完成。
 
 > [!NOTE]
-> 主线程从不等待 JavaScript。系统同步提出的问题（这个输入框还能再接受一个字符吗、用户可以侧滑返回吗、这个面板可以关闭吗）由原生层根据你事先设置的 props 直接回答，例如 `maxLength`、`preventBack` 或 `dismissible`。事件随后才会到达你的代码。
+> 主线程从不等待 JavaScript。系统同步提出的问题（这个输入框还能再接受一个字符吗、用户可以侧滑返回吗、这个面板可以关闭吗）由原生层根据你事先设置的 props 直接回答，例如 `maxLength`、`popOnBack` 或 `closeOnSwipe`。事件随后才会到达你的代码。
 
 ## 你能得到什么
 

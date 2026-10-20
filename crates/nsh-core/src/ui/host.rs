@@ -48,6 +48,7 @@ pub(crate) fn set(node: &mut ElNode, prop: Prop) {
 }
 
 crate::static_reactive!(Color: Color);
+crate::static_reactive!(crate::AccessibilityRole: crate::AccessibilityRole);
 crate::static_reactive!(AutoCapitalize: AutoCapitalize);
 crate::static_reactive!(AutoFill: AutoFill);
 crate::static_reactive!(KeyboardAppearance: KeyboardAppearance);
@@ -315,7 +316,7 @@ pub fn native(name: &str) -> NativeView {
 
 impl Input {
     /// The text, when the component controls it (update it from
-    /// [`Self::on_change_text`]).
+    /// [`Self::on_change`]).
     pub fn value(self, text: impl IntoReactive<String>) -> Self {
         self.bind_prop(text, |text: String| Prop::Value(text))
     }
@@ -340,8 +341,8 @@ impl Input {
         self.bind_prop(color, |color: Color| Prop::SelectionColor(Some(color)))
     }
 
-    /// Hides what is typed (passwords).
-    pub fn secure(self, secure: impl IntoReactive<bool>) -> Self {
+    /// Hides what is typed (passwords; TS: `masked`).
+    pub fn masked(self, secure: impl IntoReactive<bool>) -> Self {
         self.bind_prop(secure, |secure: bool| Prop::Secure(secure))
     }
 
@@ -388,14 +389,9 @@ impl Input {
         self.bind_prop(length, |length: u32| Prop::MaxLength(Some(length)))
     }
 
-    /// Editable (default yes).
-    pub fn editable(self, editable: impl IntoReactive<bool>) -> Self {
-        self.bind_prop(editable, |editable: bool| Prop::Editable(editable))
-    }
-
-    /// The return key unfocuses it (default yes, for one line).
-    pub fn blur_on_submit(self, blur: impl IntoReactive<bool>) -> Self {
-        self.bind_prop(blur, |blur: bool| Prop::BlurOnSubmit(blur))
+    /// The text can be selected and copied but not changed.
+    pub fn readonly(self, readonly: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(readonly, |readonly: bool| Prop::Readonly(readonly))
     }
 
     /// What return does (`submitBehavior`; default: submit and unfocus for
@@ -426,21 +422,21 @@ impl Input {
 
     /// Selects `(start, end)` (UTF-16 units; a caret when equal) when the
     /// input is made and whenever the value changes (TS: the controlled
-    /// `selection`); the user moves it on from there
+    /// `selectedRange`); the user moves it on from there
     /// ([`Self::on_selection_change`]).
-    pub fn selection(self, range: impl IntoReactive<(u32, u32)>) -> Self {
+    pub fn selected_range(self, range: impl IntoReactive<(u32, u32)>) -> Self {
         self.bind_prop(range, |(start, end): (u32, u32)| {
             Prop::Selection(start, end)
         })
     }
 
     /// The text changed (the new text).
-    pub fn on_change_text(self, listener: impl Into<Listener<str>>) -> Self {
+    pub fn on_change(self, listener: impl Into<Listener<str>>) -> Self {
         self.listen(EventKind::ChangeText, listener.into(), events::text)
     }
 
-    /// The return key was pressed (the text).
-    pub fn on_submit_editing(self, listener: impl Into<Listener<str>>) -> Self {
+    /// The return (enter) key was pressed (the text).
+    pub fn on_submit(self, listener: impl Into<Listener<str>>) -> Self {
         self.listen(EventKind::SubmitEditing, listener.into(), events::text)
     }
 
@@ -555,25 +551,11 @@ impl Screen {
         })
     }
 
-    /// The back button's and bar buttons' color.
-    pub fn header_tint_color(self, color: impl IntoReactive<Color>) -> Self {
-        self.bind_prop(color, |c| {
-            Prop::Screen(ScreenProp::HeaderTintColor(Some(c)))
-        })
-    }
-
-    /// The header's background.
-    pub fn header_background_color(self, color: impl IntoReactive<Color>) -> Self {
-        self.bind_prop(color, |c| {
-            Prop::Screen(ScreenProp::HeaderBackgroundColor(Some(c)))
-        })
-    }
-
-    /// The title's color.
-    pub fn header_title_color(self, color: impl IntoReactive<Color>) -> Self {
-        self.bind_prop(color, |c| {
-            Prop::Screen(ScreenProp::HeaderTitleColor(Some(c)))
-        })
+    /// The header's colors: `backgroundColor`, `color` (the title's) and
+    /// `tintColor` (the buttons'), as [`super::Style::from_decls`] makes
+    /// them (TS: `headerStyle`).
+    pub fn header_style(self, style: impl IntoReactive<super::Style>) -> Self {
+        self.bind_prop(style, |s: super::Style| Prop::HeaderStyle(s.0))
     }
 
     /// The label of the back button leading back to this screen (iOS).
@@ -588,17 +570,17 @@ impl Screen {
         self.bind_prop(visible, |v| Prop::Screen(ScreenProp::HeaderBackVisible(v)))
     }
 
-    /// The interactive back gesture (iOS swipe back, Android predictive
-    /// back); the back buttons pop either way (default true).
-    pub fn gesture_enabled(self, enabled: impl IntoReactive<bool>) -> Self {
-        self.bind_prop(enabled, |v| Prop::Screen(ScreenProp::GestureEnabled(v)))
+    /// The interactive back gesture pops (iOS swipe back, Android
+    /// predictive back); the back buttons pop either way (default true).
+    pub fn pop_on_swipe(self, enabled: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(enabled, |v| Prop::Screen(ScreenProp::PopOnSwipe(v)))
     }
 
-    /// The user cannot leave the screen: no swipe back, and the back
-    /// buttons report [`Self::on_back_request`] instead of popping. Decided
+    /// The back buttons and the swipe back pop the screen (default true);
+    /// false keeps it, reporting [`Self::on_back_press`] instead. Decided
     /// natively when the system asks, so set it before the user acts.
-    pub fn prevent_back(self, prevent: impl IntoReactive<bool>) -> Self {
-        self.bind_prop(prevent, |v| Prop::Screen(ScreenProp::PreventBack(v)))
+    pub fn pop_on_back(self, pop: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(pop, |v| Prop::Screen(ScreenProp::PopOnBack(v)))
     }
 
     /// How the screen enters and leaves.
@@ -621,14 +603,22 @@ impl Screen {
         self.header_item(HeaderSlot::Title, "header-title", item)
     }
 
+    /// The app's header on platforms without a system header (desktops,
+    /// the web): placed at the top of the screen, as wide as it and as tall
+    /// as it lays out, with the content below it (TS: `header`).
+    pub fn header(self, item: impl IntoElement) -> Self {
+        self.header_item(HeaderSlot::Header, "header", item)
+    }
+
     /// The user popped the screen natively (back button, swipe): leave it
     /// out of the view (its region).
-    pub fn on_dismiss(self, listener: impl Into<Listener<()>>) -> Self {
+    pub fn on_pop(self, listener: impl Into<Listener<()>>) -> Self {
         self.listen(EventKind::Dismiss, listener.into(), events::unit)
     }
 
-    /// The user tried to leave a screen that [`Self::prevent_back`]s.
-    pub fn on_back_request(self, listener: impl Into<Listener<()>>) -> Self {
+    /// The user pressed back on the screen (every back press, whether or
+    /// not [`Self::pop_on_back`] let it pop).
+    pub fn on_back_press(self, listener: impl Into<Listener<()>>) -> Self {
         self.listen(EventKind::BackRequest, listener.into(), events::unit)
     }
 }
@@ -645,13 +635,6 @@ impl Modal {
     pub fn presentation(self, presentation: impl IntoReactive<ModalPresentation>) -> Self {
         self.bind_prop(presentation, |presentation: ModalPresentation| {
             Prop::Modal(ModalProp::Presentation(presentation))
-        })
-    }
-
-    /// What is behind shows through (its content draws the dimming).
-    pub fn transparent(self, transparent: impl IntoReactive<bool>) -> Self {
-        self.bind_prop(transparent, |transparent: bool| {
-            Prop::Modal(ModalProp::Transparent(transparent))
         })
     }
 
@@ -672,28 +655,40 @@ impl Modal {
         self.set(Prop::Modal(ModalProp::Orientations(bits)))
     }
 
-    /// Swipes down and the back button dismiss it, reporting
-    /// [`Self::on_dismiss`] (default: they ask with
-    /// [`Self::on_request_close`]).
-    pub fn dismissible(self, dismissible: impl IntoReactive<bool>) -> Self {
-        self.bind_prop(dismissible, |dismissible: bool| {
-            Prop::Modal(ModalProp::Dismissible(dismissible))
+    /// Escape and the Android back button close it natively (default
+    /// true); either way they report [`Self::on_cancel`].
+    pub fn close_on_escape(self, close: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(close, |v: bool| Prop::Modal(ModalProp::CloseOnEscape(v)))
+    }
+
+    /// A press on a backdrop the platform presents itself (a native
+    /// sheet's) closes it (default true); a backdrop the app renders is
+    /// the app's to handle.
+    pub fn close_on_backdrop_press(self, close: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(close, |v: bool| {
+            Prop::Modal(ModalProp::CloseOnBackdropPress(v))
         })
     }
 
-    /// The user asked to close it (back button, swipe down): leave it out
-    /// of the view (its region) to close it.
-    pub fn on_request_close(self, listener: impl Into<Listener<()>>) -> Self {
+    /// Swiping a sheet down closes it natively (default true).
+    pub fn close_on_swipe(self, close: impl IntoReactive<bool>) -> Self {
+        self.bind_prop(close, |v: bool| Prop::Modal(ModalProp::CloseOnSwipe(v)))
+    }
+
+    /// The user tried to close it (Escape or back, a backdrop press, a
+    /// swipe down), whether or not it closed: leave it out of the view
+    /// (its region) to close it.
+    pub fn on_cancel(self, listener: impl Into<Listener<()>>) -> Self {
         self.listen(EventKind::RequestClose, listener.into(), events::unit)
     }
 
     /// It finished appearing.
-    pub fn on_show(self, listener: impl Into<Listener<()>>) -> Self {
+    pub fn on_open(self, listener: impl Into<Listener<()>>) -> Self {
         self.listen(EventKind::Show, listener.into(), events::unit)
     }
 
-    /// The user or the system dismissed it.
-    pub fn on_dismiss(self, listener: impl Into<Listener<()>>) -> Self {
+    /// The user or the system closed it.
+    pub fn on_close(self, listener: impl Into<Listener<()>>) -> Self {
         self.listen(EventKind::Dismiss, listener.into(), events::unit)
     }
 }
