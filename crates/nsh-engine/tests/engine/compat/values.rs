@@ -306,6 +306,11 @@ impl Mounted {
                 if let Some(v) = &c.accessory_id {
                     out.put("inputAccessoryViewID", v.to_string());
                 }
+                // Whether a mounted `InputAccessoryView` has the `nativeID`
+                // it names.
+                if c.accessory.is_some() {
+                    out.put("inputAccessoryView", "true".into());
+                }
             }
             Some(ViewKind::Screen) => {
                 let c = self.screen.as_deref().cloned().unwrap_or_default();

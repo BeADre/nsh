@@ -67,6 +67,9 @@
 //! - `scroll <selector> <x> <y>`: the scroll view the selector names
 //!   scrolled to content offset `<x> <y>` (`onScroll` then reports it,
 //!   with the sizes the core knows);
+//! - `fontscale <scale>`: before anything else (with `viewport`), the
+//!   user's text size (1 by default), which scales the fonts of texts and
+//!   inputs;
 //! - `covers <item>`: no step, a claim: the script checks what `<item>` (a
 //!   part of the API as `api/uncovered.txt` names it) does (compat/coverage.rs
 //!   verifies it).
@@ -466,6 +469,11 @@ pub(crate) fn run(code: String, script: &str, assets: &Path) -> Result<(), Failu
             if desktop {
                 environment.idiom = Idiom::Desktop;
             }
+        } else if let Some(scale) = line.strip_prefix("fontscale ") {
+            environment.font_scale = scale
+                .trim()
+                .parse()
+                .map_err(|_| format!("`{line}`: fontscale <scale>"))?;
         } else {
             break;
         }

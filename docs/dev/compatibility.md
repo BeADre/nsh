@@ -142,7 +142,7 @@ run `cargo xtask api`, and commit the fixtures with the change. Existing steps s
 `script.txt` is one step per line (`compat/apps.rs` has the full list): `expect <text>` waits for a text on screen,
 `absent <text>` checks one is gone, `tap id:<testID>` / `label:<label>` / `text:<text>` presses a view (or its nearest
 pressable ancestor), `wait <ms>` runs timers, and `viewport <w> <h>` and `platform <os>` (first) size the screen and
-pick the platform whose `ios={{…}}` / `android={{…}}` / `desktop={{…}}` / `web={{…}}` props apply. What a view looks
+pick the platform whose `ios={{…}}` / `android={{…}}` / `desktop={{…}}` / `web={{…}}` props apply, and `fontscale <scale>` sets the user's text size. What a view looks
 like is checked as the platform receives it: `frame <selector> <x> <y> <width> <height>` (its layout, in points
 relative to its parent), `prop` / `noprop` (a host prop), `style` / `nostyle` (a paint or text style key), `listens`
 (an event the platform reports); `log <text>` checks a `console` line, and `covers <item>` is a claim, not a step.
