@@ -2,7 +2,7 @@ import { cleanup, effect, Input, type JSX, Scroll, signal, Text, View } from "ns
 import { createNativeValue } from "nsh/animated";
 import { BackHandler } from "nsh/android";
 import { Platform } from "nsh/device";
-import { Alert, Modal, SafeAreaView, Screen, useSafeAreaInsets } from "nsh/base";
+import { Alert, Modal, SafeAreaView, Screen, safeAreaInsets } from "nsh/base";
 import { Icon, type IconName } from "../icons";
 import { nav } from "../nav";
 import { Appear, Badge, Button, Card, colors, DemoPage, Figure, finish, header, hint, IconTile, Inset, isDark, mono, motion, Press, radius, Section, Stat, tints, Toggle } from "../ui";
@@ -11,7 +11,7 @@ const edges = ["top", "bottom", "left", "right"] as const;
 
 /** The safe-area insets where it renders, one figure per edge. */
 function Insets() {
-  const insets = useSafeAreaInsets();
+  const insets = safeAreaInsets();
   return (
     <View style={{ flexDirection: "row" }}>
       <Each of={edges}>{(edge) => <Stat width="25%" label={edge()[0].toUpperCase() + edge().slice(1)} value={`${Math.round(insets()[edge()])} pt`} />}</Each>
@@ -57,7 +57,7 @@ function Page(props: { intro: string; children?: JSX.Element }) {
           <Text style={{ fontSize: 15, lineHeight: 21, color: colors.muted, paddingHorizontal: 4 }}>{props.intro}</Text>
         </Appear>
         <Appear index={1}>
-          <Section title="Safe area" note="useSafeAreaInsets()">
+          <Section title="Safe area" note="safeAreaInsets()">
             <Insets />
           </Section>
         </Appear>

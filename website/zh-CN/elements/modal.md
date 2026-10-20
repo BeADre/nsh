@@ -36,7 +36,7 @@ function Example() {
 }
 ```
 
-`Modal` 从 [`nsh/base`](../modules/nsh-base.md#modal) 导入。`visible` 不为 `false` 时呈现，变为 `false` 时关闭；它还会给内容提供 modal 的安全区域 inset，供其内部的 `SafeAreaView` 和 `useSafeAreaInsets()` 读取。`Button` 是应用自己的组件：一个带文字、可按下的 `View`。
+`Modal` 从 [`nsh/base`](../modules/nsh-base.md#modal) 导入。`visible` 不为 `false` 时呈现，变为 `false` 时关闭；它还会给内容提供 modal 的安全区域 inset，供其内部的 `SafeAreaView` 和 `safeAreaInsets()` 读取。`Button` 是应用自己的组件：一个带文字、可按下的 `View`。
 
 ## 属性
 

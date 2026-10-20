@@ -47,7 +47,7 @@ pub fn registry() -> Registry {
         .module::<Keyboard>()
         .module::<StatusBar>()
         // The environment's accessors and hooks, as they are.
-        .reexport(&["safeArea", "useSafeAreaInsets", "keyboard"], &["Insets"])
+        .reexport(&["safeArea", "safeAreaInsets", "keyboard"], &["Insets"])
         // Navigation: made by `nsh-js` (`navigation.rs`), declared by hand.
         .native_values(&["Stack", "Screen", "Modal", "createNavigator"]);
     registry

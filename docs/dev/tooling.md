@@ -185,7 +185,7 @@ then text), the first match in tree order below the root, or its nearest pressab
 `Press`. Without `--tap`, `--taps <n>` taps the first pressable view. Waits are bounded so apps with timers or
 animations end: before the taps the app must be quiet for `--idle-ms` (at most 10 s), after each tap for 100 ms (also
 at most 10 s); `--wait <ms>` runs exactly that long instead, `--duration <ms>` keeps running after the last tap.
-`--safe-area <top,right,bottom,left>` sets the environment's insets (`useSafeAreaInsets`, `SafeAreaView`, screens).
+`--safe-area <top,right,bottom,left>` sets the environment's insets (`safeAreaInsets`, `SafeAreaView`, screens).
 
 ## Rust application projects (`nsh init --rust`)
 

@@ -5,7 +5,7 @@
 //! a native screen (UINavigationController on iOS, a stack with a toolbar
 //! on Android); screens stay mounted while their route is in the stack. A
 //! screen the user pops natively removes its route. Screens and modals
-//! provide their insets to what they render (`useSafeAreaInsets`).
+//! provide their insets to what they render (`safeAreaInsets`).
 
 use std::{
     ffi::{CStr, CString, c_int},

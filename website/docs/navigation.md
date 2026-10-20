@@ -170,7 +170,7 @@ A screen without a header still has the system bars around it; pad its content w
 
 ### Safe areas under the header
 
-Inside a screen, `useSafeAreaInsets()` and `SafeAreaView` report the insets below the header, not the whole surface's. With `headerTransparent`, the content starts at the top of the screen and the top inset is the header's height, so `SafeAreaView` keeps text clear of it while a background image fills the whole screen. With `ios={{ headerLargeTitle: true }}`, put a scroll view directly in the screen so the title can collapse as it scrolls.
+Inside a screen, `safeAreaInsets()` and `SafeAreaView` report the insets below the header, not the whole surface's. With `headerTransparent`, the content starts at the top of the screen and the top inset is the header's height, so `SafeAreaView` keeps text clear of it while a background image fills the whole screen. With `ios={{ headerLargeTitle: true }}`, put a scroll view directly in the screen so the title can collapse as it scrolls.
 
 ## Keeping the user on a screen: preventBack
 
@@ -261,7 +261,7 @@ A transparent modal makes a custom dialog:
 </Modal>
 ```
 
-Inside a modal, `SafeAreaView` and `useSafeAreaInsets()` give the modal's own insets. For system dialogs (an alert with buttons, an action sheet) use [`Alert`](../modules/nsh-base.md#alert) and [`ActionSheet`](../modules/nsh-base.md#actionsheet) from `nsh/base`; for a panel that slides up from the bottom, use a `Modal` with `ios={{ presentationStyle: "pageSheet" }}` and draw its content yourself.
+Inside a modal, `SafeAreaView` and `safeAreaInsets()` give the modal's own insets. For system dialogs (an alert with buttons, an action sheet) use [`Alert`](../modules/nsh-base.md#alert) and [`ActionSheet`](../modules/nsh-base.md#actionsheet) from `nsh/base`; for a panel that slides up from the bottom, use a `Modal` with `ios={{ presentationStyle: "pageSheet" }}` and draw its content yourself.
 
 ## The Android back button
 

@@ -141,14 +141,14 @@ fn a_single_file_app_on_the_native_modules() {
 }
 
 const NAVIGATION: &str = r#"import { mount, signal, Text, View } from "nsh";
-import { Modal, Screen, Stack, createNavigator, useSafeAreaInsets } from "nsh/base";
+import { Modal, Screen, Stack, createNavigator, safeAreaInsets } from "nsh/base";
 
 type Route = { name: string };
 const nav = createNavigator<Route>({ name: "home" });
 const open = signal(false);
 
 function Insets() {
-  const insets = useSafeAreaInsets();
+  const insets = safeAreaInsets();
   return <Text>{`inset ${insets().top}`}</Text>;
 }
 

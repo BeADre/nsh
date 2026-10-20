@@ -250,7 +250,7 @@ adb reverse tcp:8790 tcp:8790
 - **键盘。** `NshView` 会自行滚动，让获得焦点的输入框不被键盘遮挡。请不要设置 `android:windowSoftInputMode`，或使用
   `adjustResize`；若使用 `adjustPan`，系统会改为平移整个窗口。
 - **安全区域。** 视图只把与它重叠的系统栏和键盘部分作为 insets 上报，所以位于工具栏下方的 `NshView` 不会有顶部
-  inset。如需全面屏（edge-to-edge）内容，请在系统栏后方绘制，并让应用使用 `SafeAreaView` / `useSafeAreaInsets()`。
+  inset。如需全面屏（edge-to-edge）内容，请在系统栏后方绘制，并让应用使用 `SafeAreaView` / `safeAreaInsets()`。
 - **配置变更。** 旋转屏幕或切换主题时，Activity 被重建会销毁该视图，应用随之从头启动。若要让它保持运行，请声明由
   Activity 自行处理的配置变更；打包出的 NSH 应用使用的是：
 

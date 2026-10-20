@@ -319,7 +319,7 @@ pub fn global<G: Default + 'static>() -> Signal<G> {
 }
 
 /// The insets of the screen or modal the component on `host` is on, below
-/// its header, else the safe area (TS: `useSafeAreaInsets()`).
+/// its header, else the safe area (TS: `safeAreaInsets()`).
 pub(crate) fn insets_of(host: NodeId) -> EdgeInsets {
     let existing = with_data(|d| d.ambient.insets.get(&host).copied());
     let signal = existing.unwrap_or_else(|| {

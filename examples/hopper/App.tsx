@@ -1,5 +1,5 @@
 import { type JSX, mount, Scroll, signal, Text, View } from "nsh";
-import { createNavigator, Screen, Stack, useSafeAreaInsets, StatusBar } from "nsh/base";
+import { createNavigator, Screen, Stack, safeAreaInsets, StatusBar } from "nsh/base";
 import { FlightPlan } from "./cards/FlightPlan";
 import { HopLog } from "./cards/HopLog";
 import { Mass } from "./cards/Mass";
@@ -42,7 +42,7 @@ function Section(props: { visible: boolean; children: JSX.Element }) {
 
 /** The bottom bar switching sections. */
 function TabBar(props: { value: string; onChange: (name: string) => void }) {
-  const insets = useSafeAreaInsets();
+  const insets = safeAreaInsets();
   return (
     <View
       accessibilityRole="tablist"

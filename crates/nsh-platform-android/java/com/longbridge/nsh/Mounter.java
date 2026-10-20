@@ -1498,7 +1498,7 @@ final class Mounter {
         updateBack();
     }
 
-    /** A screen's insets below its header, for `useSafeAreaInsets()`. */
+    /** A screen's insets below its header, for `safeAreaInsets()`. */
     private void reportScreenInsets(int id, ScreenOptions o) {
         float top = o.shown && !o.transparent ? 0 : host.safeTop();
         insets(id, top, host.safeRight(), host.safeBottom(), host.safeLeft());

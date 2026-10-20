@@ -48,7 +48,7 @@ loader). Where each one is implemented and declared: `js-modules.md`.
   children and slot holders; a module function runs in the call, or converts its arguments there and sends what it
   runs to the core as an op, returning a promise the core's events settle when it has a result
   (`docs/dev/rust-classes.md`, "How calls cross"). Values a registry names natively (`Registry::native_values`: `nsh/base`'s navigation) and
-  re-exports (`safeArea`, `useSafeAreaInsets`) come from the runtime. NSH's own export wins over a registry's of the
+  re-exports (`safeArea`, `safeAreaInsets`) come from the runtime. NSH's own export wins over a registry's of the
   same name.
 
 QuickJS-NG resolves imports when it compiles a module, so the bytecode compiler installs the same loader
@@ -128,7 +128,7 @@ One Oxc pass removes TypeScript and lowers JSX (`plugin.rs` `compile_native`):
 (`Registry::native_values`). A stack renders each route (by identity) with the app's function into a screen, the app's
 `<Screen>` or one around what it rendered (also when a hot component returns an accessor); a screen the user pops
 natively removes its route; screens and modals provide the insets they report to what they render
-(`useSafeAreaInsets`).
+(`safeAreaInsets`).
 
 ## Runtime modules
 

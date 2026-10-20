@@ -7,14 +7,14 @@ demo: ui-navigation
 
 # nsh/base
 
-`nsh/base` 是应用界面的基础组件层：不带样式、负责行为、状态、焦点和无障碍的组件，各平台通用。它位于基础元素（`nsh` 和各个 `nsh/<module>` 模块）与应用自己的组件库之间，就像 GPUI Kit 中 `gpui-base` 位于 `gpui` 与带样式的组件库之间（见[模块](./index.md#three-layers)）。它提供控件（`Button`）、导航（由 `createNavigator` 创建的导航器驱动的、由多个 `Screen` 组成的 `Stack`，以及在所有内容之上展示内容的 `Modal`）、安全区（`SafeAreaView`、`safeArea()` 和 `useSafeAreaInsets()`）、系统对话框（`Alert` 和 `ActionSheet`）、软键盘（`Keyboard`、`keyboard()` 和 `KeyboardAvoidingView`）以及状态栏（`StatusBar`）。
+`nsh/base` 是应用界面的基础组件层：不带样式、负责行为、状态、焦点和无障碍的组件，各平台通用。它位于基础元素（`nsh` 和各个 `nsh/<module>` 模块）与应用自己的组件库之间，就像 GPUI Kit 中 `gpui-base` 位于 `gpui` 与带样式的组件库之间（见[模块](./index.md#three-layers)）。它提供控件（`Button`）、导航（由 `createNavigator` 创建的导航器驱动的、由多个 `Screen` 组成的 `Stack`，以及在所有内容之上展示内容的 `Modal`）、安全区（`SafeAreaView`、`safeArea()` 和 `safeAreaInsets()`）、系统对话框（`Alert` 和 `ActionSheet`）、软键盘（`Keyboard`、`keyboard()` 和 `KeyboardAvoidingView`）以及状态栏（`StatusBar`）。
 
 外观由应用决定：页面、模态框或标题栏里的内容都是你自己的 JSX，用基础元素配合样式、[Tailwind](../docs/tailwind.md) 类和主题绘制；或者是[你自己的 crate](../docs/rust.md) 中的 Rust 组件；也可以是社区基于 `nsh/base` 构建的组件库。每个宿主都提供 `nsh/base`；Rust 应用通过 `nsh-base` crate 使用同一套 API（`nsh_base::{SafeAreaView, …}`）。
 
 ```tsx
 import {
   ActionSheet, Alert, Button, createNavigator, Keyboard, keyboard, KeyboardAvoidingView, Modal, SafeAreaView, safeArea,
-  Screen, Stack, StatusBar, useSafeAreaInsets,
+  Screen, Stack, StatusBar, safeAreaInsets,
 } from "nsh/base";
 import type {
   ActionSheetOptions, AlertButton, AlertButtonStyle, AlertOptions, AvoidBehavior, ButtonProps, BarAnimation, BarStyle, Edge,
@@ -208,7 +208,7 @@ const depth = () => nav.routes().length;
 
 标题栏项（`headerLeft`、`headerRight`、`headerTitle`）就是普通的 JSX：它们可以读取 signal、处理点击，并在页面显示期间更新。
 
-页面内容从不透明标题栏的下方开始。设置 `headerTransparent` 或 `headerShown={false}` 时，内容从屏幕顶部开始；可以用 [SafeAreaView](#safeareaview) 或 `useSafeAreaInsets()` 避开标题栏和状态栏。
+页面内容从不透明标题栏的下方开始。设置 `headerTransparent` 或 `headerShown={false}` 时，内容从屏幕顶部开始；可以用 [SafeAreaView](#safeareaview) 或 `safeAreaInsets()` 避开标题栏和状态栏。
 
 ```tsx
 <Screen title="Large title" ios={{ headerLargeTitle: true }}>
@@ -287,7 +287,7 @@ function Settings() {
 | `onShow` | `() => void` | 无 | Modal 已显示。 |
 | `onDismiss` | `() => void` | 无 | Modal 已关闭。 |
 
-Modal 会把自己的安全区边距提供给其内容，因此其中的 [SafeAreaView](#safeareaview) 和 `useSafeAreaInsets()` 使用的是 Modal 的边距。设置 `transparent` 和 `animationType="fade"` 的 Modal 可以用作你自己设计的对话框或底部面板：
+Modal 会把自己的安全区边距提供给其内容，因此其中的 [SafeAreaView](#safeareaview) 和 `safeAreaInsets()` 使用的是 Modal 的边距。设置 `transparent` 和 `animationType="fade"` 的 Modal 可以用作你自己设计的对话框或底部面板：
 
 ```tsx
 <Modal visible={open()} transparent animationType="fade" onRequestClose={close}>
@@ -347,23 +347,23 @@ inset 会**叠加**在视图自身的内边距上。在上面的例子里，内�
 | `children` | `JSX.Element` | 无 | 内容。 |
 | `class`、`classList`、`style`、`testID`、`onLayout`、`ref` | | | 作用于该视图。其内边距会与 inset 相加。 |
 
-<a id="safearea-and-usesafeareainsets"></a>
+<a id="safearea-and-safeareainsets"></a>
 
-### safeArea 与 useSafeAreaInsets
+### safeArea 与 safeAreaInsets
 
 需要具体数值时（比如自己给底栏加内边距），使用下面两个 accessor 之一。它们都返回 `Insets` 对象（`{ top, right, bottom, left }`，单位 pt），并且是响应式的：读取它们的代码会在值变化时（例如旋转屏幕）重新运行。
 
 | 导出 | 返回值 |
 |---|---|
 | `safeArea()` | surface 的安全区域：避开系统 UI（刘海、Home 指示条、标题栏）的部分。 |
-| `useSafeAreaInsets()` | 在组件中调用。返回该组件所在位置的 inset 的 accessor：最近的页面（标题栏下方）的、最近的模态框的，否则为 surface 的安全区域。与 SafeAreaView 使用的 inset 相同。 |
+| `safeAreaInsets()` | 在组件中调用。返回该组件所在位置的 inset 的 accessor：最近的页面（标题栏下方）的、最近的模态框的，否则为 surface 的安全区域。与 SafeAreaView 使用的 inset 相同。 |
 
 ```tsx
 import { Text, View } from "nsh";
-import { useSafeAreaInsets } from "nsh/base";
+import { safeAreaInsets } from "nsh/base";
 
 function BottomBar() {
-  const insets = useSafeAreaInsets();
+  const insets = safeAreaInsets();
   return (
     <View style={{ flexDirection: "row", padding: 8, paddingBottom: 8 + insets().bottom }}>
       <Text>Bottom bar</Text>
@@ -554,10 +554,10 @@ keyboard: Accessor<{ height: number; duration: number }>
 
 ```tsx
 import { Input, View } from "nsh";
-import { keyboard, useSafeAreaInsets } from "nsh/base";
+import { keyboard, safeAreaInsets } from "nsh/base";
 
 function MessageBar() {
-  const insets = useSafeAreaInsets();
+  const insets = safeAreaInsets();
   return (
     <View
       style={{

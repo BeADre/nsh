@@ -122,7 +122,7 @@ impl ScreenController {
     }
 
     /// The screen's insets not covered by system UI or its header, for
-    /// `useSafeAreaInsets()` inside it; and where its content starts below
+    /// `safeAreaInsets()` inside it; and where its content starts below
     /// the header.
     pub(crate) fn report_insets(&self) {
         let Some(view) = self.view() else { return };

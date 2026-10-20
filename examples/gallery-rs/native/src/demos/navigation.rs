@@ -80,7 +80,7 @@ fn page(intro: &str, content: impl IntoIterator<Item = AnyElement>) -> AnyElemen
                 .child(
                     appear(1).child(
                         Section::new("Safe area")
-                            .note("useSafeAreaInsets()")
+                            .note("safeAreaInsets()")
                             .child(insets()),
                     ),
                 )

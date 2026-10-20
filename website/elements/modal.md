@@ -40,7 +40,7 @@ function Example() {
 
 `Modal` comes from [`nsh/base`](../modules/nsh-base.md#modal). It is presented while `visible` is not `false` and
 dismissed when it becomes `false`, and it gives its content the modal's safe-area insets, which `SafeAreaView` and
-`useSafeAreaInsets()` inside it read. `Button` is the app's own component: a pressable `View` with a label.
+`safeAreaInsets()` inside it read. `Button` is the app's own component: a pressable `View` with a label.
 
 ## Props
 

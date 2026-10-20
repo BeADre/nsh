@@ -1,7 +1,7 @@
 import { batch, computed, effect, Input, Scroll, signal, Text, View, type YNode } from "nsh";
 import { createNativeValue, LayoutAnimation } from "nsh/animated";
 import { Clipboard } from "nsh/clipboard";
-import { keyboard, KeyboardAvoidingView, useSafeAreaInsets } from "nsh/base";
+import { keyboard, KeyboardAvoidingView, safeAreaInsets } from "nsh/base";
 import { List } from "nsh/list";
 import { Icon, type IconName } from "./icons";
 import { alpha, Appear, Badge, colors, finish, IconTile, motion, Press, radius, RoundButton, Segmented, toneTint } from "./ui";
@@ -40,7 +40,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  * from local scripts and timers.
  */
 export function Chat(props: { autoplay?: string } = {}) {
-  const insets = useSafeAreaInsets();
+  const insets = safeAreaInsets();
   let ids = 0;
   const nextId = () => `m${ids++}`;
 

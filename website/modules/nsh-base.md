@@ -12,7 +12,7 @@ accessibility, on every platform. It sits between the primitives (`nsh` and the 
 app's own component library, as `gpui-base` sits between `gpui` and a styled library in GPUI Kit (see
 [Modules](./index.md#three-layers)). It provides controls (`Button`), navigation (a `Stack` of `Screen`s driven by a navigator you create
 with `createNavigator`, and `Modal` for content presented over everything else), safe areas (`SafeAreaView`,
-`safeArea()` and `useSafeAreaInsets()`), the system's dialogs (`Alert` and `ActionSheet`), the software keyboard
+`safeArea()` and `safeAreaInsets()`), the system's dialogs (`Alert` and `ActionSheet`), the software keyboard
 (`Keyboard`, `keyboard()` and `KeyboardAvoidingView`) and the status bar (`StatusBar`).
 
 The look is the app's: what goes inside a screen, a modal or a header is your own JSX, drawn from the primitives with
@@ -23,7 +23,7 @@ from the `nsh-base` crate (`nsh_base::{SafeAreaView, …}`).
 ```tsx
 import {
   ActionSheet, Alert, Button, createNavigator, Keyboard, keyboard, KeyboardAvoidingView, Modal, SafeAreaView, safeArea,
-  Screen, Stack, StatusBar, useSafeAreaInsets,
+  Screen, Stack, StatusBar, safeAreaInsets,
 } from "nsh/base";
 import type {
   ActionSheetOptions, AlertButton, AlertButtonStyle, AlertOptions, AvoidBehavior, ButtonProps, BarAnimation, BarStyle, Edge,
@@ -223,7 +223,7 @@ The header items (`headerLeft`, `headerRight`, `headerTitle`) are ordinary JSX: 
 and update while the screen is shown.
 
 The screen's content starts below an opaque header. With `headerTransparent` or `headerShown={false}`, it starts at
-the top of the screen; use [SafeAreaView](#safeareaview) or `useSafeAreaInsets()` to keep it clear of the header and
+the top of the screen; use [SafeAreaView](#safeareaview) or `safeAreaInsets()` to keep it clear of the header and
 the status bar.
 
 ```tsx
@@ -307,7 +307,7 @@ function Settings() {
 | `onShow` | `() => void` | none | The modal was shown. |
 | `onDismiss` | `() => void` | none | The modal was dismissed. |
 
-A modal provides its own insets to its content, so [SafeAreaView](#safeareaview) and `useSafeAreaInsets()` inside it
+A modal provides its own insets to its content, so [SafeAreaView](#safeareaview) and `safeAreaInsets()` inside it
 use the modal's insets. A modal with `transparent` and `animationType="fade"` works as a dialog or a bottom sheet of
 your own design:
 
@@ -373,7 +373,7 @@ is 0. SafeAreaView is for:
 | `children` | `JSX.Element` | none | The content. |
 | `class`, `classList`, `style`, `testID`, `onLayout`, `ref` | | | Applied to the view. Its padding is added to the insets. |
 
-### safeArea and useSafeAreaInsets
+### safeArea and safeAreaInsets
 
 When you need the numbers, for example to pad a bottom bar yourself, use one of the two accessors. Both return an
 `Insets` object (`{ top, right, bottom, left }` in points) and are reactive: code that reads them runs again when they
@@ -382,14 +382,14 @@ change, for example on rotation.
 | Export | Returns |
 |---|---|
 | `safeArea()` | The surface's safe area: the parts clear of system UI (notch, home indicator, title bar). |
-| `useSafeAreaInsets()` | Call it in a component. It returns an accessor of the insets where that component renders: the nearest screen's (below its header), the nearest modal's, or else the surface's safe area. These are the insets SafeAreaView uses. |
+| `safeAreaInsets()` | Call it in a component. It returns an accessor of the insets where that component renders: the nearest screen's (below its header), the nearest modal's, or else the surface's safe area. These are the insets SafeAreaView uses. |
 
 ```tsx
 import { Text, View } from "nsh";
-import { useSafeAreaInsets } from "nsh/base";
+import { safeAreaInsets } from "nsh/base";
 
 function BottomBar() {
-  const insets = useSafeAreaInsets();
+  const insets = safeAreaInsets();
   return (
     <View style={{ flexDirection: "row", padding: 8, paddingBottom: 8 + insets().bottom }}>
       <Text>Bottom bar</Text>
@@ -594,10 +594,10 @@ reads it runs again when the keyboard shows, hides or changes height.
 
 ```tsx
 import { Input, View } from "nsh";
-import { keyboard, useSafeAreaInsets } from "nsh/base";
+import { keyboard, safeAreaInsets } from "nsh/base";
 
 function MessageBar() {
-  const insets = useSafeAreaInsets();
+  const insets = safeAreaInsets();
   return (
     <View
       style={{

@@ -259,10 +259,10 @@ A message bar pinned to the bottom of a screen is not in a scroll view, so nothi
 
 ```tsx
 import { Input, Scroll, signal, View } from "nsh";
-import { keyboard, KeyboardAvoidingView, useSafeAreaInsets } from "nsh/base";
+import { keyboard, KeyboardAvoidingView, safeAreaInsets } from "nsh/base";
 
 function ChatScreen() {
-  const insets = useSafeAreaInsets();
+  const insets = safeAreaInsets();
   const draft = signal("");
   const send = () => {
     if (draft().trim()) console.log("send", draft());

@@ -170,7 +170,7 @@ function Compose() {
 
 ### 标题栏下的安全区域
 
-在页面内部，`useSafeAreaInsets()` 和 `SafeAreaView` 报告的是标题栏下方的 inset，而不是整个 surface 的。使用 `headerTransparent` 时，内容从页面顶部开始，顶部 inset 等于标题栏高度，因此 `SafeAreaView` 能让文字避开标题栏，同时背景图铺满整个页面。使用 `ios={{ headerLargeTitle: true }}` 时，把滚动视图直接放在页面里，标题才能随滚动收起。
+在页面内部，`safeAreaInsets()` 和 `SafeAreaView` 报告的是标题栏下方的 inset，而不是整个 surface 的。使用 `headerTransparent` 时，内容从页面顶部开始，顶部 inset 等于标题栏高度，因此 `SafeAreaView` 能让文字避开标题栏，同时背景图铺满整个页面。使用 `ios={{ headerLargeTitle: true }}` 时，把滚动视图直接放在页面里，标题才能随滚动收起。
 
 ## 把用户留在当前页面：preventBack
 
@@ -261,7 +261,7 @@ function Settings() {
 </Modal>
 ```
 
-在模态视图内部，`SafeAreaView` 和 `useSafeAreaInsets()` 给出的是模态视图自己的 inset。系统对话框（带按钮的提示框、操作表）请用 `nsh/base` 的 [`Alert`](../modules/nsh-base.md#alert) 和 [`ActionSheet`](../modules/nsh-base.md#actionsheet)；从底部滑出的面板，用带 `ios={{ presentationStyle: "pageSheet" }}` 的 `Modal`，内容由你自己绘制。
+在模态视图内部，`SafeAreaView` 和 `safeAreaInsets()` 给出的是模态视图自己的 inset。系统对话框（带按钮的提示框、操作表）请用 `nsh/base` 的 [`Alert`](../modules/nsh-base.md#alert) 和 [`ActionSheet`](../modules/nsh-base.md#actionsheet)；从底部滑出的面板，用带 `ios={{ presentationStyle: "pageSheet" }}` 的 `Modal`，内容由你自己绘制。
 
 ## Android 返回键
 

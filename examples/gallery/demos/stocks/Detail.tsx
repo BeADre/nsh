@@ -1,7 +1,7 @@
 import { cleanup, computed, effect, Scroll, signal, Text, untracked, View } from "nsh";
 import { createNativeValue } from "nsh/animated";
 import { Canvas } from "nsh/canvas";
-import { Modal, Screen, useSafeAreaInsets } from "nsh/base";
+import { Modal, Screen, safeAreaInsets } from "nsh/base";
 import { Icon } from "../../icons";
 import { Button, colors, finish, header, Press, Sheet, Stat } from "../../ui";
 import { Depth, OrderBook } from "./Book";
@@ -257,7 +257,7 @@ export function StockView(props: { market: Market; stock: Stock; wide?: boolean;
   const side = signal<Side>("buy");
   const ticket = signal(false);
   const banner = createBanner();
-  const insets = useSafeAreaInsets();
+  const insets = safeAreaInsets();
   const trade = (s: Side) => {
     side.set(s);
     ticket.set(true);

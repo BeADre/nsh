@@ -38,7 +38,7 @@ NSH 没有“大而全”的汇总模块：每个 API 只存在于一个地方�
 | 模块 | 导出 | 页面 |
 |---|---|---|
 | `nsh` | `signal`、`computed`、`effect`、`batch`、`untracked`、`cleanup`、`context`、`split`、`mount`；`View`、`Text`、`Scroll`、`Input`；元素、样式、事件和 JSX 的类型（`YNode`、`ViewStyle` 等） | [nsh](./nsh.md) |
-| `nsh/base` | `createNavigator`、`Stack`、`Screen`、`Modal`；`SafeAreaView`、`safeArea`、`useSafeAreaInsets`；`Alert`、`ActionSheet`；`Keyboard`、`keyboard`、`KeyboardAvoidingView`；`StatusBar` | [nsh/base](./nsh-base.md) |
+| `nsh/base` | `createNavigator`、`Stack`、`Screen`、`Modal`；`SafeAreaView`、`safeArea`、`safeAreaInsets`；`Alert`、`ActionSheet`；`Keyboard`、`keyboard`、`KeyboardAvoidingView`；`StatusBar` | [nsh/base](./nsh-base.md) |
 | `nsh/animated` | `createNativeValue`、`NativeValue`、`NativeNode`、`Animated`、`Easing`、`LayoutAnimation` | [nsh/animated](./nsh-animated.md) |
 | `nsh/list` | `List`（虚拟化、可复用单元格的列表） | [nsh/list](./nsh-list.md) |
 | `nsh/canvas` | `Canvas`、`Path2D`、`CanvasRenderingContext2D`、`CanvasGradient` | [nsh/canvas](./nsh-canvas.md) |

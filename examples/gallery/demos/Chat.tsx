@@ -2,7 +2,7 @@ import { batch, computed, effect, Input, Scroll, signal, Text, View, type ViewSt
 import { createNativeValue, LayoutAnimation } from "nsh/animated";
 import { Clipboard } from "nsh/clipboard";
 import { Platform } from "nsh/device";
-import { keyboard, KeyboardAvoidingView, useSafeAreaInsets } from "nsh/base";
+import { keyboard, KeyboardAvoidingView, safeAreaInsets } from "nsh/base";
 import { List } from "nsh/list";
 import { Icon, type IconName } from "../icons";
 import { alpha, Appear, Badge, colors, desktop, finish, IconTile, motion, Press, radius, RoundButton, Segmented, toneTint } from "../ui";
@@ -43,7 +43,7 @@ export function Chat() {
   const wide = desktop();
   /** Desktop: messages and the composer in a centered column. */
   const column: ViewStyle = wide ? { width: "100%", maxWidth: 820, alignSelf: "center" } : {};
-  const insets = useSafeAreaInsets();
+  const insets = safeAreaInsets();
   let ids = 0;
   const nextId = () => `m${ids++}`;
 

@@ -3,7 +3,7 @@
 //! reduced motion, layout direction) written when the platform reports a
 //! change, read through read-only accessors; `nsh/device` (`Platform`,
 //! `PixelRatio`, `I18nManager`) and `nsh/accessibility`; the insets
-//! context screens and modals provide (`useSafeAreaInsets`).
+//! context screens and modals provide (`safeAreaInsets`).
 
 use std::{
     cell::{Cell, RefCell},
@@ -360,9 +360,9 @@ pub(crate) fn locale(ctx: *mut JsContext) -> nsh_core::platform::Locale {
     current(ctx).locale
 }
 
-/// `useSafeAreaInsets()`: the insets of the nearest screen or modal (an
+/// `safeAreaInsets()`: the insets of the nearest screen or modal (an
 /// accessor).
-unsafe extern "C" fn use_safe_area_insets(
+unsafe extern "C" fn safe_area_insets(
     ctx: *mut JsContext,
     _this: JsValue,
     _argc: c_int,
@@ -398,8 +398,8 @@ pub(crate) const REEXPORTS: &[Item] = &[
         ),
     ),
     (
-        "useSafeAreaInsets",
-        Export::Function(use_safe_area_insets, 0),
+        "safeAreaInsets",
+        Export::Function(safe_area_insets, 0),
         Ts::function(
             "Insets not covered by system UI or headers where this component renders:\nthe surface's safe area, a modal's, or a screen's (below its header).",
             &["(): Accessor<Insets>"],

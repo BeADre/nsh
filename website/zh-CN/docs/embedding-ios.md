@@ -254,7 +254,7 @@ try app.loadBundle(at: bundledURL)
   引擎运行在自己的线程上；主线程从不等待它。
 - **状态栏。** 嵌入应用的 `StatusBar` 会改变 `NshAppView.preferredStatusBarStyle` 等属性的返回值；宿主视图控制器必须像上面的示例那样转发它们。
 - **安全区域。** 应用照常使用 [`nsh/base`](../modules/nsh-base.md#safeareaview) 中的 `SafeAreaView` 或
-  `useSafeAreaInsets()`。放在你自己标题栏下方的 `NshAppView` 拿到的是适用于它自身的 insets，而不是整个窗口的。
+  `safeAreaInsets()`。放在你自己标题栏下方的 `NshAppView` 拿到的是适用于它自身的 insets，而不是整个窗口的。
 - **Mac Catalyst。** 同一个 framework 也可用于 Catalyst 应用。
 
 ## 另请参阅

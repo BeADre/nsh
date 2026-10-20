@@ -1,7 +1,7 @@
 import { computed, Input, Scroll, signal, Text, View, type YNode } from "nsh";
 import { LayoutAnimation } from "nsh/animated";
 import { Platform } from "nsh/device";
-import { keyboard, KeyboardAvoidingView, useSafeAreaInsets } from "nsh/base";
+import { keyboard, KeyboardAvoidingView, safeAreaInsets } from "nsh/base";
 import { List } from "nsh/list";
 import { Icon, type IconName } from "../icons";
 import { Appear, Badge, bindRefresh, Button, colors, columnsFor, desktop, finish, hint, IconTile, Meter, mono, Press, radius, RoundButton, Section, Segmented, type Tone, toneColor, toneTint } from "../ui";
@@ -240,7 +240,7 @@ const lines = [
 
 /** An inverted list: starts at the newest message, keeps its place as older ones load. */
 function Chat() {
-  const insets = useSafeAreaInsets();
+  const insets = safeAreaInsets();
   let next = 0;
   const stamp = (n: number) => `${String(9 + Math.floor(n / 60) % 12).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
   const message = (text: string, mine: boolean): Message => ({ id: next, text, mine, time: stamp(next++) });

@@ -16,7 +16,7 @@ demo: guide-device
 | `colorScheme()` | `nsh/device` | `"light"` 或 `"dark"`。 |
 | `fontScale()` | `nsh/device` | 用户偏好的文字大小相对于默认值的比例（1 为默认）。 |
 | `safeArea()` | `nsh/base` | surface 中未被系统 UI 遮挡的 inset：`{ top, right, bottom, left }`。 |
-| `useSafeAreaInsets()` | `nsh/base` | 调用组件渲染位置（页面、模态视图）的 inset。 |
+| `safeAreaInsets()` | `nsh/base` | 调用组件渲染位置（页面、模态视图）的 inset。 |
 | `keyboard()` | `nsh/base` | 软键盘的 `{ height, duration }`。 |
 | `I18nManager.isRTL` | `nsh/device` | 应用是否从右到左布局。 |
 | `reduceMotion()`、`screenReaderEnabled()` | `nsh/accessibility` | 见[无障碍](./accessibility.md)。 |
@@ -133,12 +133,12 @@ import { colorScheme, setColorScheme } from "nsh/device";
 刘海、Home 指示条、状态栏、Android 导航栏以及 Mac Catalyst 的标题栏会遮挡 surface 的一部分。NSH 应用在所有平台上都是全屏绘制，被遮挡的部分以 inset 的形式提供。
 
 - `safeArea()` 给出整个 surface 的 inset。
-- `useSafeAreaInsets()` 给出**组件渲染位置**的 inset：在导航[页面](./navigation.md#标题栏下的安全区域)中从标题栏下方算起，在[模态视图](./navigation.md#模态视图)中是模态视图自己的。可能出现在多个地方的组件应该优先用它。
+- `safeAreaInsets()` 给出**组件渲染位置**的 inset：在导航[页面](./navigation.md#标题栏下的安全区域)中从标题栏下方算起，在[模态视图](./navigation.md#模态视图)中是模态视图自己的。可能出现在多个地方的组件应该优先用它。
 - `nsh/base` 中的 `SafeAreaView` 是一个按这些 inset 添加内边距的视图（默认四边都加，或用 `edges={["top", "bottom"]}` 指定），叠加在它自己的内边距之上。
 
 ```tsx
 import { View } from "nsh";
-import { SafeAreaView, useSafeAreaInsets } from "nsh/base";
+import { SafeAreaView, safeAreaInsets } from "nsh/base";
 
 function Screen() {
   return (
@@ -150,7 +150,7 @@ function Screen() {
 }
 
 function BottomBar() {
-  const insets = useSafeAreaInsets();
+  const insets = safeAreaInsets();
   return <View style={{ paddingBottom: insets().bottom + 8, paddingTop: 8, flexDirection: "row" }}>…</View>;
 }
 ```
