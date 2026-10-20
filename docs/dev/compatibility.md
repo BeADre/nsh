@@ -54,44 +54,71 @@ keeps, and for good, whatever the version number says; earlier versions made no 
 
 ## How it is enforced
 
-`api/` at the root of the repository is one record of what apps depend on, as text the tests compare:
+Compatibility rests on a test suite of old apps that never changes, as the web platform's rests on web-platform-tests:
+while every fixture passes unchanged, a change keeps the apps built before it working. `api/` at the root of the
+repository holds that suite and the record of what apps depend on:
 
 ```
 api/
   runtime.txt           every module's exports (`nsh:rt` included) and the globals, with their members and kinds
   types/                the declarations of `.nsh/types`
+  tailwind.txt          every Tailwind class the resolver offers and the style it resolves to, in each context
   apps/<app>/           fixture apps: bundle.js and assets/ as some checkout's `nsh build --release` wrote them
-    script.txt          what a user does and sees in it
+    script.txt          what a user does and sees in it, and the API it checks (`covers`)
+  cases/<case>.tsx      the sources of small fixtures: the tests of single APIs
+  uncovered.txt         the API no fixture's script checks yet; it only shrinks
   closed.txt            the entries closed for security (rule 7), each with its reason
 ```
 
-The record only grows, as the web platform does: a name that shipped is kept, whatever release shipped it. There are
-no copies per version. Git's history is the baseline: every change reaches `main` through a pull request, each pull
-request is held to the record as of its merge base, so by induction everything that ever reached `main`, every
-release included, is still offered. Releases need nothing from `api/`.
+The record and the suite only grow, as the web platform does: a name that shipped is kept, whatever release shipped
+it. There are no copies per version. Git's history is the baseline: every change reaches `main` through a pull
+request, each pull request is held to `api/` as of its merge base, so by induction everything that ever reached
+`main`, every release included, is still offered and still passes its tests. Releases need nothing from `api/`.
 
 The engine's tests (`crates/nsh-engine/tests/engine/compat/`) check, on every pull request (the Core workflow):
 
-- `surface_is_recorded`: `api/runtime.txt` and `api/types/` are the code's surface. Any change to the API, additions
-  included, shows up as their diff in review. `cargo xtask api` records it.
-- `nothing_merged_is_removed`: everything the record offered at git's merge base with `main` (on `main`, the parent
-  commit; `NSH_API_BASE=<rev>` names another) is still offered, by rules 1 to 3: no name of `runtime.txt` is gone or
-  changed kind, and every declaration of `types/` is kept, the same or widened (`compare.rs` says exactly what counts
-  as widening; it compares declarations with their parameters' names erased). Entries in `closed.txt` are the only
-  exceptions. The files of the fixture apps are unchanged, and their scripts only gain steps. In CI the test needs
-  git's history and fails without it; locally, without it, it skips with a note.
+- `surface_is_recorded`: `api/runtime.txt`, `api/types/` and `api/tailwind.txt` are the code's surface. Any change to
+  the API, additions included, shows up as their diff in review. `cargo xtask api` records it.
+- `nothing_merged_is_removed`: everything `api/` held at git's merge base with `main` (on `main`, the parent commit;
+  `NSH_API_BASE=<rev>` names another) is still offered, by rules 1 to 3: no name of `runtime.txt` is gone or changed
+  kind; every declaration of `types/` is kept, the same or widened (`compare.rs` says exactly what counts as widening;
+  it compares declarations with their parameters' names erased); every class of `tailwind.txt` still resolves to the
+  same line (a class may be added, its output never changes). Entries in `closed.txt` are the only exceptions. The
+  files of the fixture apps are unchanged, and their scripts only gain steps. In CI the test needs git's history and
+  fails without it; locally, without it, it skips with a note.
 - `apps_still_run`: each fixture app, as it was built, starts on this runtime without an error and does what its
   script says. This is what catches what names cannot: `nsh:rt`'s calling conventions, props and styles that still
   parse, behavior.
+- `coverage::every_api_is_tested`: every export, global NSH provides (the language's own builtins aside), host prop,
+  event and style key is checked by a fixture's script, or listed in `uncovered.txt`; the list holds nothing a script
+  checks. A script claims what it checks with `covers <item>` steps (`[<module>] <name>`, `[globals] <name>`,
+  `[props] <name>`, `[events] <name>`, `[styles] <name>`; platform props as `ios.<name>`, `android.<name>`, ...).
+  Each claim is verified: the bundle uses the item, and for props, events and style keys, renaming the item in the
+  bundle makes a check step of the script fail. For exports and globals only the use can be verified: the claim is
+  the author's word that a step checks the result.
+- `coverage::uncovered_only_shrinks`: `uncovered.txt` gains no entry over the merge base, so a new API lands with its
+  test.
 - `declarations_are_understood`: every declaration is one `compare.rs` can read, so none escapes the comparison.
+
+`tailwind.txt` has one line per class, `<class> <style>`: the resolved style's fields that differ from the defaults,
+then ` | <context>: <style>` for each context (dark, a platform, a window width, a state, a group's state, a sibling
+position, rtl, reduce motion) where the class resolves differently. The classes are enumerated from the code: the
+resolver's utilities and prefixes, each prefix with every theme scale name, the component theme's tokens, a number
+scale, fractions and representative arbitrary values, and each variant on one utility. The style is printed from the
+resolver's own types, so renaming one of their fields changes the record without changing what apps see: such a pull
+request records it with `cargo xtask api` and says so.
 
 ### Changing the API
 
 1. Make the change additive (the rules above).
-2. Run `cargo xtask api` and commit `api/runtime.txt` and `api/types/` with the change. Their diff is the review of
-   the API change, next to the `## Public API` section of the pull request.
-3. `cargo test -p nsh-engine --test engine compat::` must pass with the fixtures' bundles and assets unchanged and
-   nothing added to `api/closed.txt` (rule 7 aside).
+2. Test it: write `api/cases/<case>.tsx`, a small app that uses the new API and shows its result, keep its build with
+   `cargo xtask api --keep api/cases/<case>.tsx`, and write steps in `api/apps/<case>-<version>/script.txt` that check
+   the result, with a `covers <item>` step for each part.
+3. Run `cargo xtask api` and commit `api/` with the change: the record's diff is the review of the API change, next
+   to the `## Public API` section of the pull request, and `uncovered.txt` loses what the scripts now check. Covering
+   an older entry of `uncovered.txt` is welcome the same way.
+4. `cargo test -p nsh-engine --test engine compat::` must pass with the fixtures' bundles, assets and existing steps
+   unchanged and nothing added to `api/closed.txt` (rule 7 aside).
 
 ### Keeping apps
 
@@ -103,17 +130,19 @@ for one), keep what the new compiler writes too:
 cargo xtask api --keep <app>...
 ```
 
-It builds each named app of `examples/` with this checkout into `api/apps/<app>-<version>/`, with the newest script of
-that app. Check that the scripts pass (`compat::apps_still_run`), extend them to what the change added, and commit the
-fixtures with the change. A new feature worth keeping working gets steps in a script of an app that uses it; existing
-steps stay.
+`<app>` is an example's name, or the path of an app directory or of a single entry module (`api/cases/<case>.tsx`).
+It is built with this checkout into `api/apps/<name>-<version>/`, with the newest script of that app or a stub. Check
+that the scripts pass (`compat::apps_still_run`), extend them to what the change added, and commit the fixtures with
+the change. Existing steps stay.
 
 ### Scripts
 
 `script.txt` is one step per line (`compat/apps.rs` has the full list): `expect <text>` waits for a text on screen,
 `absent <text>` checks one is gone, `tap id:<testID>` / `label:<label>` / `text:<text>` presses a view (or its nearest
-pressable ancestor), `wait <ms>` runs timers, and `viewport <w> <h>` (first) sizes the screen. A script should open
-every screen of its app and use what its app offers. `NSH_API_DUMP=1` prints the texts each step adds and removes:
+pressable ancestor), `wait <ms>` runs timers, `viewport <w> <h>` (first) sizes the screen, `frame <selector> <x> <y>
+<width> <height>` checks a view's layout frame (points, relative to its parent; it waits for it), and `covers <item>`
+is a claim, not a step. A script should open every screen of its app and check what its app offers.
+`NSH_API_DUMP=1` prints the texts each step adds and removes:
 
 ```sh
 NSH_API_DUMP=1 cargo test -p nsh-engine --test engine compat::apps_still_run -- --nocapture
@@ -121,10 +150,10 @@ NSH_API_DUMP=1 cargo test -p nsh-engine --test engine compat::apps_still_run -- 
 
 ## What the tests do not see
 
-The tests hold the names, the declarations and what the kept apps do. They cannot prove that a behavior no script
-exercises is unchanged, or that a platform backend draws the same: rules 4 and 6 are also the reviewer's job. A pull
-request that changes behavior apps can see says so, and a new feature worth keeping working gets steps in a fixture's
-script.
+The tests hold the names, the declarations, the Tailwind classes and what the fixtures check. They cannot prove that
+a behavior no script checks is unchanged, or that a platform backend draws the same: rules 4 and 6 are also the
+reviewer's job. A pull request that changes behavior apps can see says so, and every behavior worth keeping gets a
+step in a fixture's script.
 
 The host side (the iOS and Android SDKs, `nsh.h`, `AppView`) is the host app's API, rebuilt with each NSH update; it
 follows the crates' versions and is outside `api/`.

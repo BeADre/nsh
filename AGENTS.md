@@ -112,9 +112,11 @@ crates/
                        one line per step, tools' output only on failure, `-v` for everything; docs/dev/tooling.md "Output")
   xtask/               Maintainer tasks: `cargo xtask android` (Android runtime), `ios-embed` (the iOS SDK), `dist` (the distribution),
                        `web` (the WebAssembly runtime and the website's demos), `api` (records `api/`; `--keep <app>`: a fixture app)
-api/                  What apps depend on, one append-only record held by the engine's `compat` tests: `runtime.txt` (module exports,
-                      `nsh:rt` and globals), `types/` (declarations), `apps/` (fixture apps as a build wrote them, never rebuilt, with
-                      scripts of their use), `closed.txt` (the only removals: closed for security, with reasons)
+api/                  What apps depend on, append-only, held by the engine's `compat` tests: `runtime.txt` (module exports, `nsh:rt`
+                      and globals), `types/` (declarations), `tailwind.txt` (every class and what it resolves to), `apps/` (fixture apps
+                      as a build wrote them, never changed, with scripts that check the API: the backward-compat test suite),
+                      `cases/` (small fixtures' sources), `uncovered.txt` (API no script checks yet; only shrinks), `closed.txt` (the
+                      only removals: closed for security, with reasons)
 docs/                 Documentation; `docs/dev/`: for developers of nsh (architecture, internals, decisions, pitfalls)
 website/              The documentation site (Astro; guides, element / component / API reference in English and zh-CN) and its
                       runnable demos (`website/demos/*.tsx`, live on the site through the WebAssembly runtime); see its README
@@ -254,7 +256,9 @@ repository's `target/`; dependencies only it uses are declared in `crates/gpui/C
   only widen; inputs gain optional members only; behavior and defaults stay (new behavior is opt-in); formats
   (`.nshpkg`, certificates) are read forever. Every API change, additive ones included, is recorded in `api/`
   (`cargo xtask api`), one record that only grows; the only removals are security closures listed in
-  `api/closed.txt` (`docs/dev/compatibility.md`).
+  `api/closed.txt`. A new API lands with its test, a fixture whose script checks it (`api/cases/`, `cargo xtask api
+  --keep`); fixtures and their steps never change, and while they pass, old apps keep working
+  (`docs/dev/compatibility.md`).
 - **Primitives only.** The runtime adds capabilities, not widgets: components are drawn with the primitives in a UI
   set and look the same on every platform; no platform-styled widgets. React Native is a reference for which
   capabilities exist, not an API to be compatible with.

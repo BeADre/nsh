@@ -9,3 +9,4 @@
 #   [<module>] <path> -- <reason>          a name of runtime.txt
 #   <file>: <Name> -- <reason>             a declaration of types/
 #   <file>: <Name>.<member> -- <reason>    one of its members
+#   tailwind <class> -- <reason>           one Tailwind class of tailwind.txt (exactly that class)
