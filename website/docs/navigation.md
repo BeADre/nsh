@@ -7,11 +7,11 @@ group: ui
 
 # Navigation
 
-`nsh/ui` provides a native navigation stack and native modals. A `Stack` is a UINavigationController on iOS, with its header, swipe back and large titles, and a stack with a toolbar and predictive back on Android. You keep the list of routes in a navigator; the stack renders each route as a screen and keeps it mounted, with its state, while it is in the stack.
+`nsh/base` provides a native navigation stack and native modals. A `Stack` is a UINavigationController on iOS, with its header, swipe back and large titles, and a stack with a toolbar and predictive back on Android. You keep the list of routes in a navigator; the stack renders each route as a screen and keeps it mounted, with its state, while it is in the stack.
 
 ```tsx
 import { mount, Scroll, Text, View } from "nsh";
-import { createNavigator, Screen, Stack } from "nsh/ui";
+import { createNavigator, Screen, Stack } from "nsh/base";
 
 type Route = { name: "inbox" } | { name: "message"; id: number };
 
@@ -83,7 +83,7 @@ A route carries what the screen needs. The gallery app pushes routes that hold t
 
 ```ts
 import { type JSX } from "nsh";
-import { createNavigator } from "nsh/ui";
+import { createNavigator } from "nsh/base";
 
 export type Route = { name: "home" } | { name: "page"; page: () => JSX.Element };
 export const nav = createNavigator<Route>({ name: "home" });
@@ -160,7 +160,7 @@ A colored header:
 </Screen>
 ```
 
-A screen without a header still has the system bars around it; pad its content with [`SafeAreaView`](../components/safe-area-view.md):
+A screen without a header still has the system bars around it; pad its content with [`SafeAreaView`](../modules/nsh-base.md#safeareaview):
 
 ```tsx
 <Screen headerShown={false}>
@@ -178,7 +178,7 @@ To ask before discarding unsaved changes, set `preventBack` while there is somet
 
 ```tsx
 import { Input, signal } from "nsh";
-import { Alert, Screen } from "nsh/ui";
+import { Alert, Screen } from "nsh/base";
 
 function EditNote() {
   const text = signal("");
@@ -210,7 +210,7 @@ With `preventBack` on, the swipe back is disabled and the back buttons (in the h
 
 ```tsx
 import { signal, Text, View } from "nsh";
-import { Modal, SafeAreaView } from "nsh/ui";
+import { Modal, SafeAreaView } from "nsh/base";
 
 function Settings() {
   const open = signal(false);
@@ -261,7 +261,7 @@ A transparent modal makes a custom dialog:
 </Modal>
 ```
 
-Inside a modal, `SafeAreaView` and `useSafeAreaInsets()` give the modal's own insets. For system dialogs (an alert with buttons, an action sheet) use [`Alert`](../components/alert.md) and [`ActionSheet`](../components/action-sheet.md); for a panel that slides up over a dimmed backdrop and follows the finger, use [`Sheet`](../components/sheet.md).
+Inside a modal, `SafeAreaView` and `useSafeAreaInsets()` give the modal's own insets. For system dialogs (an alert with buttons, an action sheet) use [`Alert`](../modules/nsh-base.md#alert) and [`ActionSheet`](../modules/nsh-base.md#actionsheet) from `nsh/base`; for a panel that slides up from the bottom, use a `Modal` with `ios={{ presentationStyle: "pageSheet" }}` and draw its content yourself.
 
 ## The Android back button
 
@@ -296,11 +296,11 @@ function Editor() {
 
 ## Tabs and other layouts
 
-`nsh/ui` has no tab bar component. A tab bar is a row of pressable views and a signal holding the selected tab; render the selected tab's content with a function child or [`<If>`](../elements/control-flow.md). To keep each tab's state while switching, give each tab its own `Stack` and navigator and keep all of them mounted, hiding the inactive ones with `display: "none"`.
+A tab bar is your own UI, drawn from primitives: a row of pressable views and a signal holding the selected tab; render the selected tab's content with a function child or [`<If>`](../elements/control-flow.md). To keep each tab's state while switching, give each tab its own `Stack` and navigator and keep all of them mounted, hiding the inactive ones with `display: "none"`.
 
 ## Related
 
-- [Navigation components](../components/navigation.md): the `createNavigator`, `Stack`, `Screen` and `Modal` reference.
-- [`SafeAreaView`](../components/safe-area-view.md) and [`StatusBar`](../components/status-bar.md).
-- [`Alert`](../components/alert.md), [`ActionSheet`](../components/action-sheet.md) and [`Sheet`](../components/sheet.md).
+- [`nsh/base`](../modules/nsh-base.md): the `createNavigator`, `Stack`, `Screen`, `Modal` and `SafeAreaView` reference.
+- [`StatusBar`](../modules/nsh-base.md#status-bar).
+- [`Alert` and `ActionSheet`](../modules/nsh-base.md#dialogs).
 - [`nsh/android`](../modules/nsh-android.md): `BackHandler`.

@@ -5,8 +5,8 @@
 - Every command that builds an app writes `.nsh/types` next to its entry (only changed files; files NSH no longer writes
   are removed). None of it is checked in, and nothing in it depends on the app's code: `nsh_js::type_definitions(ui_sets)`
   makes the declarations of everything NSH serves (`nsh-js` `declarations.rs`), and `nsh_bundler::type_definitions()`
-  the asset imports. The files: `nsh/index.d.ts` (`nsh`), one per module (`nsh/list.d.ts`, `nsh/ui.d.ts`,
-  ...), `nsh/types.d.ts` (the styles, the elements' props and events, `YNode`, the JSX namespace; `nsh` exports them),
+  the asset imports. The files: `nsh/index.d.ts` (`nsh`), one per module (`nsh/list.d.ts`, `nsh/base.d.ts`,
+  an app's set's `app/native.d.ts`, ...), `nsh/types.d.ts` (the styles, the elements' props and events, `YNode`, the JSX namespace; `nsh` exports them),
   `nsh/jsx-runtime.d.ts` (where `jsxImportSource` finds `JSX`: no intrinsic elements, so every tag is checked as the
   component it names and generic ones are inferred: `native-pipeline.md`), `nsh/globals.d.ts` (console, timers,
   frames, the web APIs and the control flow components `If` / `Each`), and from the bundler `nsh/assets.d.ts` (what
@@ -123,8 +123,8 @@ before every `cargo run`): `✓` lines for its builds, cargo's and the tools' ou
 - Hosts that cannot run the app: several hosts on one session is intended (a phone joining), but a host serves only the
   UI sets it was built with, and dev hosts keep reconnecting, so a host built for another app (an Android host left on
   the emulator, whose `adb reverse` still reaches this port) can connect. The hello reports the host's platform and
-  the specifiers of the UI sets it serves (`HostPlatform`, `ui_sets`: iOS `set_ui_sets` or NSH's sets, Android
-  `ui_sets!` or NSH's sets); each bundle is published with the UI sets it imports (`Built::ui_sets`: the bundle's
+  the specifiers of the UI sets it serves (`HostPlatform`, `ui_sets`: iOS `set_ui_sets`, Android `ui_sets!`; `nsh/base`
+  for the prebuilt hosts); each bundle is published with the UI sets it imports (`Built::ui_sets`: the bundle's
   native imports that are UI sets, `Bundle::natives` / `HotBundle::natives`). The server checks every host against
   the latest bundle, on connect and on each new one: a host missing any gets neither the bundle nor its patch (nor
   build errors, which would hide why) but `ServerMessage::CannotRun`, which it shows over the app ("This host cannot run
@@ -244,9 +244,8 @@ toolchain cannot know the sets, so `nsh` builds the app its own (`crates/nsh-cli
   components or modules of the same name when an engine starts. Crates may depend on each other, or on crates not
   listed (a shared crate of components), through plain Cargo path dependencies; only listed ones export to TS.
 - A Cargo workspace in `<app>/.nsh/rust`, written on every command (files only when they change), each member depending
-  on every listed crate and passing their sets in `"rust"`'s order after NSH's
-  (`vec![nsh_ui::registry(), nsh_ui_mobile::registry(), set_app_charts(), set_app_storage()]`): `cli` (the command
-  line, `nsh_cli::main_with` of NSH's sets and the app's), `ios-host` / `ios-app` (the development host and the
+  on every listed crate and passing `nsh/base`'s and their sets in `"rust"`'s order
+  (`vec![nsh_base::registry(), set_app_charts(), set_app_storage()]`; the runtime's modules are always served): `cli` (the command line, `nsh_cli::main_with` of the app's sets), `ios-host` / `ios-app` (the development host and the
   release runner: `nsh_platform_ios::set_ui_sets`, then `nsh_ios_host::main` / `nsh_ios_app::main`), `linux-host` /
   `linux-app`, `macos-host` / `macos-app` and `windows-host` / `windows-app` (the same on Linux, macOS and Windows,
   `nsh_platform_linux` / `nsh_platform_macos` / `nsh_platform_windows::set_ui_sets`; `windows-app` is a windowed

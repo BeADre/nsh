@@ -8,7 +8,7 @@ use anyhow::{Context as _, bail};
 use crate::ui;
 
 const APP: &str = r##"import { mount, signal, Text, View } from "nsh";
-import { SafeAreaView } from "nsh/ui";
+import { SafeAreaView } from "nsh/base";
 
 function App() {
   const count = signal(0);
@@ -178,7 +178,7 @@ fn rust_files(name: &str, id: &str, source: Option<&Path>) -> Vec<(&'static str,
         None => format!("{{ version = {version:?}{extra} }}"),
     };
     let core = dep("nsh-core", "");
-    let ui = dep("nsh-ui", "");
+    let ui = dep("nsh-base", "");
     let mut manifest = format!(
         r#"[package]
 name = {package:?}
@@ -190,7 +190,7 @@ publish = false
 
 [dependencies]
 nsh-core = {core}
-nsh-ui = {ui}
+nsh-base = {ui}
 env_logger = "0.11"
 "#
     );

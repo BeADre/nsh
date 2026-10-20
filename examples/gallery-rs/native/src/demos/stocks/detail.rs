@@ -11,7 +11,6 @@ use nsh_core::{
     nsh_animation::{Curve, EaseMode},
     ui::prelude::*,
 };
-use nsh_ui_mobile::{Sheet, SheetEvent, SheetProps};
 
 use super::{
     book::{Depth, OrderBook},
@@ -22,7 +21,10 @@ use super::{
     tape::{Flow, tape},
     ticket::{Side, Ticket, TicketEvent, TicketProps},
 };
-use crate::ui::{Button, ButtonVariant, Finish, Finished, IconName, Stat, colors, icon, radius};
+use crate::ui::{
+    Button, ButtonVariant, Finish, Finished, IconName, Sheet, SheetEvent, SheetProps, Stat, colors,
+    icon, radius,
+};
 
 /// The props of a part of a stock's screen.
 #[derive(Debug, Clone, Copy, PartialEq, Props)]

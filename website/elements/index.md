@@ -9,7 +9,8 @@ order: 1
 Host elements are the primitives every screen is made of: `<View>`, `<Text>`, `<Image>` and the rest, imported from NSH's
 modules. Each one is a native view (a UIView subclass on iOS and Mac Catalyst, an Android `View`), created and laid out
 by the NSH runtime. Everything an app shows is
-made of them: the components of [`nsh/ui` and `nsh/ui/mobile`](../components/index.md) are drawn with the same elements.
+made of them: an app's buttons, cards, rows and screens are its own components, drawn with these elements and styled
+with `style` or Tailwind classes, so the app's look is entirely its own.
 
 ```tsx
 import { mount, signal, Text, View } from "nsh";
@@ -48,7 +49,7 @@ so importing them costs nothing at run time. See [JSX and components](../docs/js
 | `<Canvas>` | `nsh/canvas` | a view replaying a 2D drawing | [Canvas](./canvas.md) |
 | `<WebView>` | `nsh/webview` | WKWebView / android.webkit.WebView | [WebView](./web-view.md) |
 | `<Video>` | `nsh/video` | AVPlayerLayer / MediaPlayer on a TextureView | [Video](./video.md) |
-| `<Modal>` | `nsh/ui` | presented view controller / Dialog | [Modal](./modal.md) |
+| `<Modal>` | `nsh/base` | presented view controller / Dialog | [Modal](./modal.md) |
 | `<InputAccessoryView>` | `nsh/ios` | a bar over the keyboard (iOS only) | [nsh/ios](../modules/nsh-ios.md) |
 | `<If>`, `<Each>` | nothing: globals | none: control flow | [Control flow](./control-flow.md) |
 

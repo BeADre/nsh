@@ -335,7 +335,7 @@ Two props decide how scrolling and taps interact with the keyboard:
 - `"handled"`: a tap on something that handles it (a button) goes through and the keyboard stays; a tap on empty space hides it. Usually the right choice for forms.
 - `"always"`: taps never hide the keyboard.
 
-Both are decided natively when the tap or drag happens; nothing waits for JS. To hide the keyboard from code, call `Keyboard.dismiss()` from `nsh/ui/mobile`.
+Both are decided natively when the tap or drag happens; nothing waits for JS. To hide the keyboard from code, call `Keyboard.dismiss()` from [`nsh/base`](../modules/nsh-base.md#keyboard).
 
 ## Nested scroll views
 

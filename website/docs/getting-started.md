@@ -50,7 +50,7 @@ See [Building with Rust](./rust.md), [the CLI reference](./cli.md#nsh-init) and 
 
 ```tsx
 import { mount, signal, Text, View } from "nsh";
-import { SafeAreaView } from "nsh/ui";
+import { SafeAreaView } from "nsh/base";
 
 function App() {
   const count = signal(0);
@@ -75,10 +75,10 @@ mount(App);
 Line by line:
 
 - **`import { mount, signal, Text, View } from "nsh"`**: `nsh` is the core module: [signals](./reactivity.md), `mount`, the other reactive primitives, and the host elements `View` and `Text`. It is served by the native runtime, not bundled.
-- **`import { SafeAreaView } from "nsh/ui"`**: NSH's UI set, shared by every platform. [`SafeAreaView`](../components/safe-area-view.md) pads its content so it stays clear of the notch, the status bar and the home indicator; on desktops, where the safe area is 0, it adds no padding.
+- **`import { SafeAreaView } from "nsh/base"`**: the unstyled foundation of an app's UI (navigation stacks, modals, safe areas, dialogs, the keyboard and the status bar), on every platform. [`SafeAreaView`](../modules/nsh-base.md#safeareaview) pads its content so it stays clear of the notch, the status bar and the home indicator; on desktops, where the safe area is 0, it adds no padding.
 - **`function App()`** is a component: a function that returns JSX. It runs **once**. `signal(0)` makes a value that changes over time.
 - **`{count()}`** reads the signal inside JSX. The compiler sees a call and makes this text follow the signal: when `count` changes, the runtime updates this one text, nothing else.
-- **`<View onPress>`** is a native view that reacts to presses; `activeOpacity` fades it while pressed, natively. `View`, `Text`, `Image`, `Scroll`, `Input` and the other [host elements](../elements/index.md) are imported from NSH's modules, like any component; only `If` and `Each` need no import.
+- **`<View onPress>`** is a native view that reacts to presses; `activeOpacity` fades it while pressed, natively. `View`, `Text`, `Image`, `Scroll`, `Input` and the other [host elements](../elements/index.md) are imported from NSH's modules, like any component; only `If` and `Each` need no import. The button is the app's own: NSH provides the primitives and the capabilities, and an app draws its UI from them, with `style`, Tailwind classes or Rust components of its own.
 - **`style={{ … }}`** takes an object of camelCase style properties, with numbers in points. Layout is flexbox, and children stack in a column by default ([Layout](./layout.md)).
 - **`mount(App)`** renders the component into the app's surface.
 

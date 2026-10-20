@@ -1,7 +1,16 @@
 // Navigation: a stack of screens with header options, pushed and popped.
 import { mount, signal, Text, View } from "nsh";
-import { Button, createNavigator, Screen, Stack } from "nsh/ui";
+import { createNavigator, Screen, Stack } from "nsh/base";
 import { ui } from "./palette";
+
+function Button(props: { title: string; variant?: "primary" | "secondary"; onPress: () => void }) {
+  const primary = () => props.variant !== "secondary";
+  return (
+    <View accessibilityRole="button" onPress={props.onPress} style={primary() ? ui().primary : ui().raised} class="items-center rounded-xl py-3 active:opacity-75">
+      <Text style={{ fontWeight: "600", color: primary() ? ui().onPrimary : ui().text }}>{props.title}</Text>
+    </View>
+  );
+}
 
 type Route = { name: "home" } | { name: "detail"; id: number };
 

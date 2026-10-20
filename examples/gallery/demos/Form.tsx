@@ -1,7 +1,6 @@
 import { effect, Input, type InputProps, type JSX, Scroll, signal, split, Text, View, type YNode } from "nsh";
 import { Animated, createNativeValue, LayoutAnimation } from "nsh/animated";
-import { Modal, SafeAreaView, Screen, useSafeAreaInsets } from "nsh/ui";
-import { Keyboard, keyboard, KeyboardAvoidingView } from "nsh/ui/mobile";
+import { Keyboard, keyboard, KeyboardAvoidingView, Modal, SafeAreaView, Screen, useSafeAreaInsets } from "nsh/base";
 import { Icon, type IconName } from "../icons";
 import { nav } from "../nav";
 import { Appear, Badge, Button, Caption, Card, colors, DemoPage, finish, header, hint, IconTile, Inset, Meter, mono, Press, radius, RoundButton, Section, Segmented, tints, type Tone, toneColor } from "../ui";

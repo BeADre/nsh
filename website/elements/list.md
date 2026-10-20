@@ -38,7 +38,7 @@ function agree on the item type, which TypeScript infers from `each`.
 
 For a short list whose rows should all exist (a settings page, a form), an [`<Each>`](./control-flow.md) inside a
 [`<Scroll>`](./scroll.md) is simpler. For a list styled as a grouped table, see
-[`ListView`](../components/list-view.md). The [lists guide](../docs/lists.md) covers patterns: infinite loading, chat,
+[a settings-style list](../docs/lists.md#a-settings-style-list). The [lists guide](../docs/lists.md) covers patterns: infinite loading, chat,
 sections.
 
 ## Rows are recycled

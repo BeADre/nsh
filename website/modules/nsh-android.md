@@ -35,7 +35,7 @@ Shows a short message at the bottom of the screen (Android's toast). `duration` 
 ```ts
 import { Platform } from "nsh/device";
 import { Toast } from "nsh/android";
-import { Alert } from "nsh/ui";
+import { Alert } from "nsh/base";
 
 const notify = (message: string) =>
   Platform.OS === "android" ? Toast.show(message) : Alert.alert("Done", message);
@@ -60,7 +60,7 @@ The system back button and back gesture. Modals and navigation stacks handle the
 ```tsx
 import { cleanup, signal } from "nsh";
 import { BackHandler } from "nsh/android";
-import { Alert } from "nsh/ui";
+import { Alert } from "nsh/base";
 
 function Editor() {
   const dirty = signal(false);
@@ -91,4 +91,4 @@ Sets the status bar's color, below what rendered `<StatusBar android={{ backgrou
 setStatusBarBackgroundColor("#1e293b", true);
 ```
 
-See [`StatusBar`](../components/status-bar.md) for the component.
+See [`StatusBar`](./nsh-base.md#status-bar) for the component.

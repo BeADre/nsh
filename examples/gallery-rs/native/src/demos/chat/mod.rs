@@ -17,12 +17,12 @@ mod scripts;
 
 use std::{rc::Rc, time::Duration};
 
+use nsh_base::{KeyboardAvoidingView, KeyboardAvoidingViewProps};
 use nsh_core::{
     LayoutAnimation, Size,
     time::Instant,
     ui::{AccessibilityState, ScrollEvent, ScrollOffset, View, prelude::*},
 };
-use nsh_ui_mobile::{KeyboardAvoidingView, KeyboardAvoidingViewProps};
 
 use self::{
     glyphs::{GlyphName, glyph},

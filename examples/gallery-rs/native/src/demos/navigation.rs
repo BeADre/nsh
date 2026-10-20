@@ -3,11 +3,11 @@
 //! back button (as the TSX gallery's `demos/Navigation.tsx`). Each pushed
 //! screen shows where its safe area is.
 
+use nsh_base::{SafeAreaView, SafeAreaViewProps};
 use nsh_core::{
     Dialog, DialogButton, DialogButtonStyle, ModalPresentation,
     ui::{AnyElement, Os, Screen, prelude::*},
 };
-use nsh_ui::{SafeAreaView, SafeAreaViewProps};
 
 use crate::{
     nav,

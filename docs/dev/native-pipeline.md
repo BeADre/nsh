@@ -40,18 +40,19 @@ loader). Where each one is implemented and declared: `js-modules.md`.
 - `nsh/list`, `nsh/gesture`, `nsh/animated`, `nsh/canvas`, `nsh/webview`, `nsh/video`, `nsh/native`, `nsh/ios`,
   `nsh/image` (`Image`: the image element's component with its registry's functions on it) and the hand-written part
   of `nsh/android` (below).
-- The modules of registries (`Registry::specifier`): the UI sets a host serves (`HostOptions::ui_sets`,
-  `nsh/ui`, `nsh/ui/mobile`) and the runtime's (the registry parts of `nsh/android`, `nsh/accessibility` and `nsh/image`). Their
+- The modules of registries (`Registry::specifier`): the runtime's (`nsh/clipboard` and the registry parts of
+  `nsh/android`, `nsh/accessibility`, `nsh/desktop` and `nsh/image`) and the UI sets a host serves
+  (`HostOptions::ui_sets`: `nsh/base` by default, the app's `app/native`). Their
   components, modules and re-exports become exports (`components.rs`): a component is a host view naming it, with its
   props converted into their Rust types and sent by one render effect, events delivered to `on<Event>` handlers,
   children and slot holders; a module function runs in the call, or converts its arguments there and sends what it
   runs to the core as an op, returning a promise the core's events settle when it has a result
-  (`docs/dev/rust-classes.md`, "How calls cross"). Values a registry names natively (`Registry::native_values`: `nsh/ui`'s navigation) and
+  (`docs/dev/rust-classes.md`, "How calls cross"). Values a registry names natively (`Registry::native_values`: `nsh/base`'s navigation) and
   re-exports (`safeArea`, `useSafeAreaInsets`) come from the runtime. NSH's own export wins over a registry's of the
   same name.
 
 QuickJS-NG resolves imports when it compiles a module, so the bytecode compiler installs the same loader
-(`compile_bytecode_with` with the UI sets); names are checked when the module links (evaluation). The exports are made
+(`compile_bytecode_with` with the app's UI sets); names are checked when the module links (evaluation). The exports are made
 on first import.
 
 ## The compiler (`crates/nsh-bundler/src/jsx.rs`)
@@ -67,7 +68,7 @@ One Oxc pass removes TypeScript and lowers JSX (`plugin.rs` `compile_native`):
   `visible` and the insets, iOS only) and are called. The exports are callable components too (`dom.rs`
   `host_component`; `If` and `Each` are real globals), so `const C = cond ? View : Text; <C />` works through the
   component path. Lowercase tags are errors with the import to write (`<view>`: write `<View>` and `import { View }
-  from "nsh"`; for another, the closest binding, primitive or UI set component). Why: TypeScript checks a lowercase
+  from "nsh"`; for another, the closest binding, primitive or registry component). Why: TypeScript checks a lowercase
   tag against one global type per name, so generic components (`List`, `Each`) and local ones would lose their types.
   Props keep their camelCase names.
 - **Host elements** become one arrow function making the element and its host children: static props and children
@@ -114,7 +115,7 @@ One Oxc pass removes TypeScript and lowers JSX (`plugin.rs` `compile_native`):
 - `List` (`nsh/list`) is the renderer's (`list.rs`; its tags compile to a component call of `nsh:rt`'s `list`, the
   same function). The core asks for rows (`Host::bind_list`), bound natively (`list::bind`); a recycled cell gets a
   new index and its item accessor follows; header, footer, empty and separator cells, viewability tokens (with
-  `minimumViewTime`), `initialScrollIndex`. Rust components with rows (`ListView`) get a list of the app's data as
+  `minimumViewTime`), `initialScrollIndex`. Rust components with rows (an `Items` prop) get a list of the app's data as
   their items slot.
 - Nodes have the methods of `YNode` (`_core.d.ts`: `focus`, `blur`, `setSelection`, `command`, `scrollTo`, `zoomTo`,
   `scrollToOffset`, `scrollToIndex`, `scrollToEnd`, the web view's and video's): each sends a command
@@ -123,7 +124,7 @@ One Oxc pass removes TypeScript and lowers JSX (`plugin.rs` `compile_native`):
 
 ## Navigation
 
-`createNavigator`, `Stack`, `Screen` and `Modal` are natives (`navigation.rs`), which `nsh/ui` exports
+`createNavigator`, `Stack`, `Screen` and `Modal` are natives (`navigation.rs`), which `nsh/base` exports
 (`Registry::native_values`). A stack renders each route (by identity) with the app's function into a screen, the app's
 `<Screen>` or one around what it rendered (also when a hot component returns an accessor); a screen the user pops
 natively removes its route; screens and modals provide the insets they report to what they render

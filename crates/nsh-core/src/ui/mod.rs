@@ -1,4 +1,5 @@
-//! Components written in Rust: the UI sets' components (`nsh-ui`, `nsh-ui-mobile`),
+//! Components written in Rust: those of the runtime (`SafeAreaView`, ...) and
+//! of apps' own crates (their UI sets),
 //! run by the core on the engine thread.
 //!
 //! A [`Component`] is a function that runs once ([`Component::view`]) and

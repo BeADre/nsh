@@ -2,7 +2,7 @@ import { cleanup, effect, Input, type JSX, Scroll, signal, Text, View } from "ns
 import { createNativeValue } from "nsh/animated";
 import { BackHandler } from "nsh/android";
 import { Platform } from "nsh/device";
-import { Alert, Modal, SafeAreaView, Screen, useSafeAreaInsets } from "nsh/ui";
+import { Alert, Modal, SafeAreaView, Screen, useSafeAreaInsets } from "nsh/base";
 import { Icon, type IconName } from "../icons";
 import { nav } from "../nav";
 import { Appear, Badge, Button, Card, colors, DemoPage, Figure, finish, header, hint, IconTile, Inset, isDark, mono, motion, Press, radius, Section, Stat, tints, Toggle } from "../ui";

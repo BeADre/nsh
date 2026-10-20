@@ -11,9 +11,11 @@ use nsh_core::{
     ui::{Root, prelude::*},
 };
 use nsh_engine::{App, Engine, EngineConfig, Environment};
-use nsh_ui::{ListView, ListViewProps, Stepper, StepperApi, StepperProps};
 
-use crate::ChannelSink;
+use crate::{
+    ChannelSink,
+    test_ui::{ListView, ListViewProps, Stepper, StepperApi, StepperProps},
+};
 
 fn start(root: Root) -> (Engine, Receiver<MountBatch>) {
     let (tx, rx) = crossbeam_channel::unbounded();
@@ -294,19 +296,15 @@ fn start_js(app: &str) -> (Engine, Receiver<MountBatch>) {
     std::fs::create_dir_all(&dir).unwrap();
     let entry = dir.join("App.tsx");
     std::fs::write(&entry, app).unwrap();
+    let ui_sets = vec![crate::test_ui::registry()];
     let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {
         entry,
         minify: false,
         split: false,
-        ui_sets: vec![nsh_ui::registry(), nsh_ui_mobile::registry()],
+        ui_sets: ui_sets.clone(),
     })
     .unwrap();
-    let bytecode = nsh_js::compile_bytecode_with(
-        &bundle.code,
-        false,
-        &[nsh_ui::registry(), nsh_ui_mobile::registry()],
-    )
-    .unwrap();
+    let bytecode = nsh_js::compile_bytecode_with(&bundle.code, false, &ui_sets).unwrap();
     let (tx, rx) = crossbeam_channel::unbounded();
     let config = EngineConfig {
         // SAFETY: compiled just now by this runtime.
@@ -318,7 +316,7 @@ fn start_js(app: &str) -> (Engine, Receiver<MountBatch>) {
         environment: Environment::default(),
         header_heights: (44.0, 96.0),
         limits: nsh_engine::Limits::default(),
-        ui_sets: vec![nsh_ui::registry(), nsh_ui_mobile::registry()],
+        ui_sets,
         runtime: None,
     };
     (
@@ -328,7 +326,7 @@ fn start_js(app: &str) -> (Engine, Receiver<MountBatch>) {
 }
 
 const APP_LIST_VIEW: &str = r#"import { mount, signal, Text, View } from "nsh";
-import { ListView } from "nsh/ui";
+import { ListView } from "test/ui";
 
 const ends = signal(0);
 const rows = Array.from({ length: 100 }, (_, i) => `row ${i}`);

@@ -73,7 +73,7 @@ mount(App);
 | `icon` | string | `package` | A square PNG, ideally 1024×1024, relative to `nsh.json`. |
 | `tailwind` | object | every build | Extends the Tailwind theme your `class` strings resolve against ([Tailwind](./tailwind.md#theme)). |
 | `appearance` | string | every build, `package` | `"light"`, `"dark"` or `"system"` (the default): an app that is always light or dark says so here. `colorScheme()`, `dark:` classes, the components' theme and the platform's controls follow it from the start ([Device and environment](./device-and-environment.md#dark-mode)). |
-| `theme` | string or object | every build | The theme of the `nsh/ui` and `nsh/ui/mobile` components: a theme file's path relative to `nsh.json`, or the theme inline ([Components](../components/index.md)). |
+| `theme` | string or object | every build | The theme the app's Rust components draw with: a theme file's path relative to `nsh.json`, or the theme inline ([Building with Rust](./rust.md#theme)). |
 | `capabilities` | object | every build | What the app may reach outside its VM: network hosts, web view hosts, the status bar ([Sandbox and capabilities](./sandbox-and-capabilities.md)). |
 | `rust` | string or string[] | every command | The app's Rust crate, or a list of them, relative to `nsh.json`: their components and modules, which TSX imports by each crate's `#[native_module]` specifier ([Building with Rust](./rust.md#several-crates)). |
 | `root` | string | `run`, `package` | A Rust app's root component, its path in the `rust` crate, the first one of a list (`App`, `shell::Gallery`): `nsh run` and `nsh package` of the app's directory mount it with no QuickJS, on every platform; `nsh run App.tsx` still runs the TSX entry ([Building with Rust](./rust.md)). |
@@ -88,7 +88,7 @@ nsh.json: tailwind: unknown theme key `colours`
 ```
 
 > [!WARNING]
-> `nsh package` and `nsh publish` read `nsh.json` strictly and currently reject keys they do not know, including `theme`. If you set a component theme, package from a copy of the app without it until this is fixed.
+> `nsh package` and `nsh publish` read `nsh.json` strictly and currently reject keys they do not know, including `theme`. If you set a theme, package from a copy of the app without it until this is fixed.
 
 ### capabilities
 
@@ -142,8 +142,7 @@ NSH does not need `node_modules`. Instead, every command that builds the app (`i
 | `globals.d.ts` | `If` and `Each`; `console`, timers, `requestAnimationFrame`, `fetch` and the other [global APIs](../modules/globals.md) |
 | `assets.d.ts` | What importing an image or font gives |
 | `list.d.ts`, `animated.d.ts`, `device.d.ts`, ... | One file per module (`nsh/list`, `nsh/animated`, `nsh/device`, ...) |
-| `ui.d.ts` | `nsh/ui` |
-| `ui/mobile.d.ts` | `nsh/ui/mobile` |
+| `ui.d.ts` | `nsh/base` |
 
 `lib` is `ES2023` without `DOM`: there is no `document` or `window`. The files are regenerated (only when their contents change), so do not edit them and do not commit them; `.gitignore` already excludes `.nsh/`. If your editor shows `nsh` as missing after cloning a project, run any build command once, e.g. `nsh trace App.tsx`.
 
@@ -181,8 +180,7 @@ Imports of `nsh` and `nsh/...` are not bundled: the runtime provides them native
 | Module | What it has |
 |---|---|
 | `nsh` | Reactivity (`signal`, `computed`, `effect`, ...), `mount`, `split`, `context`; `View`, `Text`, `Scroll`, `Input` ([reference](../modules/nsh.md)) |
-| `nsh/ui` | NSH's UI set, shared by every platform: components, navigation, alerts, safe area ([Components](../components/index.md)) |
-| `nsh/ui/mobile` | What phones and tablets add: the status bar, sheets, action sheets, the keyboard ([Components](../components/index.md)) |
+| `nsh/base` | The unstyled foundation of an app's UI: navigation stacks, screens and modals (`Stack`, `Screen`, `Modal`, `createNavigator`), safe areas (`SafeAreaView`), the system's dialogs (`Alert`, `ActionSheet`), the software keyboard (`Keyboard`, `keyboard`, `KeyboardAvoidingView`) and the status bar (`StatusBar`) ([reference](../modules/nsh-base.md)) |
 | `nsh/list` | `List`: virtualized, recycling lists |
 | `nsh/animated` | Native animations |
 | `nsh/canvas` | 2D drawing |

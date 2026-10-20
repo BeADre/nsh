@@ -211,4 +211,4 @@ type ListItemsProps<T> = Pick<ListProps<T>,
   | "ListHeaderComponent" | "ListFooterComponent" | "ListEmptyComponent">;
 ```
 
-`ListProps` 中关于数据和行的那一半：传给自行布局列表的组件（例如 `nsh/ui` 的 [`ListView`](../components/list-view.md)）的内容。
+`ListProps` 中关于数据和行的那一半：传给你自己的、自行布局列表的组件（例如一个用自己的内边距和分隔线包装 `List` 的设置列表）的内容。

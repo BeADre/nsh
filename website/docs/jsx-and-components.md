@@ -22,7 +22,7 @@ Every tag is PascalCase and names something in scope. The **host elements**, eac
 | `<Scroll>` | `nsh` | `UIScrollView` / `ScrollView` | [Scroll](../elements/scroll.md) |
 | `<Input>` | `nsh` | `UITextField` / `UITextView` / `EditText` | [Input](../elements/input.md) |
 | `<List>` | `nsh/list` | A virtualized, recycling list | [List](../elements/list.md) |
-| `<Canvas>`, `<WebView>`, `<Video>`, `<Modal>` | `nsh/canvas`, `nsh/webview`, `nsh/video`, `nsh/ui` | A drawing, a web page, a video player, a presented layer | [Elements](../elements/index.md) |
+| `<Canvas>`, `<WebView>`, `<Video>`, `<Modal>` | `nsh/canvas`, `nsh/webview`, `nsh/video`, `nsh/base` | A drawing, a web page, a video player, a presented layer | [Elements](../elements/index.md) |
 | `<If>`, `<Each>` | nothing: globals | Control flow, no view of its own | [Control flow](../elements/control-flow.md) |
 
 ```tsx
@@ -49,6 +49,8 @@ x lowercase tag <view>: tags are PascalCase components: write <View> and
 > Text is only displayed inside `<Text>`. A string directly in a `<View>` creates no native view and is not shown.
 
 ## Components
+
+The look of an app is the app's own. NSH provides two layers: the primitives (the elements above, styles, Tailwind classes) and the unstyled base components of [`nsh/base`](../modules/nsh-base.md), which own behavior such as navigation, dialogs, the keyboard, the status bar and safe areas. The third layer, the component library, is yours: buttons, cards and every other piece of your UI are components you write on those two layers, Rust components your app ships in its own crate ([Building with Rust](./rust.md)), or a library from the community ([Three layers](./architecture.md#three-layers)).
 
 A component is a function that takes a props object and returns JSX:
 
@@ -201,7 +203,7 @@ function Search() {
 <Scroll ref={(node) => (scroller = node)} />
 ```
 
-The ref is set when the element is created, before the component returns, so it is available in [effects](./reactivity.md#effect) and event handlers. Calls are sent to the view in order with the changes made before them. Components from `nsh/ui` and `nsh/ui/mobile` accept `ref` too.
+The ref is set when the element is created, before the component returns, so it is available in [effects](./reactivity.md#effect) and event handlers. Calls are sent to the view in order with the changes made before them. `SafeAreaView`, `KeyboardAvoidingView` and the Rust components of your own crate accept `ref` too.
 
 ## Spreading props
 
@@ -229,10 +231,18 @@ function Field(props: InputProps & { label: string }) {
 
 ## Tags and names
 
-A tag names a binding in scope, as usual: `<Badge />`, `<Theme.Provider>`, an imported `<Button>`. A tag that names nothing in scope is a build error, except `<If>` and `<Each>`, which are globals.
+A tag names a binding in scope, as usual: `<Badge />`, `<Theme.Provider>`, a `<Button>` of your own. A tag that names nothing in scope is a build error, except `<If>` and `<Each>`, which are globals.
 
 ```tsx
-import { Button } from "nsh/ui";
+import { Text, View } from "nsh";
+
+function Button(props: { title: string; onPress: () => void }) {
+  return (
+    <View onPress={props.onPress} activeOpacity={0.6} accessibilityRole="button" class="rounded-lg bg-blue-600 px-5 py-3">
+      <Text class="text-base font-semibold text-white">{props.title}</Text>
+    </View>
+  );
+}
 
 <Button title="Save" onPress={save} />
 ```
@@ -257,4 +267,5 @@ mount(() => (
 
 - [Reactivity](./reactivity.md): signals, effects, context.
 - [Elements](../elements/index.md): every host element and its props.
-- [Components](../components/index.md): the ready-made components of `nsh/ui` and `nsh/ui/mobile`.
+- [Styling](./styling.md) and [Tailwind](./tailwind.md): the look of your components.
+- [Building with Rust](./rust.md): components written in Rust, in your app's own crate.

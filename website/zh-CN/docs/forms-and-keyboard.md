@@ -10,7 +10,29 @@ demo: guide-forms
 
 文本输入使用 `<Input>` 元素：iOS 上是 UITextField 或 UITextView，Android 上是 EditText。输入、光标、选区、自动更正和自动填充都由平台自己处理；应用通过事件拿到文本，也可以控制文本。NSH 还会自动让获得焦点的输入框保持在软键盘上方，并把键盘高度作为响应式的值提供给你，用于它自己处理不了的情况。
 
-如果需要符合 NSH UI 组件集外观、带标签和清除按钮的输入框，见 [`TextField`](../components/text-field.md)。本页介绍底层的元素。
+`<Input>` 和其他视图一样接受样式和 Tailwind 类，所以表单里的输入框是应用自己的外观。带标签的输入框就是一个简短的自定义组件：
+
+```tsx
+import { Input, signal, Text, View } from "nsh";
+
+function Field(props: { label: string; value: string; onChangeText: (text: string) => void; secure?: boolean }) {
+  const focused = signal(false);
+  return (
+    <View class="gap-1">
+      <Text class="text-sm text-neutral-500">{props.label}</Text>
+      <Input
+        value={props.value}
+        onChangeText={props.onChangeText}
+        secureTextEntry={props.secure}
+        onFocus={() => focused.set(true)}
+        onBlur={() => focused.set(false)}
+        class="rounded-lg border px-3 py-2 text-base"
+        style={{ borderColor: focused() ? "#0969da" : "#d0d7de" }}
+      />
+    </View>
+  );
+}
+```
 
 ## 受控与非受控输入框
 
@@ -170,11 +192,11 @@ mount(SignIn);
 | `blur()` | 让它失去焦点。 |
 | `setSelection(start, end?)` | 选中 `start..end`（UTF-16 码元）；不传 `end` 时为光标。 |
 
-`nsh/ui/mobile` 中的 `Keyboard.dismiss()` 让当前拥有焦点的输入框失去焦点：
+`nsh/base` 中的 `Keyboard.dismiss()` 让当前拥有焦点的输入框失去焦点：
 
 ```tsx
 import { View } from "nsh";
-import { Keyboard } from "nsh/ui/mobile";
+import { Keyboard } from "nsh/base";
 
 <View onPress={() => Keyboard.dismiss()}>…</View>
 ```
@@ -233,12 +255,11 @@ const height = signal(0);
 
 ### 滚动视图之外的内容：KeyboardAvoidingView
 
-固定在页面底部的消息栏不在滚动视图中，没有东西会移动它。用 `nsh/ui/mobile` 中的 `KeyboardAvoidingView` 包住页面：它会在底部让出与键盘等高的空间，并与键盘同步动画。
+固定在页面底部的消息栏不在滚动视图中，没有东西会移动它。用 `nsh/base` 中的 `KeyboardAvoidingView` 包住页面：它会在底部让出与键盘等高的空间，并与键盘同步动画。
 
 ```tsx
 import { Input, Scroll, signal, View } from "nsh";
-import { useSafeAreaInsets } from "nsh/ui";
-import { keyboard, KeyboardAvoidingView } from "nsh/ui/mobile";
+import { keyboard, KeyboardAvoidingView, useSafeAreaInsets } from "nsh/base";
 
 function ChatScreen() {
   const insets = useSafeAreaInsets();
@@ -283,15 +304,15 @@ function ChatScreen() {
 | `keyboardVerticalOffset` | `number` | `0` | 键盘显示时额外加到键盘高度上的值（比如视图下方还有一个标签栏）。 |
 | `contentContainerStyle` | `StyleProp<ViewStyle>` | | `behavior="position"` 时内部视图的样式。 |
 
-它假定自己延伸到 surface 的底部，页面内容通常如此。在会为键盘缩小窗口的 Android 宿主上，窗口本身已经变小，`KeyboardAvoidingView` 无事可做。见 [KeyboardAvoidingView](../components/keyboard-avoiding-view.md)。
+它假定自己延伸到 surface 的底部，页面内容通常如此。在会为键盘缩小窗口的 Android 宿主上，窗口本身已经变小，`KeyboardAvoidingView` 无事可做。见 [KeyboardAvoidingView](../modules/nsh-base.md#keyboardavoidingview)。
 
 ### keyboard 访问器
 
-`nsh/ui/mobile` 中的 `keyboard()` 是一个响应式的 `{ height, duration }`：键盘伸入 surface 的高度（隐藏时为 0，包含被它盖住的底部安全区域）以及它的动画时长（秒）。需要自定义行为时读取它，例如输入时隐藏浮动按钮，或调整面板尺寸。
+`nsh/base` 中的 `keyboard()` 是一个响应式的 `{ height, duration }`：键盘伸入 surface 的高度（隐藏时为 0，包含被它盖住的底部安全区域）以及它的动画时长（秒）。需要自定义行为时读取它，例如输入时隐藏浮动按钮，或调整面板尺寸。
 
 ```tsx
 import { View } from "nsh";
-import { keyboard } from "nsh/ui/mobile";
+import { keyboard } from "nsh/base";
 
 <If when={keyboard().height === 0}>
   <View style={{ position: "absolute", right: 16, bottom: 16 }}>…</View>
@@ -334,7 +355,6 @@ function Note() {
 ## 相关内容
 
 - [`Input`](../elements/input.md)：元素参考。
-- [`TextField`](../components/text-field.md)：带标签和清除按钮的输入框。
-- [`KeyboardAvoidingView`](../components/keyboard-avoiding-view.md) 与 [`Keyboard`](../components/keyboard.md)。
+- [`KeyboardAvoidingView`](../modules/nsh-base.md#keyboardavoidingview) 与 [`Keyboard`](../modules/nsh-base.md#keyboard)。
 - [`nsh/ios`](../modules/nsh-ios.md)：`InputAccessoryView`。
 - [滚动](./scrolling.md#滚动视图与键盘)：滚动视图中的键盘收起与点击。

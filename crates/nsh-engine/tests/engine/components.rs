@@ -1,7 +1,7 @@
-//! Rust components through the generated JS glue: props, events, children,
-//! named slots, children placed one by one, and a list of the app's rows;
-//! modules (`Alert`, `StatusBar`) and the environment (`SafeAreaView`,
-//! `KeyboardAvoidingView`).
+//! Rust components through the generated JS glue (the tests' own set,
+//! `test/ui`): props, events, children, named slots, children placed one by
+//! one, and a list of the app's rows; the runtime's modules (`Alert`,
+//! `StatusBar`) and the environment (`SafeAreaView`, `KeyboardAvoidingView`).
 
 use std::time::Duration;
 
@@ -43,19 +43,15 @@ fn start_with(
     if let Some(config) = config {
         std::fs::write(dir.join("nsh.json"), config).unwrap();
     }
+    let ui_sets = vec![nsh_base::registry(), crate::test_ui::registry()];
     let bundle = nsh_bundler::bundle(&nsh_bundler::BundleOptions {
         entry,
         minify: false,
         split: false,
-        ui_sets: vec![nsh_ui::registry(), nsh_ui_mobile::registry()],
+        ui_sets: ui_sets.clone(),
     })
     .unwrap();
-    let bytecode = nsh_js::compile_bytecode_with(
-        &bundle.code,
-        false,
-        &[nsh_ui::registry(), nsh_ui_mobile::registry()],
-    )
-    .unwrap();
+    let bytecode = nsh_js::compile_bytecode_with(&bundle.code, false, &ui_sets).unwrap();
     let (tx, rx) = crossbeam_channel::unbounded();
     let config = EngineConfig {
         // SAFETY: compiled just now by this runtime.
@@ -71,7 +67,7 @@ fn start_with(
         environment,
         header_heights: (44.0, 96.0),
         limits: nsh_engine::Limits::default(),
-        ui_sets: vec![nsh_ui::registry(), nsh_ui_mobile::registry()],
+        ui_sets,
         runtime: None,
     };
     (
@@ -88,7 +84,7 @@ fn text_ids(batch: &MountBatch, wanted: &str) -> Option<u32> {
 }
 
 const INSET: &str = r#"import { mount, signal, Text } from "nsh";
-import { ListView } from "nsh/ui";
+import { ListView } from "test/ui";
 
 const rows = signal(["A", "B", "C"]);
 setTimeout(() => rows.update((r) => [...r, "D"]), 0);
@@ -214,7 +210,7 @@ fn shows(batch: &MountBatch, wanted: &str) -> bool {
 }
 
 const LAZY_SHEET: &str = r#"import { mount, signal, untracked, Text } from "nsh";
-import { Sheet } from "nsh/ui/mobile";
+import { Sheet } from "test/ui";
 
 const open = signal(false);
 const count = signal(1);
@@ -451,7 +447,7 @@ fn a_sibling_coming_back_does_not_move_a_rust_input_on(
 // --- Through the native modules ------------------------------------------------
 
 const CARD: &str = r#"import { mount, signal, Text } from "nsh";
-import { Button, Card } from "nsh/ui";
+import { Button, Card } from "test/ui";
 
 function App() {
   const titled = signal(true);
@@ -515,7 +511,7 @@ fn slots_children_and_events() {
 }
 
 const METHODS: &str = r#"import { mount, signal, Text, View } from "nsh";
-import { Stepper, type StepperRef } from "nsh/ui";
+import { Stepper, type StepperRef } from "test/ui";
 
 const shown = signal("waiting");
 let stepper!: StepperRef;
@@ -561,7 +557,7 @@ fn calls_of_a_components_methods() {
 }
 
 const ALERT: &str = r#"import { mount, signal, Text } from "nsh";
-import { Alert } from "nsh/ui";
+import { Alert } from "nsh/base";
 
 const shown = signal("waiting");
 setTimeout(async () => {
@@ -606,8 +602,7 @@ fn alert_resolves_with_the_button_pressed() {
 }
 
 const SAFE_AREA: &str = r#"import { mount, Text } from "nsh";
-import { SafeAreaView, safeArea } from "nsh/ui";
-import { KeyboardAvoidingView } from "nsh/ui/mobile";
+import { KeyboardAvoidingView, SafeAreaView, safeArea } from "nsh/base";
 
 mount(() => (
   <KeyboardAvoidingView style={{ flex: 1 }}>
@@ -959,7 +954,7 @@ fn inputs_and_selectable_text_carry_their_traits() {
 }
 
 const ROWS: &str = r#"import { mount, Text } from "nsh";
-import { Group, ListView } from "nsh/ui";
+import { Group, ListView } from "test/ui";
 
 const rows = Array.from({ length: 100 }, (_, i) => ({ id: i, label: `Row ${i}` }));
 
@@ -1017,7 +1012,7 @@ fn components_place_the_apps_children_and_rows() {
 }
 
 const STEPPER: &str = r#"import { mount, signal, Text, View } from "nsh";
-import { Stepper } from "nsh/ui";
+import { Stepper } from "test/ui";
 
 const changes = signal(0);
 mount(() => (
@@ -1030,7 +1025,7 @@ mount(() => (
 
 const STATUS_BAR: &str = r##"import { signal, mount } from "nsh";
 import { setStatusBarBackgroundColor } from "nsh/android";
-import { StatusBar } from "nsh/ui/mobile";
+import { StatusBar } from "nsh/base";
 
 const rendered = signal(true);
 setStatusBarBackgroundColor("#ff0000");
@@ -1059,7 +1054,7 @@ mount(() => <Text>{`presses ${presses()}`}</Text>);
 "#;
 
 const FIELD: &str = r#"import { mount, signal, Text, View } from "nsh";
-import { TextField } from "nsh/ui";
+import { TextField } from "test/ui";
 
 const name = signal("Ada");
 mount(() => (

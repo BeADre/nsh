@@ -7,11 +7,11 @@ group: ui
 
 # 导航
 
-`nsh/ui` 提供原生的导航栈和原生的模态视图。`Stack` 在 iOS 上是 UINavigationController，带有它的标题栏、侧滑返回和大标题；在 Android 上是带工具栏、支持预测性返回的页面栈。路由列表保存在 navigator 中；栈把每个路由渲染为一个页面，只要路由还在栈里，页面就保持挂载，状态也随之保留。
+`nsh/base` 提供原生的导航栈和原生的模态视图。`Stack` 在 iOS 上是 UINavigationController，带有它的标题栏、侧滑返回和大标题；在 Android 上是带工具栏、支持预测性返回的页面栈。路由列表保存在 navigator 中；栈把每个路由渲染为一个页面，只要路由还在栈里，页面就保持挂载，状态也随之保留。
 
 ```tsx
 import { mount, Scroll, Text, View } from "nsh";
-import { createNavigator, Screen, Stack } from "nsh/ui";
+import { createNavigator, Screen, Stack } from "nsh/base";
 
 type Route = { name: "inbox" } | { name: "message"; id: number };
 
@@ -83,7 +83,7 @@ mount(App);
 
 ```ts
 import { type JSX } from "nsh";
-import { createNavigator } from "nsh/ui";
+import { createNavigator } from "nsh/base";
 
 export type Route = { name: "home" } | { name: "page"; page: () => JSX.Element };
 export const nav = createNavigator<Route>({ name: "home" });
@@ -160,7 +160,7 @@ function Compose() {
 </Screen>
 ```
 
-没有标题栏的页面四周仍有系统栏；用 [`SafeAreaView`](../components/safe-area-view.md) 给内容留出边距：
+没有标题栏的页面四周仍有系统栏；用 [`SafeAreaView`](../modules/nsh-base.md#safeareaview) 给内容留出边距：
 
 ```tsx
 <Screen headerShown={false}>
@@ -178,7 +178,7 @@ function Compose() {
 
 ```tsx
 import { Input, signal } from "nsh";
-import { Alert, Screen } from "nsh/ui";
+import { Alert, Screen } from "nsh/base";
 
 function EditNote() {
   const text = signal("");
@@ -210,7 +210,7 @@ function EditNote() {
 
 ```tsx
 import { signal, Text, View } from "nsh";
-import { Modal, SafeAreaView } from "nsh/ui";
+import { Modal, SafeAreaView } from "nsh/base";
 
 function Settings() {
   const open = signal(false);
@@ -261,7 +261,7 @@ function Settings() {
 </Modal>
 ```
 
-在模态视图内部，`SafeAreaView` 和 `useSafeAreaInsets()` 给出的是模态视图自己的 inset。系统对话框（带按钮的提示框、操作表）请用 [`Alert`](../components/alert.md) 和 [`ActionSheet`](../components/action-sheet.md)；从底部滑出、覆盖在暗色背景上并跟随手指的面板，请用 [`Sheet`](../components/sheet.md)。
+在模态视图内部，`SafeAreaView` 和 `useSafeAreaInsets()` 给出的是模态视图自己的 inset。系统对话框（带按钮的提示框、操作表）请用 `nsh/base` 的 [`Alert`](../modules/nsh-base.md#alert) 和 [`ActionSheet`](../modules/nsh-base.md#actionsheet)；从底部滑出的面板，用带 `ios={{ presentationStyle: "pageSheet" }}` 的 `Modal`，内容由你自己绘制。
 
 ## Android 返回键
 
@@ -294,11 +294,11 @@ function Editor() {
 
 ## 标签页与其他布局
 
-`nsh/ui` 没有标签栏组件。标签栏就是一排可按压的视图加一个保存当前标签的 signal；用函数子元素或 [`<If>`](../elements/control-flow.md) 渲染选中标签的内容。要在切换时保留每个标签的状态，给每个标签一个独立的 `Stack` 和 navigator，并让它们都保持挂载，用 `display: "none"` 隐藏未选中的标签。
+标签栏是应用自己的界面，用基础元素绘制：一排可按压的视图加一个保存当前标签的 signal；用函数子元素或 [`<If>`](../elements/control-flow.md) 渲染选中标签的内容。要在切换时保留每个标签的状态，给每个标签一个独立的 `Stack` 和 navigator，并让它们都保持挂载，用 `display: "none"` 隐藏未选中的标签。
 
 ## 相关内容
 
-- [导航组件](../components/navigation.md)：`createNavigator`、`Stack`、`Screen` 和 `Modal` 参考。
-- [`SafeAreaView`](../components/safe-area-view.md) 与 [`StatusBar`](../components/status-bar.md)。
-- [`Alert`](../components/alert.md)、[`ActionSheet`](../components/action-sheet.md) 与 [`Sheet`](../components/sheet.md)。
+- [`nsh/base`](../modules/nsh-base.md)：`createNavigator`、`Stack`、`Screen`、`Modal` 和 `SafeAreaView` 参考。
+- [`StatusBar`](../modules/nsh-base.md#status-bar)。
+- [`Alert` 与 `ActionSheet`](../modules/nsh-base.md#dialogs)。
 - [`nsh/android`](../modules/nsh-android.md)：`BackHandler`。

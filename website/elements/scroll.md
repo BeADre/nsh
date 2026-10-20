@@ -125,7 +125,7 @@ scroller.scrollTo({ y: 0, animated: true });
 
 Inputs inside a scroll view are kept clear of the keyboard natively: the scroll view gets a bottom inset and scrolls to
 the focused input, with no JS involved. For content outside scroll views use `KeyboardAvoidingView` from
-[`nsh/ui/mobile`](../components/keyboard-avoiding-view.md). See [forms and the keyboard](../docs/forms-and-keyboard.md).
+[`nsh/base`](../modules/nsh-base.md#keyboardavoidingview). See [forms and the keyboard](../docs/forms-and-keyboard.md).
 
 ## Right to left
 

@@ -8,7 +8,7 @@ group: platforms
 # Windows
 
 NSH 应用也能在 Windows 上运行。Windows 后端在 Win32 窗口中用 Direct2D 绘制应用，用 DirectWrite 排版文字；核心、响应式图、
-渲染器、Taffy 布局以及 `nsh/ui`、`nsh/ui/mobile` 组件与 iOS、Android 上完全相同，因此同一个 bundle 可以在所有平台上运行。在 Windows 上，
+渲染器、Taffy 布局以及原生模块与 iOS、Android 上完全相同，因此同一个 bundle 可以在所有平台上运行。在 Windows 上，
 `Platform.OS` 为 `"windows"`，并会应用 `desktop={{…}}` 属性。窗口标题、自定义标题栏、
 菜单栏和右键菜单由 [`nsh/desktop`](../modules/nsh-desktop.md) 提供。
 

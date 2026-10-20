@@ -126,7 +126,7 @@ let password!: YNode;
 </>;
 ```
 
-无论哪个输入框持有键盘，[`nsh/ui/mobile`](../components/keyboard.md) 的 `Keyboard.dismiss()` 都能把它收起。
+无论哪个输入框持有键盘，[`nsh/base`](../modules/nsh-base.md#keyboard) 的 `Keyboard.dismiss()` 都能把它收起。
 
 ## 平台说明
 

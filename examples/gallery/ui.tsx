@@ -3,6 +3,7 @@ import { computed, effect, Scroll, signal, Text, View } from "nsh";
 import { createNativeValue, Easing } from "nsh/animated";
 import { colorScheme, Platform, windowSize } from "nsh/device";
 import { keymap } from "nsh/keymap";
+import { Modal, safeArea } from "nsh/base";
 import { Icon, type IconName } from "./icons";
 
 /** Whether the gallery shows its dark palette (reactive: reading it subscribes). */
@@ -926,5 +927,38 @@ function Loading(props: { failed: string }) {
         {props.failed || "Loading…"}
       </Text>
     </View>
+  );
+}
+
+/**
+ * A panel that slides up from the bottom over a dimmed backdrop while
+ * `open`; a tap on the backdrop or the back button closes it (`onClose`:
+ * set `open` to false).
+ */
+export function Sheet(props: { open: boolean; onClose: () => void; children: JSX.Element }) {
+  return (
+    <Modal visible={props.open} transparent animationType="slide" onRequestClose={props.onClose}>
+      <View style={{ flex: 1, justifyContent: "flex-end" }}>
+        <View
+          accessibilityLabel="Close"
+          onPress={props.onClose}
+          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.4)" }}
+        />
+        <View
+          style={{
+            gap: 12,
+            paddingTop: 8,
+            paddingHorizontal: 16,
+            paddingBottom: safeArea().bottom + 16,
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+            backgroundColor: colors.surface,
+          }}
+        >
+          <View style={{ width: 36, height: 5, borderRadius: 3, alignSelf: "center", backgroundColor: colors.raised }} />
+          {props.children}
+        </View>
+      </View>
+    </Modal>
   );
 }

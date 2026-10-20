@@ -7,7 +7,7 @@ group: platforms
 
 # Platform-specific code
 
-One NSH bundle runs on iOS, Android, macOS, Windows and Linux (and in Mac Catalyst), and in browsers through the [web runtime](./web.md). Most of an app needs no platform checks at all: elements, styles, layout, components and modules behave the same everywhere, and the components of `nsh/ui` and `nsh/ui/mobile` are drawn by NSH rather than borrowed from each platform, so they look the same everywhere. When something really is specific to one platform, NSH gives it a clear place, so platform code stays visible and contained:
+One NSH bundle runs on iOS, Android, macOS, Windows and Linux (and in Mac Catalyst), and in browsers through the [web runtime](./web.md). Most of an app needs no platform checks at all: elements, styles, layout and modules behave the same everywhere, and the components you draw from them look the same everywhere. When something really is specific to one platform, NSH gives it a clear place, so platform code stays visible and contained:
 
 | Where | For |
 |---|---|
@@ -62,7 +62,7 @@ What exists today:
 | `desktop={{ allowsBackForwardNavigationGestures }}` | `WebView` | macOS: two-finger trackpad swipes go back and forward in the page history; Windows: touchscreen swipes; Linux: touchpad swipes. |
 | `desktop={{ windowDrag }}` | every element | Pressing it drags the window, as the system's title bar would (see [nsh/desktop](../modules/nsh-desktop.md#a-title-bar-of-your-own)). |
 
-`desktop={{…}}` is accepted everywhere; the props above are the desktop-only ones so far. `web={{…}}` is accepted everywhere too; `Modal`'s `presentationStyle` is its only element prop so far ([`StatusBar`](../components/status-bar.md) takes `web={{ themeColor }}`). The types (`IOSProps`, `AndroidProps`, `DesktopProps` and their per-element forms) tell your editor what each element takes.
+`desktop={{…}}` is accepted everywhere; the props above are the desktop-only ones so far. `web={{…}}` is accepted everywhere too; `Modal`'s `presentationStyle` is its only element prop so far ([`StatusBar`](../modules/nsh-base.md#status-bar) takes `web={{ themeColor }}`). The types (`IOSProps`, `AndroidProps`, `DesktopProps` and their per-element forms) tell your editor what each element takes.
 
 Cross-platform props whose effect differs slightly are not grouped: `Alert.alert`'s `cancelable` option exists on both (iOS alerts are simply never dismissed by a tap outside), and `pagingEnabled`, `refreshing`, `hitSlop` and the rest work on every platform.
 
@@ -84,7 +84,7 @@ Cross-platform props whose effect differs slightly are not grouped: `Alert.alert
 import { cleanup } from "nsh";
 import { BackHandler, Toast } from "nsh/android";
 import { Platform } from "nsh/device";
-import { Alert } from "nsh/ui";
+import { Alert } from "nsh/base";
 
 function saved() {
   if (Platform.OS === "android") Toast.show("Saved");
@@ -127,11 +127,11 @@ See [nsh/desktop](../modules/nsh-desktop.md).
 
 ### The status bar
 
-The status bar is set with [`StatusBar`](../components/status-bar.md) from `nsh/ui/mobile`, on both platforms: `barStyle` (`"default"`, `"light-content"`, `"dark-content"`), `hidden` and `animated`, with Android's color in `android={{ backgroundColor }}`. The most recently mounted `StatusBar` wins, prop by prop, so a screen can render one for itself and the previous settings come back when it goes away. `StatusBar.setBarStyle()` and `StatusBar.setHidden()` set the base values imperatively.
+The status bar is set with [`StatusBar`](../modules/nsh-base.md#status-bar) from `nsh/base`, on both platforms: `barStyle` (`"default"`, `"light-content"`, `"dark-content"`), `hidden` and `animated`, with Android's color in `android={{ backgroundColor }}`. The most recently mounted `StatusBar` wins, prop by prop, so a screen can render one for itself and the previous settings come back when it goes away. `StatusBar.setBarStyle()` and `StatusBar.setHidden()` set the base values imperatively.
 
 ```tsx
 import { View } from "nsh";
-import { StatusBar } from "nsh/ui/mobile";
+import { StatusBar } from "nsh/base";
 
 function PhotoViewer() {
   return (

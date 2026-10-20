@@ -17,9 +17,9 @@ NSH's design differs (SolidJS instead of React, Tailwind classes resolved native
 platform-styled widgets). A change that only adds React Native compatibility, such as a wrapper or an alias, is not
 accepted.
 
-The runtime (`nsh`, `nsh/<module>`) provides primitives and capabilities; components belong to a UI set
-(`nsh/ui`, `nsh/ui/mobile`) and are drawn with those primitives so they look the same on every platform. See "Where new
-things go" in [docs/dev/js-modules.md](docs/dev/js-modules.md).
+The runtime (`nsh`, `nsh/<module>`) provides primitives and capabilities, and `nsh/base` the unstyled foundation of
+an app's UI (navigation, safe areas, system dialogs, the keyboard, the status bar); the look of an app is the app's
+own, drawn from those primitives or with Rust components in the app's crate. See "Where new things go" in [docs/dev/js-modules.md](docs/dev/js-modules.md).
 
 ## AI-Assisted Contributions
 
@@ -66,9 +66,8 @@ Commit subjects and pull request titles name the area first, then say what chang
 ```
 
 - The area is the part of NSH the change is about, in lower case: a crate without its `nsh-` prefix (`core`,
-  `animation`, `js`, `engine`, `package`, `bundler`, `dev`, `cli`, `xtask`, `ui` and `ui-mobile` for the `nsh/ui` and
-  `nsh/ui/mobile` sets), a platform (`ios`, `android`, `macos`, `windows`, `linux`), a JS layer or module (`runtime`,
-  `list`, `animated`), or `tailwind`, `text`, `docs`, `examples`, `gallery`, `ci`. A change to all the desktop
+  `animation`, `js`, `engine`, `package`, `bundler`, `dev`, `cli`, `xtask`, `base`), a platform (`ios`, `android`, `macos`,
+  `windows`, `linux`), a JS layer or module (`runtime`, `list`, `animated`, `navigation`), or `tailwind`, `text`, `docs`, `examples`, `gallery`, `ci`. A change to all the desktop
   backends (macOS, Windows and Linux) is `desktop`, one to both mobile platforms (iOS and Android) is `mobile`. Name
   one area only, never several separated by commas: when a change spans several, look at it as a whole and name the
   part it is mostly about. A feature the core adds and the platforms carry out is `core`, not `core, desktop`; a

@@ -6,7 +6,8 @@
 //! - Stateful, native motion (components: `X::element(XProps { .. })`,
 //!   their events through `.on_event(..)`, or the helper functions):
 //!   [`Press`] / [`press`], [`Appear`] / [`appear`], [`Toggle`] /
-//!   [`toggle`], [`Segmented`] / [`segmented`], [`Icon`] / [`icon`].
+//!   [`toggle`], [`Segmented`] / [`segmented`], [`Icon`] / [`icon`],
+//!   [`Sheet`] (a bottom sheet).
 //! - Builders (`Card::new().title(..).child(..)`, styled at their root):
 //!   [`Card`], [`Section`], [`Inset`], [`Row`], [`Figure`], [`Badge`],
 //!   [`Stat`], [`Meter`], [`IconTile`], [`Button`], [`RoundButton`]; and
@@ -24,6 +25,7 @@ mod icons;
 mod layout;
 mod page;
 mod parts;
+mod sheet;
 mod theme;
 
 pub(crate) use self::{
@@ -40,5 +42,6 @@ pub(crate) use self::{
         Badge, Button, ButtonVariant, Card, Figure, IconTile, Inset, Meter, RoundButton, Row,
         Section, Stat, caption, code, header, legend,
     },
+    sheet::{Sheet, SheetEvent, SheetProps},
     theme::{Finish, Finished, MONO, Tone, colors, inset_shadow, motion, radius, rgb_a, tints},
 };

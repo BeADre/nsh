@@ -7,7 +7,7 @@ group: platforms
 
 # 平台特定代码
 
-同一个 NSH 包可以在 iOS、Android、macOS、Windows 和 Linux 上运行（也可以在 Mac Catalyst 中运行），还可以通过 [Web 运行时](./web.md)在浏览器中运行。应用的大部分代码根本不需要判断平台：元素、样式、布局、组件和模块在各处的行为都相同，`nsh/ui` 和 `nsh/ui/mobile` 的组件由 NSH 自己绘制而不是借用各平台的控件，所以在各处看起来都一样。当某样东西确实只属于一个平台时，NSH 给它安排了明确的位置，让平台代码一目了然、范围可控：
+同一个 NSH 包可以在 iOS、Android、macOS、Windows 和 Linux 上运行（也可以在 Mac Catalyst 中运行），还可以通过 [Web 运行时](./web.md)在浏览器中运行。应用的大部分代码根本不需要判断平台：元素、样式、布局和模块在各处的行为都相同，你用它们绘制的组件在各处看起来也都一样。当某样东西确实只属于一个平台时，NSH 给它安排了明确的位置，让平台代码一目了然、范围可控：
 
 | 位置 | 用途 |
 |---|---|
@@ -62,7 +62,7 @@ group: platforms
 | `desktop={{ allowsBackForwardNavigationGestures }}` | `WebView` | macOS：双指在触控板上轻扫，在页面历史中前进后退；Windows：在触摸屏上轻扫；Linux：在触控板上轻扫。 |
 | `desktop={{ windowDrag }}` | 所有元素 | 按住它拖动窗口，像系统标题栏一样（见 [nsh/desktop](../modules/nsh-desktop.md#自定义标题栏)）。 |
 
-`desktop={{…}}` 在所有地方都可以使用；上面列出的是目前仅限桌面的属性。`web={{…}}` 同样在所有地方都可以使用，目前唯一的元素属性是 `Modal` 的 `presentationStyle`（[`StatusBar`](../components/status-bar.md) 接受 `web={{ themeColor }}`）。类型（`IOSProps`、`AndroidProps`、`DesktopProps` 及其各元素的形式）会告诉编辑器每个元素接受什么。
+`desktop={{…}}` 在所有地方都可以使用；上面列出的是目前仅限桌面的属性。`web={{…}}` 同样在所有地方都可以使用，目前唯一的元素属性是 `Modal` 的 `presentationStyle`（[`StatusBar`](../modules/nsh-base.md#status-bar) 接受 `web={{ themeColor }}`）。类型（`IOSProps`、`AndroidProps`、`DesktopProps` 及其各元素的形式）会告诉编辑器每个元素接受什么。
 
 在两个平台上都存在、只是效果略有不同的属性不做分组：`Alert.alert` 的 `cancelable` 选项两个平台都有（iOS 提示框本来就不会因点击外部而关闭），`pagingEnabled`、`refreshing`、`hitSlop` 等在所有平台上都可用。
 
@@ -84,7 +84,7 @@ group: platforms
 import { cleanup } from "nsh";
 import { BackHandler, Toast } from "nsh/android";
 import { Platform } from "nsh/device";
-import { Alert } from "nsh/ui";
+import { Alert } from "nsh/base";
 
 function saved() {
   if (Platform.OS === "android") Toast.show("Saved");
@@ -127,11 +127,11 @@ function Player() {
 
 ### 状态栏
 
-状态栏在两个平台上都用 `nsh/ui/mobile` 中的 [`StatusBar`](../components/status-bar.md) 设置：`barStyle`（`"default"`、`"light-content"`、`"dark-content"`）、`hidden` 和 `animated`，Android 的颜色放在 `android={{ backgroundColor }}` 中。最近挂载的 `StatusBar` 按属性逐项生效，所以页面可以为自己渲染一个，页面消失后之前的设置会恢复。`StatusBar.setBarStyle()` 和 `StatusBar.setHidden()` 以命令式方式设置基础值。
+状态栏在两个平台上都用 `nsh/base` 中的 [`StatusBar`](../modules/nsh-base.md#status-bar) 设置：`barStyle`（`"default"`、`"light-content"`、`"dark-content"`）、`hidden` 和 `animated`，Android 的颜色放在 `android={{ backgroundColor }}` 中。最近挂载的 `StatusBar` 按属性逐项生效，所以页面可以为自己渲染一个，页面消失后之前的设置会恢复。`StatusBar.setBarStyle()` 和 `StatusBar.setHidden()` 以命令式方式设置基础值。
 
 ```tsx
 import { View } from "nsh";
-import { StatusBar } from "nsh/ui/mobile";
+import { StatusBar } from "nsh/base";
 
 function PhotoViewer() {
   return (

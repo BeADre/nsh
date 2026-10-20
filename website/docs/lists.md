@@ -168,7 +168,7 @@ Because a cell may show a header now and a name later, the row decides what to r
 ```tsx
 import { Input, mount, signal, Text, View } from "nsh";
 import { List } from "nsh/list";
-import { KeyboardAvoidingView } from "nsh/ui/mobile";
+import { KeyboardAvoidingView } from "nsh/base";
 
 type Message = { id: number; text: string; mine: boolean };
 
@@ -346,17 +346,42 @@ list.scrollToIndex({ index: 120, viewPosition: 0.5 });
 
 `scrollToIndex` (and `scrollToEnd`) is resolved natively with the sizes known at that moment: measured rows where they have been measured, `estimatedItemSize` elsewhere. The list then follows its target while the rows around it are measured, so it lands exactly, until the user scrolls or the items change. To open a list at an item, use `initialScrollIndex` rather than scrolling after the first frame.
 
-## ListView from nsh/ui
+## A settings-style list
 
-`ListView` from `nsh/ui` is a ready-made list built on the same machinery: you pass `each` and render a row, and it adds the padding, dividers and an `inset` grouped look. Use it for settings-style and plain lists that should look like the rest of NSH's UI set; use `List` when you control the whole look. See [ListView](../components/list-view.md).
+The look of a list is the app's own: `List` places and recycles the rows, and the rows, dividers and surfaces are your views. A grouped, settings-style list is a `List` with padding, a separator and rounded first and last rows. Make it a component of your own and use it wherever the app lists settings:
 
 ```tsx
-import { Text } from "nsh";
-import { ListView } from "nsh/ui";
+import { Text, View } from "nsh";
+import { List } from "nsh/list";
 
-<ListView variant="inset" dividers each={settings} keyExtractor={(s) => s.id}>
-  {(s) => <Text>{s().label}</Text>}
-</ListView>
+type Setting = { id: string; label: string };
+
+function SettingsList(props: { each: Setting[]; onSelect: (s: Setting) => void }) {
+  return (
+    <List
+      each={props.each}
+      estimatedItemSize={48}
+      class="flex-1 bg-neutral-100 dark:bg-neutral-950"
+      contentContainerStyle={{ padding: 16 }}
+      ItemSeparatorComponent={() => (
+        <View class="bg-white dark:bg-neutral-900">
+          <View class="ml-4 h-px bg-neutral-200 dark:bg-neutral-800" />
+        </View>
+      )}
+    >
+      {(s, i) => (
+        <View
+          onPress={() => props.onSelect(s())}
+          accessibilityRole="button"
+          class="h-12 justify-center bg-white px-4 active:bg-neutral-200 dark:bg-neutral-900"
+          classList={{ "rounded-t-xl": i() === 0, "rounded-b-xl": i() === props.each.length - 1 }}
+        >
+          <Text>{s().label}</Text>
+        </View>
+      )}
+    </List>
+  );
+}
 ```
 
 ## Performance notes

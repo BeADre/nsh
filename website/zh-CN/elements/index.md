@@ -8,7 +8,7 @@ order: 1
 
 宿主元素是构成每个界面的原语：`<View>`、`<Text>`、`<Image>` 等，从 NSH 的模块导入。每个元素都对应一个原生视图（iOS 和 Mac Catalyst 上是
 UIView 子类，Android 上是 `View`），由 NSH 运行时创建并布局。应用显示的一切都由它们组成：
-[`nsh/ui` 和 `nsh/ui/mobile`](../components/index.md) 的组件同样是用这些元素绘制的。
+应用的按钮、卡片、列表行和页面都是它自己的组件，用这些元素绘制，用 `style` 或 Tailwind 类设置样式，因此应用的外观完全由应用决定。
 
 ```tsx
 import { mount, signal, Text, View } from "nsh";
@@ -43,7 +43,7 @@ mount(App);
 | `<Canvas>` | `nsh/canvas` | 回放 2D 绘制的视图 | [Canvas](./canvas.md) |
 | `<WebView>` | `nsh/webview` | WKWebView / android.webkit.WebView | [WebView](./web-view.md) |
 | `<Video>` | `nsh/video` | AVPlayerLayer / TextureView 上的 MediaPlayer | [Video](./video.md) |
-| `<Modal>` | `nsh/ui` | 模态呈现的 view controller / Dialog | [Modal](./modal.md) |
+| `<Modal>` | `nsh/base` | 模态呈现的 view controller / Dialog | [Modal](./modal.md) |
 | `<InputAccessoryView>` | `nsh/ios` | 键盘上方的工具栏（仅 iOS） | [nsh/ios](../modules/nsh-ios.md) |
 | `<If>`、`<Each>` | 无：全局组件 | 无：控制流 | [控制流](./control-flow.md) |
 

@@ -167,7 +167,7 @@ for (const [letter, names] of groups) {
 ```tsx
 import { Input, mount, signal, Text, View } from "nsh";
 import { List } from "nsh/list";
-import { KeyboardAvoidingView } from "nsh/ui/mobile";
+import { KeyboardAvoidingView } from "nsh/base";
 
 type Message = { id: number; text: string; mine: boolean };
 
@@ -335,17 +335,44 @@ list.scrollToIndex({ index: 120, viewPosition: 0.5 });
 
 `scrollToIndex`（以及 `scrollToEnd`）由原生根据当时已知的尺寸计算：已测量的行用实测值，其余用 `estimatedItemSize`。之后在目标附近的行被测量时，列表会持续跟随目标，因此能准确落位，直到用户自己滚动或数据变化为止。要让列表一打开就停在某个条目，请用 `initialScrollIndex`，而不是在第一帧之后再滚动。
 
-## nsh/ui 中的 ListView
+<a id="a-settings-style-list"></a>
 
-`nsh/ui` 中的 `ListView` 是基于同一套机制的现成列表：你传入 `each` 并渲染行，它负责内边距、分隔线以及 `inset` 分组外观。需要与 NSH UI 组件集其他部分外观一致的设置类列表和普通列表时用它；需要完全掌控外观时用 `List`。见 [ListView](../components/list-view.md)。
+## 设置风格的列表
+
+列表的外观属于应用自己：`List` 负责摆放和复用行，行、分隔线和表面都是你的视图。分组的设置风格列表就是一个带内边距、分隔线、首尾行圆角的 `List`。把它写成自己的组件，在应用中需要列出设置的地方使用：
 
 ```tsx
-import { Text } from "nsh";
-import { ListView } from "nsh/ui";
+import { Text, View } from "nsh";
+import { List } from "nsh/list";
 
-<ListView variant="inset" dividers each={settings} keyExtractor={(s) => s.id}>
-  {(s) => <Text>{s().label}</Text>}
-</ListView>
+type Setting = { id: string; label: string };
+
+function SettingsList(props: { each: Setting[]; onSelect: (s: Setting) => void }) {
+  return (
+    <List
+      each={props.each}
+      estimatedItemSize={48}
+      class="flex-1 bg-neutral-100 dark:bg-neutral-950"
+      contentContainerStyle={{ padding: 16 }}
+      ItemSeparatorComponent={() => (
+        <View class="bg-white dark:bg-neutral-900">
+          <View class="ml-4 h-px bg-neutral-200 dark:bg-neutral-800" />
+        </View>
+      )}
+    >
+      {(s, i) => (
+        <View
+          onPress={() => props.onSelect(s())}
+          accessibilityRole="button"
+          class="h-12 justify-center bg-white px-4 active:bg-neutral-200 dark:bg-neutral-900"
+          classList={{ "rounded-t-xl": i() === 0, "rounded-b-xl": i() === props.each.length - 1 }}
+        >
+          <Text>{s().label}</Text>
+        </View>
+      )}
+    </List>
+  );
+}
 ```
 
 ## 性能提示

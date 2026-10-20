@@ -1,10 +1,12 @@
-//! Components: `nsh/ui`'s buttons and cards, native press feedback, a
-//! sheet opened by a pressable with press styles, layout animation, an
+//! Components: native press feedback, a sheet opened by a pressable with press styles, layout animation, an
 //! input's accessory bar, the keyboard avoiding view, modal options and
 //! the environment (as the TSX gallery's `demos/Components.tsx`).
 
 use std::hash::{BuildHasher, RandomState};
 
+use nsh_base::{
+    AvoidBehavior, KeyboardAvoidingView, KeyboardAvoidingViewProps, SafeAreaView, SafeAreaViewProps,
+};
 use nsh_core::{
     PatchValue, StyleKey, UNDERLAY_OPACITY,
     ui::{
@@ -12,11 +14,6 @@ use nsh_core::{
         prelude::*,
     },
 };
-use nsh_ui::{
-    Button, ButtonEvent, ButtonProps, ButtonVariant, Card, CardProps, CardVariant, SafeAreaView,
-    SafeAreaViewProps,
-};
-use nsh_ui_mobile::{AvoidBehavior, KeyboardAvoidingView, KeyboardAvoidingViewProps};
 
 use crate::{
     nav,
@@ -88,99 +85,6 @@ fn title_block(badge: impl Into<SharedString>, title: &str) -> View {
                 .letter_spacing(-0.5)
                 .text_color(colors::TEXT),
         )
-}
-
-/// The components of `nsh/ui` (Rust, `nsh-ui`) in a Rust view.
-#[component]
-fn MobileComponents() -> impl IntoElement {
-    let presses = signal(0_u32);
-    let pressed = move |_: &ButtonEvent| presses.update(|p| *p += 1);
-    let mobile_button = |title: &str, variant: ButtonVariant, disabled: bool| {
-        Button::element(ButtonProps {
-            title: title.to_owned().into(),
-            variant: variant.into(),
-            disabled: disabled.into(),
-            ..ButtonProps::default()
-        })
-    };
-    ui::Card::new()
-        .icon(IconName::Mobile)
-        .title("nsh/ui")
-        .subtitle("Rust components, the app's theme")
-        .right(
-            Badge::new(move || {
-                let presses = presses.get();
-                let unit = if presses == 1 {
-                    hint("tap", "click")
-                } else {
-                    hint("taps", "clicks")
-                };
-                format!("{presses} {unit}")
-            })
-            .tone(move || {
-                if presses.get() > 0 {
-                    Tone::Accent
-                } else {
-                    Tone::Neutral
-                }
-            }),
-        )
-        .child(mobile_button("Primary", ButtonVariant::Primary, false).on_event(pressed))
-        .child(
-            view()
-                .flex_row()
-                .gap_2()
-                .child(cell(
-                    mobile_button("Secondary", ButtonVariant::Secondary, false).on_event(pressed),
-                ))
-                .child(cell(
-                    mobile_button("Danger", ButtonVariant::Danger, false).on_event(pressed),
-                )),
-        )
-        .child(
-            view()
-                .flex_row()
-                .gap_2()
-                .child(cell(
-                    mobile_button("Plain", ButtonVariant::Plain, false).on_event(pressed),
-                ))
-                .child(cell(
-                    mobile_button("Disabled", ButtonVariant::Secondary, true).on_event(pressed),
-                )),
-        )
-        .child(
-            Card::element(CardProps::default())
-                .fill("header", text("Card with slots"))
-                .fill(
-                    "footer",
-                    view()
-                        .flex_row()
-                        .gap_2()
-                        .child(cell(
-                            mobile_button("Reset", ButtonVariant::Secondary, false)
-                                .on_event(move |_: &ButtonEvent| presses.set(0)),
-                        ))
-                        .child(cell(
-                            mobile_button("Add one", ButtonVariant::Primary, false)
-                                .on_event(pressed),
-                        )),
-                )
-                .child(text(
-                    "The header, this body and the footer are JSX in a Rust component's slots \
-                     and children.",
-                )),
-        )
-        .child(
-            Card::element(CardProps {
-                variant: CardVariant::Outlined.into(),
-                ..CardProps::default()
-            })
-            .child(text("An outlined card, children only.")),
-        )
-        .child(caption(
-            "Colors come from the app's theme",
-            Some("theme.json"),
-        ))
 }
 
 /// A tile to press: its title, the prop it shows, something on the right.
@@ -877,7 +781,6 @@ pub(crate) fn Components() -> impl IntoElement {
     };
     DemoPage::new()
         .keyboard_dismiss_mode(KeyboardDismissMode::Interactive)
-        .card(|| MobileComponents::element(()))
         .card(|| PressFeedback::element(()))
         .card(|| PressableSheet::element(()))
         .card(|| LayoutAnimations::element(()))

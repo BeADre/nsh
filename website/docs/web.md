@@ -60,7 +60,7 @@ page and files named after their content.
 | `index.html` | The app's page: its name as the title, the icons, the colors of its `appearance`, a loading indicator, and a message when the app cannot load or start |
 | `manifest.webmanifest` | The name, id, icons and colors browsers install the app with |
 | `nsh.<digest>.js` | The DOM runtime, minified (79 KB, 22.5 KB with brotli) |
-| `nsh.<digest>.wasm` | The engine, the core, the UI sets' components and QuickJS without its compiler (about 3.5 MB, 1.2 MB gzipped, 0.93 MB with brotli) |
+| `nsh.<digest>.wasm` | The engine, the core, the runtime's modules and QuickJS without its compiler (about 3.5 MB, 1.2 MB gzipped, 0.93 MB with brotli) |
 | `app.<digest>.nshc` | The app, built as `nsh build --release --split` builds it, compiled to QuickJS bytecode: nothing is compiled in the browser, so it starts sooner |
 | `harden.<digest>.nshc` | The [sandbox's](./sandbox-and-capabilities.md) hardening, compiled likewise (1.4 KB) |
 | `chunks/<name>.<digest>.nshc` | What `import()` loads, compiled likewise, downloaded the first time it is imported ([split bundles](#split-bundles)) |
@@ -165,7 +165,7 @@ Serve the directory with any static server (it needs the `application/wasm` MIME
 
 The [Playground](/playground) edits and runs an app in the browser: the page compiles the TSX with NSH's own JSX compiler (built into `nsh-playground.wasm`, without rolldown) and runs it on every pause in typing. Every demo on this site has an **Edit in Playground** link, and **Share** puts the code in the link itself, so nothing is stored on a server.
 
-A playground app is one module: it imports NSH's modules (`nsh`, `nsh/*`, `nsh/ui`, `nsh/ui/mobile`) but no other files or packages. `console.log` output and errors appear below the phone.
+A playground app is one module: it imports NSH's modules (`nsh` and `nsh/*`) but no other files or packages. `console.log` output and errors appear below the phone.
 
 The compiler is also a Rust function, `nsh_bundler::compile_module(name, source, ui_sets)`, available without the crate's `bundle` feature.
 
@@ -216,7 +216,7 @@ The page reports the rest of the environment, and keeps it current:
 | `safeArea()` | `env(safe-area-inset-*)` where it overlaps the container (`viewport-fit=cover` pages on phones) |
 | `keyboard()` | how much of the container the on-screen keyboard covers (`visualViewport`) |
 
-`Platform.Version` is `"0.0"`, and `screenReaderEnabled()` stays `false` (browsers do not tell). [`StatusBar`](../components/status-bar.md)'s `web={{ themeColor }}` sets the page's `<meta name="theme-color">`, the color browsers give their bars around the page.
+`Platform.Version` is `"0.0"`, and `screenReaderEnabled()` stays `false` (browsers do not tell). [`StatusBar`](../modules/nsh-base.md#status-bar)'s `web={{ themeColor }}` sets the page's `<meta name="theme-color">`, the color browsers give their bars around the page.
 
 ## Networking
 

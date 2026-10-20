@@ -10,7 +10,6 @@ mod gestures;
 mod images;
 mod lists;
 mod media;
-mod mobile_ui;
 mod navigation;
 mod photos;
 mod physics;
@@ -195,12 +194,6 @@ pub(crate) static GROUPS: &[Group] = &[
     Group {
         title: "Platform",
         demos: &[
-            Demo {
-                name: "Mobile UI",
-                detail: "nsh/ui in Rust: a ListView and a Group of the app's rows",
-                icon: IconName::Mobile,
-                content: || mobile_ui::MobileUi::element(()).into_element(),
-            },
             Demo {
                 name: "Components",
                 detail: "Press feedback, sheet, layout animation, input accessory, modal options",

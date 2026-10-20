@@ -131,7 +131,7 @@ let password!: YNode;
 </>;
 ```
 
-`Keyboard.dismiss()` from [`nsh/ui/mobile`](../components/keyboard.md) hides the keyboard whichever input has it.
+`Keyboard.dismiss()` from [`nsh/base`](../modules/nsh-base.md#keyboard) hides the keyboard whichever input has it.
 
 ## Platform notes
 

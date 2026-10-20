@@ -2,9 +2,8 @@ import { batch, computed, effect, Input, Scroll, signal, Text, View, type ViewSt
 import { createNativeValue, LayoutAnimation } from "nsh/animated";
 import { Clipboard } from "nsh/clipboard";
 import { Platform } from "nsh/device";
+import { keyboard, KeyboardAvoidingView, useSafeAreaInsets } from "nsh/base";
 import { List } from "nsh/list";
-import { useSafeAreaInsets } from "nsh/ui";
-import { keyboard, KeyboardAvoidingView } from "nsh/ui/mobile";
 import { Icon, type IconName } from "../icons";
 import { alpha, Appear, Badge, colors, desktop, finish, IconTile, motion, Press, radius, RoundButton, Segmented, toneTint } from "../ui";
 import { Glyph } from "./chat/glyphs";

@@ -42,7 +42,7 @@ fn uncaught_errors_point_at_app_sources() {
         entry,
         minify: false,
         split: false,
-        ui_sets: vec![nsh_ui::registry(), nsh_ui_mobile::registry()],
+        ui_sets: vec![nsh_base::registry()],
     })
     .unwrap();
     let bytecode = nsh_js::compile_bytecode(&bundle.code, false).unwrap();

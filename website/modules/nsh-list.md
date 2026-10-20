@@ -211,4 +211,4 @@ type ListItemsProps<T> = Pick<ListProps<T>,
   | "ListHeaderComponent" | "ListFooterComponent" | "ListEmptyComponent">;
 ```
 
-The data-and-rows half of `ListProps`: what you pass to a component that lays out a list itself, such as [`ListView`](../components/list-view.md) from `nsh/ui`.
+The data-and-rows half of `ListProps`: what you pass to a component of your own that lays out a list itself, such as a settings list that wraps `List` with its own padding and dividers.

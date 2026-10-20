@@ -1,7 +1,7 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
 import { url, type Lang } from './site';
 
-export type SectionId = 'docs' | 'elements' | 'components' | 'modules';
+export type SectionId = 'docs' | 'elements' | 'modules';
 
 export interface Section {
   id: SectionId;
@@ -9,7 +9,7 @@ export interface Section {
   blurb: Record<Lang, string>;
 }
 
-/** The four content sections, in navigation order. Their directories are `website/<id>`. */
+/** The three content sections, in navigation order. Their directories are `website/<id>`. */
 export const SECTIONS: Section[] = [
   {
     id: 'docs',
@@ -25,14 +25,6 @@ export const SECTIONS: Section[] = [
     blurb: {
       en: 'The host elements every UI is built from — View, Text, Image, scroll views, lists — and their props.',
       'zh-CN': '构成所有界面的宿主元素——View、Text、Image、滚动视图、列表——及其属性。',
-    },
-  },
-  {
-    id: 'components',
-    label: { en: 'Components', 'zh-CN': '组件' },
-    blurb: {
-      en: 'nsh/ui: buttons, cards, lists, navigation and more on every platform; nsh/ui/mobile: the status bar, sheets and the keyboard. Written in Rust and drawn by NSH, so they look the same everywhere.',
-      'zh-CN': 'nsh/ui：各平台共用的按钮、卡片、列表、导航等组件；nsh/ui/mobile：状态栏、底部面板和键盘。用 Rust 编写、由 NSH 绘制，在每个平台上表现一致。',
     },
   },
   {

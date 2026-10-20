@@ -10,8 +10,8 @@ mod nav;
 mod shell;
 mod ui;
 
+use nsh_base::{BarStyle, StatusBar, StatusBarProps};
 use nsh_core::ui::prelude::*;
-use nsh_ui_mobile::{BarStyle, StatusBar, StatusBarProps};
 
 use crate::ui::{colors, desktop};
 

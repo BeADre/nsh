@@ -1,26 +1,28 @@
-//! `Sheet`: a panel that slides up from the bottom over a dimmed backdrop,
-//! dragged down to close. The drag and the springs run natively: the panel
+//! `Sheet`: the gallery's bottom sheet, a panel that slides up from the
+//! bottom over a dimmed backdrop, dragged down to close. The drag and the springs run natively: the panel
 //! follows the finger with no engine work per frame.
 
 use nsh_core::ui::prelude::*;
+
+use super::colors;
 
 /// A panel that slides up from the bottom over a dimmed backdrop while
 /// `open`; dragging it down, tapping the backdrop or the back button closes
 /// it (`onClose`: set `open` to false).
 #[derive(Debug, Clone, PartialEq, Props)]
-pub struct SheetProps {
+pub(crate) struct SheetProps {
     /// Shown.
     #[prop(default)]
-    pub open: Prop<bool>,
+    pub(crate) open: Prop<bool>,
     /// The content: made when the sheet opens and released when it has
     /// closed, so it starts fresh each time.
     #[prop(lazy)]
-    pub children: Children,
+    pub(crate) children: Children,
 }
 
 /// The events of a [`Sheet`].
 #[derive(Debug, Clone, PartialEq, Event)]
-pub enum SheetEvent {
+pub(crate) enum SheetEvent {
     /// The user closed it (it slid away).
     Close,
 }
@@ -41,7 +43,7 @@ fn settle(velocity: Option<f32>) -> Spring {
 
 /// A bottom sheet ([`SheetProps`]).
 #[component]
-pub fn Sheet(props: SheetProps, cx: Scope<SheetEvent>) -> impl IntoElement {
+pub(crate) fn Sheet(props: SheetProps, cx: Scope<SheetEvent>) -> impl IntoElement {
     // How far down the panel is from where it rests.
     let offset = native_value(0.0);
     // Closing: the panel slides away, then the app is told.
@@ -109,7 +111,7 @@ pub fn Sheet(props: SheetProps, cx: Scope<SheetEvent>) -> impl IntoElement {
                     .px_4()
                     .gap_3()
                     .rounded_t(move || px(theme().radius_lg.max(16.0)))
-                    .bg(move || theme().background)
+                    .bg(colors::SURFACE)
                     .shadow_lg()
                     .bind_translate_y(&offset)
                     .pan_values(None, Some(&offset))

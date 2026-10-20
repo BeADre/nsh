@@ -25,7 +25,7 @@ use super::{
 /// `#[component]` on a function makes the type and this impl.
 ///
 /// It is registered under its type's name ([`std::any::type_name`]:
-/// `nsh_ui::button::Button`) and exported to JS as the type's own
+/// `app_native::chart::Chart`) and exported to JS as the type's own
 /// name (`Button`), so neither is written by hand
 /// ([`Registry::register`]).
 ///
@@ -344,7 +344,7 @@ impl Event for NoEvent {
 #[derive(Debug, Clone)]
 pub struct ComponentSpec {
     /// Its registered name: its type's ([`std::any::type_name`]:
-    /// `nsh_ui::button::Button`), unique within one binary.
+    /// `app_native::chart::Chart`), unique within one binary.
     pub name: &'static str,
     /// Its JS export: the type's own name (`Button`).
     pub export: String,
@@ -420,7 +420,7 @@ pub(crate) fn name_of<C: Component>() -> &'static str {
     std::any::type_name::<C>()
 }
 
-/// A type's own name, its JS export: `nsh_ui::tab_bar::TabBar` ->
+/// A type's own name, its JS export: `app_native::tab_bar::TabBar` ->
 /// `TabBar` (a generic one's without its arguments: `app::Picker<app::Fruit>`
 /// -> `Picker`).
 fn export_name(type_name: &str) -> &str {
@@ -580,7 +580,7 @@ pub struct Registry {
     /// The runtime module the functions belong to (`nsh/android`): JS
     /// calls them as `nsh/android:Toast.show`, apart from any UI set's.
     namespace: Option<&'static str>,
-    /// The JS module a UI set is imported as (`nsh/ui`).
+    /// The JS module a UI set is imported as (`app/native`).
     ui_set: Option<&'static str>,
     /// The files its crates ship ([`Registry::assets`]).
     assets: Arc<Vec<&'static [super::AssetFile]>>,
@@ -782,7 +782,7 @@ impl Registry {
     }
 
     /// The registry of a UI set apps import as `specifier`
-    /// (`nsh/ui`). An app's crate makes its own with
+    /// (`app/native`). An app's crate makes its own with
     /// `#[native_module("…")]`.
     pub fn ui_set(specifier: &'static str) -> Self {
         Self {
@@ -906,7 +906,7 @@ fn same_class(name: &str, old: &str, new: &str, set: Option<&str>) -> String {
     }
 }
 
-/// ` in `nsh/ui`` for a registry with a specifier.
+/// ` in `app/native`` for a registry with a specifier.
 fn of_set(set: Option<&str>) -> String {
     set.map(|s| format!(" in `{s}`")).unwrap_or_default()
 }

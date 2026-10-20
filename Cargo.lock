@@ -1088,13 +1088,12 @@ dependencies = [
  "crossbeam-channel",
  "env_logger",
  "log",
+ "nsh-base",
  "nsh-core",
  "nsh-engine",
  "nsh-platform-linux",
  "nsh-platform-macos",
  "nsh-platform-windows",
- "nsh-ui",
- "nsh-ui-mobile",
  "serde_json",
 ]
 
@@ -2171,6 +2170,13 @@ name = "nsh-animation"
 version = "0.1.1"
 
 [[package]]
+name = "nsh-base"
+version = "0.1.1"
+dependencies = [
+ "nsh-core",
+]
+
+[[package]]
 name = "nsh-bundler"
 version = "0.1.1"
 dependencies = [
@@ -2178,9 +2184,8 @@ dependencies = [
  "dunce",
  "imagesize",
  "log",
+ "nsh-base",
  "nsh-core",
- "nsh-ui",
- "nsh-ui-mobile",
  "oxc",
  "oxc_sourcemap",
  "rolldown",
@@ -2207,14 +2212,13 @@ dependencies = [
  "libc",
  "log",
  "notify",
+ "nsh-base",
  "nsh-bundler",
  "nsh-core",
  "nsh-dev",
  "nsh-engine",
  "nsh-js",
  "nsh-package",
- "nsh-ui",
- "nsh-ui-mobile",
  "plist",
  "semver",
  "serde",
@@ -2262,12 +2266,11 @@ dependencies = [
  "libc",
  "log",
  "nsh-animation",
+ "nsh-base",
  "nsh-bundler",
  "nsh-core",
  "nsh-js",
  "nsh-package",
- "nsh-ui",
- "nsh-ui-mobile",
  "oxc_sourcemap",
  "rustc-hash",
  "serde_json",
@@ -2299,9 +2302,8 @@ dependencies = [
  "libc",
  "log",
  "nsh-animation",
+ "nsh-base",
  "nsh-core",
- "nsh-ui",
- "nsh-ui-mobile",
  "percent-encoding",
  "rquickjs",
  "rustc-hash",
@@ -2381,11 +2383,10 @@ dependencies = [
  "libc",
  "log",
  "nsh-animation",
+ "nsh-base",
  "nsh-core",
  "nsh-dev",
  "nsh-engine",
- "nsh-ui",
- "nsh-ui-mobile",
  "rustc-hash",
  "serde_json",
  "ttf-parser",
@@ -2400,11 +2401,10 @@ dependencies = [
  "libc",
  "log",
  "nsh-animation",
+ "nsh-base",
  "nsh-core",
  "nsh-dev",
  "nsh-engine",
- "nsh-ui",
- "nsh-ui-mobile",
  "objc2",
  "objc2-core-foundation",
  "objc2-core-graphics",
@@ -2426,11 +2426,10 @@ dependencies = [
  "image",
  "log",
  "nsh-animation",
+ "nsh-base",
  "nsh-core",
  "nsh-dev",
  "nsh-engine",
- "nsh-ui",
- "nsh-ui-mobile",
  "pango",
  "pangocairo",
  "rustc-hash",
@@ -2450,11 +2449,10 @@ dependencies = [
  "libc",
  "log",
  "nsh-animation",
+ "nsh-base",
  "nsh-core",
  "nsh-dev",
  "nsh-engine",
- "nsh-ui",
- "nsh-ui-mobile",
  "objc2",
  "objc2-app-kit",
  "objc2-core-foundation",
@@ -2474,12 +2472,11 @@ version = "0.1.1"
 dependencies = [
  "log",
  "nsh-animation",
+ "nsh-base",
  "nsh-bundler",
  "nsh-core",
  "nsh-engine",
  "nsh-js",
- "nsh-ui",
- "nsh-ui-mobile",
  "rquickjs",
  "rustc-hash",
  "serde_json",
@@ -2495,11 +2492,10 @@ dependencies = [
  "image",
  "log",
  "nsh-animation",
+ "nsh-base",
  "nsh-core",
  "nsh-dev",
  "nsh-engine",
- "nsh-ui",
- "nsh-ui-mobile",
  "rustc-hash",
  "serde_json",
  "ttf-parser",
@@ -2509,21 +2505,6 @@ dependencies = [
  "windows",
  "windows-core",
  "windows-numerics",
-]
-
-[[package]]
-name = "nsh-ui"
-version = "0.1.1"
-dependencies = [
- "nsh-core",
-]
-
-[[package]]
-name = "nsh-ui-mobile"
-version = "0.1.1"
-dependencies = [
- "nsh-core",
- "serde_json",
 ]
 
 [[package]]

@@ -19,7 +19,6 @@ fn every_demo_opens_from_the_index() {
         "Typed styles",
         "Text",
         "Images",
-        "Mobile UI",
         "Components",
         "Web and video",
         "System",
@@ -53,7 +52,7 @@ fn the_index_groups_the_demos() {
         ("LAYOUT AND LISTS", "4"),
         ("TOUCH AND MOTION", "4"),
         ("DRAWING AND TYPE", "5"),
-        ("PLATFORM", "4"),
+        ("PLATFORM", "3"),
     ] {
         let at = screen.find(title).unwrap_or_else(|| panic!("no {title}"));
         // The count is the title's sibling.
@@ -67,7 +66,7 @@ fn the_index_groups_the_demos() {
         );
     }
     // Each row has its icon and its chevron drawn.
-    assert!(screen.drawings.len() >= 2 * 20, "{}", screen.drawings.len());
+    assert!(screen.drawings.len() >= 2 * 19, "{}", screen.drawings.len());
 }
 
 #[test]

@@ -10,7 +10,15 @@ modal 在应用其余内容之上、在它自己的原生窗口层中呈现内�
 
 ```tsx
 import { signal, Text, View } from "nsh";
-import { Button, Modal, SafeAreaView } from "nsh/ui";
+import { Modal, SafeAreaView } from "nsh/base";
+
+function Button(props: { title: string; onPress: () => void }) {
+  return (
+    <View onPress={props.onPress} activeOpacity={0.7} accessibilityRole="button" class="rounded-lg bg-blue-600 px-4 py-3 items-center">
+      <Text class="text-white font-semibold">{props.title}</Text>
+    </View>
+  );
+}
 
 function Example() {
   const open = signal(false);
@@ -28,7 +36,7 @@ function Example() {
 }
 ```
 
-`Modal` 从 [`nsh/ui`](../components/navigation.md) 导入。`visible` 不为 `false` 时呈现，变为 `false` 时关闭；它还会给内容提供 modal 的安全区域 inset，供其内部的 `SafeAreaView` 和 `useSafeAreaInsets()` 读取。
+`Modal` 从 [`nsh/base`](../modules/nsh-base.md#modal) 导入。`visible` 不为 `false` 时呈现，变为 `false` 时关闭；它还会给内容提供 modal 的安全区域 inset，供其内部的 `SafeAreaView` 和 `useSafeAreaInsets()` 读取。`Button` 是应用自己的组件：一个带文字、可按下的 `View`。
 
 ## 属性
 
@@ -80,7 +88,7 @@ modal 是受控的：用户下滑 sheet 或按返回键时，NSH 通过 `onReque
 </Modal>
 ```
 
-如果需要系统提示框或操作表，请改用 `nsh/ui` 的 `Alert` 和 `nsh/ui/mobile` 的 `ActionSheet`（[alert](../components/alert.md)、[action sheet](../components/action-sheet.md)）。应用自绘的 sheet 见 [`Sheet`](../components/sheet.md)。
+如果需要系统提示框或操作表，请改用 [`nsh/base`](../modules/nsh-base.md#dialogs) 的 `Alert` 和 `ActionSheet`。
 
 ## Ref 方法
 

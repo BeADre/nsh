@@ -2,7 +2,7 @@
 
 Every tag is a component in scope, imported from its one home (`native-pipeline.md`): `View`, `Text`, `Scroll`,
 `Input` from `nsh`, `Image` from `nsh/image`, `List` from `nsh/list`, `Canvas` from `nsh/canvas`, `WebView` from
-`nsh/webview`, `Video` from `nsh/video`, `Modal` (and `Stack` / `Screen`) from `nsh/ui`, `InputAccessoryView` from
+`nsh/webview`, `Video` from `nsh/video`, `Modal` (and `Stack` / `Screen`) from `nsh/base`, `InputAccessoryView` from
 `nsh/ios`; only `If` and `Each` are globals.
 
 | JSX | Native (Apple) | Notes |
@@ -23,15 +23,15 @@ Every tag is a component in scope, imported from its one home (`native-pipeline.
 
 On Android the same elements map to `Box` (ViewGroup), `TextBox`, `ImageBox`, `ScrollBox` (ScrollView), `InputBox` (EditText),
 `StackBox` (screens with a Toolbar, predictive back), `ModalHost` (a Dialog), `WebBox` (android.webkit.WebView) and `VideoBox`
-(MediaPlayer on a TextureView, MediaController); both are `WidgetBox`es. Every host element and runtime component is typed in
-`.nsh/types/nsh/types.d.ts` and the declarations of the runtime's modules (made from the Rust tables: `tooling.md`).
+(MediaPlayer on a TextureView, MediaController); both are `WidgetBox`es. Every host element and `nsh/base` component is typed in
+`.nsh/types/nsh/types.d.ts` and the declarations of the runtime's modules and `nsh/base` (made from the Rust tables: `tooling.md`).
 
 **Host props are one definition.** A host prop is a variant of `nsh_core::Prop` (or of the enum it nests: `ScrollProp`,
 `NativeProp`, `AccessibilityProp`, ...) with `#[prop(js = "name", ...)]`: `#[derive(HostProps)]` (`nsh_core::js::host`)
 derives from it how `nsh-js` decodes the JS value (straight from QuickJS values, no JSON), the default clearing the
 prop sets (`HostProps::reset`, also used when a Rust component's render stops setting it) and its declaration: one
 interface per element group and platform (`InputHostProps`, `IOSInputHostProps`, ...) that the element types of
-`types.d.ts` and the runtime's components extend. The payload's type decodes itself (`HostValue`;
+`types.d.ts` and `nsh/base`'s components extend. The payload's type decodes itself (`HostValue`;
 `#[derive(PropEnum)]` for string unions); `default`, `min` / `max`, `on` (the element groups), `ios` / `android`
 (names inside `ios={{…}}` / `android={{…}}`), `with` (a decoder of the whole variant, `js/host_values.rs`), `once`
 (not reset) and `internal` (set by the runtime, untyped) cover the rest. **Events** are a table next to it
@@ -42,15 +42,17 @@ in one of them.
 
 ## Primitives only
 
-NSH's runtime provides the basic capabilities. Components are the UI sets' (Rust, `crates/nsh-ui`, `crates/nsh-ui-mobile`,
-`docs/dev/components.md`), drawn with views, classes, canvases and native animations so they look the same on every platform. Do not
-add platform-styled widgets (UISwitch / SeekBar wrappers and the like), and do not add compositions of existing
-primitives to the runtime (section lists, touchables, drawers, ...): they belong to a UI set. React Native is a
-reference for which capabilities exist, not an API to be compatible with. Components that need core or native support
-are primitives of their own (`List`, `Canvas`, `WebView`, `Video`; in `nsh/ui` `Stack`, `Modal`, `SafeAreaView`, in
-`nsh/ui/mobile` `KeyboardAvoidingView`; `InputAccessoryView` in `nsh/ios`). Tags are PascalCase names of what is in scope: a host
-element's primitive is imported from its home (`import { View } from "nsh"`) and compiled in place, a component is
-imported (`import { Button } from "nsh/ui"`) or local; lowercase tags are errors (`native-pipeline.md`).
+NSH's runtime provides the primitives and the capabilities; the look of an app is the app's. Styled components are
+the app's own: drawn in TSX with views, classes, canvases and native animations, or Rust components in the app's crate
+(its UI set, `docs/dev/components.md`), so they look the same on every platform. Do not add platform-styled widgets
+(UISwitch / SeekBar wrappers and the like), and do not add styled widgets or compositions of existing primitives to
+the runtime (buttons, section lists, touchables, drawers, ...). React Native is a reference for which capabilities
+exist, not an API to be compatible with. Components that need core or native support are primitives of their own
+(`List`, `Canvas`, `WebView`, `Video`; in `nsh/base` `Stack`, `Modal`, `SafeAreaView`, `KeyboardAvoidingView`,
+`StatusBar`; `InputAccessoryView` in `nsh/ios`). Tags are PascalCase names
+of what is in scope: a host element's primitive is imported from its home (`import { View } from "nsh"`) and compiled
+in place, a component is imported (`import { Chart } from "app/native"`) or local; lowercase tags are errors
+(`native-pipeline.md`).
 
 ## The main thread never waits for JS
 
@@ -169,8 +171,8 @@ misses the deadline is not waited for again until it catches up (`docs/dev/macos
   `KeyCommand` (the binding's id), so the main thread never waits for JS (`docs/dev/js-modules.md`, the macOS and
   Linux pages' "Keyboard"). Rust views' bindings (`on_key`) join JS's in that one table, and the core runs
   their handlers (`docs/dev/components.md`).
-- **System UI**: `StatusBar` (component and static functions; the last mounted wins, prop by prop, over what the
-  functions set: the core layers them, `docs/dev/components.md`), `Alert.alert` and `ActionSheet.show` (promises of
+- **System UI**: `StatusBar` (`nsh/base`: component and static functions; the last mounted wins, prop by prop, over what the
+  functions set: the core layers them, `docs/dev/components.md`), `Alert.alert` and `ActionSheet.show` (`nsh/base`: promises of
   the index chosen, -1 when dismissed; a list dialog on Android), `Toast` (`nsh/android`). Answers come back as the
   root's `Dialog` event, which the core resolves. Embedding apps forward their controller's status bar to `nsh_status_bar_style()` / `_hidden()` / `_animation()`.
 - **Right to left**: `I18nManager` (`isRTL`, reactive; `allowRTL`, `forceRTL`, applied at once) sets the root's direction;
@@ -185,7 +187,7 @@ misses the deadline is not waited for again until it catches up (`docs/dev/macos
   negative offsets), starting at the right end and keeping their distance from it; horizontal lists are flipped natively
   (`ScrollConfig::mirrored`: the scroll view and each cell get scaleX −1, composed with their transforms), so the list's
   offset logic stays left to right.
-- **Environment** (reactive accessors; `nsh/device`, `nsh/ui` (`safeArea()`) and `nsh/ui/mobile` (`keyboard()`)): `windowSize()`, `safeArea()`, `keyboard()` (`{ height, duration }`: how
+- **Environment** (reactive accessors; `nsh/device` and `nsh/base` (`safeArea()`, `keyboard()`)): `windowSize()`, `safeArea()`, `keyboard()` (`{ height, duration }`: how
   far the keyboard reaches into the surface, the bottom safe area under it included, on every platform),
   `colorScheme()`, `fontScale()`. `KeyboardAvoidingView` pads its bottom by `keyboard().height`, animated with the keyboard,
   for content outside scroll views (message bars). Inputs inside a scroll view are kept clear of the keyboard natively (bottom inset + scroll to the

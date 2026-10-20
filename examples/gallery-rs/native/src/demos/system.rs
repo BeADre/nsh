@@ -4,13 +4,13 @@
 
 use std::time::Duration;
 
+use nsh_base::{BarStyle, StatusBar, StatusBarProps};
 use nsh_core::{
     keymap::When,
     nsh_animation::{Curve, EaseMode},
     time::Instant,
     ui::{AnyElement, Dialog, DialogButton, DialogButtonStyle, prelude::*},
 };
-use nsh_ui_mobile::{BarStyle, StatusBar, StatusBarProps};
 
 use crate::ui::{
     Badge, Button, ButtonVariant, Card, DemoPage, Figure, Finish, Finished, IconName, IconTile,

@@ -15,8 +15,8 @@ others and registered them all under its specifier.
   `import { Chart } from "app/charts"`, `import { Store } from "app/storage"`. A string is a list of one.
 - `rust_app.rs` writes one generated workspace with all of them: the command line and every host and runner (iOS,
   Android, Linux, macOS, Windows, the web, the GPUI workspace, a Rust app's runners) depend on each crate and pass
-  all their registries (`main_with(ui_sets)`, `set_ui_sets`, `ui_sets!`) in the list's order, after
-  `nsh/ui` and `nsh/ui/mobile`.
+  `nsh_base::registry()` and all their registries (`main_with(ui_sets)`, `set_ui_sets`, `ui_sets!`) in the list's
+  order, served beside the runtime's modules.
 - The generated code links each crate under a name of its own, `app_<package>` (`-` as `_`), and makes its set in a
   function of its own, `set_app_<package>()`, whose body glob-imports that crate: the fixed-name entry
   `__nsh_native_module` of each crate is found in its own scope, and one crate without an entry fails the build with

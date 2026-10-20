@@ -146,7 +146,7 @@ allows them without allowing any remote page.
 ### `statusBar`
 
 `"statusBar": true` lets the app change the status bar (the `StatusBar` component and its functions in
-[`nsh/ui/mobile`](../components/status-bar.md)).
+[`nsh/base`](../modules/nsh-base.md#status-bar)).
 
 ### `clipboard`
 

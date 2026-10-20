@@ -10,7 +10,29 @@ demo: guide-forms
 
 Text entry is the `<Input>` element: a UITextField or UITextView on iOS, an EditText on Android. Typing, the caret, selection, autocorrection and autofill are the platform's own; your app gets the text through events and can control it. NSH also keeps focused inputs above the software keyboard on its own, and gives you the keyboard's height as a reactive value for the cases it cannot handle by itself.
 
-For a labeled field with a clear button in the look of NSH's UI set, see [`TextField`](../components/text-field.md). This page covers the underlying element.
+`<Input>` takes styles and Tailwind classes like any view, so the fields of a form have your app's own look. A labeled field is a short component of your own:
+
+```tsx
+import { Input, signal, Text, View } from "nsh";
+
+function Field(props: { label: string; value: string; onChangeText: (text: string) => void; secure?: boolean }) {
+  const focused = signal(false);
+  return (
+    <View class="gap-1">
+      <Text class="text-sm text-neutral-500">{props.label}</Text>
+      <Input
+        value={props.value}
+        onChangeText={props.onChangeText}
+        secureTextEntry={props.secure}
+        onFocus={() => focused.set(true)}
+        onBlur={() => focused.set(false)}
+        class="rounded-lg border px-3 py-2 text-base"
+        style={{ borderColor: focused() ? "#0969da" : "#d0d7de" }}
+      />
+    </View>
+  );
+}
+```
 
 ## Controlled and uncontrolled inputs
 
@@ -170,11 +192,11 @@ An input's ref has:
 | `blur()` | Unfocuses it. |
 | `setSelection(start, end?)` | Selects `start..end` (UTF-16 units); a caret without `end`. |
 
-`Keyboard.dismiss()` from `nsh/ui/mobile` unfocuses whichever input has focus:
+`Keyboard.dismiss()` from `nsh/base` unfocuses whichever input has focus:
 
 ```tsx
 import { View } from "nsh";
-import { Keyboard } from "nsh/ui/mobile";
+import { Keyboard } from "nsh/base";
 
 <View onPress={() => Keyboard.dismiss()}>…</View>
 ```
@@ -233,12 +255,11 @@ When the keyboard appears over a focused input that is inside a `<Scroll>` or `L
 
 ### Content outside scroll views: KeyboardAvoidingView
 
-A message bar pinned to the bottom of a screen is not in a scroll view, so nothing moves it. Wrap the screen in `KeyboardAvoidingView` from `nsh/ui/mobile`: it makes room at the bottom as tall as the keyboard, animated with the keyboard.
+A message bar pinned to the bottom of a screen is not in a scroll view, so nothing moves it. Wrap the screen in `KeyboardAvoidingView` from `nsh/base`: it makes room at the bottom as tall as the keyboard, animated with the keyboard.
 
 ```tsx
 import { Input, Scroll, signal, View } from "nsh";
-import { useSafeAreaInsets } from "nsh/ui";
-import { keyboard, KeyboardAvoidingView } from "nsh/ui/mobile";
+import { keyboard, KeyboardAvoidingView, useSafeAreaInsets } from "nsh/base";
 
 function ChatScreen() {
   const insets = useSafeAreaInsets();
@@ -283,15 +304,15 @@ function ChatScreen() {
 | `keyboardVerticalOffset` | `number` | `0` | Added to the keyboard's height while it shows (a tab bar below the view, say). |
 | `contentContainerStyle` | `StyleProp<ViewStyle>` | | The inner view's style with `behavior="position"`. |
 
-It assumes it reaches the bottom of the surface, as a screen's content does. On an Android host whose window resizes for the keyboard, the window itself shrinks and `KeyboardAvoidingView` has nothing to do. See [KeyboardAvoidingView](../components/keyboard-avoiding-view.md).
+It assumes it reaches the bottom of the surface, as a screen's content does. On an Android host whose window resizes for the keyboard, the window itself shrinks and `KeyboardAvoidingView` has nothing to do. See [KeyboardAvoidingView](../modules/nsh-base.md#keyboardavoidingview).
 
 ### The keyboard accessor
 
-`keyboard()` from `nsh/ui/mobile` is a reactive `{ height, duration }`: how far the keyboard reaches into the surface (0 when hidden; the bottom safe area under it included) and its animation's duration in seconds. Read it for anything custom: hide a floating button while typing, or size a panel.
+`keyboard()` from `nsh/base` is a reactive `{ height, duration }`: how far the keyboard reaches into the surface (0 when hidden; the bottom safe area under it included) and its animation's duration in seconds. Read it for anything custom: hide a floating button while typing, or size a panel.
 
 ```tsx
 import { View } from "nsh";
-import { keyboard } from "nsh/ui/mobile";
+import { keyboard } from "nsh/base";
 
 <If when={keyboard().height === 0}>
   <View style={{ position: "absolute", right: 16, bottom: 16 }}>…</View>
@@ -334,7 +355,6 @@ The bar is as wide as the window and as tall as its content. Android has no inpu
 ## Related
 
 - [`Input`](../elements/input.md): the element reference.
-- [`TextField`](../components/text-field.md): a labeled input with a clear button.
-- [`KeyboardAvoidingView`](../components/keyboard-avoiding-view.md) and [`Keyboard`](../components/keyboard.md).
+- [`KeyboardAvoidingView`](../modules/nsh-base.md#keyboardavoidingview) and [`Keyboard`](../modules/nsh-base.md#keyboard).
 - [`nsh/ios`](../modules/nsh-ios.md): `InputAccessoryView`.
 - [Scrolling](./scrolling.md#scroll-views-and-the-keyboard): keyboard dismissal and taps in scroll views.

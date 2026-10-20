@@ -12,7 +12,15 @@ and Mac Catalyst, a Dialog on Android. It is used for full-screen flows, sheets 
 
 ```tsx
 import { signal, Text, View } from "nsh";
-import { Button, Modal, SafeAreaView } from "nsh/ui";
+import { Modal, SafeAreaView } from "nsh/base";
+
+function Button(props: { title: string; onPress: () => void }) {
+  return (
+    <View onPress={props.onPress} activeOpacity={0.7} accessibilityRole="button" class="rounded-lg bg-blue-600 px-4 py-3 items-center">
+      <Text class="text-white font-semibold">{props.title}</Text>
+    </View>
+  );
+}
 
 function Example() {
   const open = signal(false);
@@ -30,9 +38,9 @@ function Example() {
 }
 ```
 
-`Modal` comes from [`nsh/ui`](../components/navigation.md). It is presented while `visible` is not `false` and
+`Modal` comes from [`nsh/base`](../modules/nsh-base.md#modal). It is presented while `visible` is not `false` and
 dismissed when it becomes `false`, and it gives its content the modal's safe-area insets, which `SafeAreaView` and
-`useSafeAreaInsets()` inside it read.
+`useSafeAreaInsets()` inside it read. `Button` is the app's own component: a pressable `View` with a label.
 
 ## Props
 
@@ -88,9 +96,8 @@ A transparent modal with a fade draws its own dialog over a dimmed background:
 </Modal>
 ```
 
-For a system alert or action sheet, use `Alert` from `nsh/ui` and `ActionSheet` from `nsh/ui/mobile` instead
-([alert](../components/alert.md), [action sheet](../components/action-sheet.md)). For a sheet drawn by the app, see
-[`Sheet`](../components/sheet.md).
+For a system alert or action sheet, use `Alert` and `ActionSheet` from [`nsh/base`](../modules/nsh-base.md#dialogs)
+instead.
 
 ## Ref methods
 

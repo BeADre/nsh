@@ -157,8 +157,8 @@ mod tests {
         for bad in [
             "",
             "nsh",
-            "nsh/ui",
-            "nsh/ui/mobile",
+            "nsh/base",
+            "nsh/base/mobile",
             "./native",
             "../native",
             "/native",

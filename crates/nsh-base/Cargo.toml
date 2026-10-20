@@ -1,6 +1,6 @@
 [package]
-name = "nsh-ui-mobile"
-description = "The mobile UI set's components, written in Rust: one implementation for iOS and Android, run by the core."
+name = "nsh-base"
+description = "Behavior and infrastructure foundations of NSH apps' UI (`nsh/base`), unstyled: navigation, safe areas, dialogs, the keyboard and the status bar."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,4 +12,3 @@ workspace = true
 
 [dependencies]
 nsh-core.workspace = true
-serde_json.workspace = true

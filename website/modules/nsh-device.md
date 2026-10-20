@@ -166,5 +166,5 @@ Right-to-left layout. In right-to-left layout, rows run from the right, and `lef
 
 ## Related
 
-- Safe area insets (`safeArea()`, `useSafeAreaInsets()`) are part of [`nsh/ui`](../components/safe-area-view.md), the software keyboard (`keyboard()`) of [`nsh/ui/mobile`](../components/keyboard.md).
+- Safe area insets (`safeArea()`, `useSafeAreaInsets()`) and the software keyboard (`keyboard()`) are part of [`nsh/base`](./nsh-base.md#safearea-and-usesafeareainsets).
 - Screen reader and reduced motion settings are in [`nsh/accessibility`](./nsh-accessibility.md).

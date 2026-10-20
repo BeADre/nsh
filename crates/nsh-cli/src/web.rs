@@ -633,7 +633,7 @@ mod tests {
             "{page}"
         );
         assert!(!page.contains("{{"), "{page}");
-        assert!(page.contains("const UI_SETS = [\"nsh/ui\",\"nsh/ui/mobile\"];"));
+        assert!(page.contains("const UI_SETS = [\"nsh/base\"];"));
         fs::write(&runtime.wasm, "two").unwrap();
         assert_ne!(version(&dev_host(&runtime, false).unwrap().1), first);
         assert!(
@@ -648,7 +648,7 @@ mod tests {
     #[test]
     fn urls_escape_what_names_may_hold() {
         assert_eq!(url_path("assets/a b/中.png"), "assets/a%20b/%E4%B8%AD.png");
-        assert_eq!(url_path("assets/@nsh-ui/x.ttf"), "assets/@nsh-ui/x.ttf");
+        assert_eq!(url_path("assets/@nsh-base/x.ttf"), "assets/@nsh-base/x.ttf");
     }
 
     #[test]

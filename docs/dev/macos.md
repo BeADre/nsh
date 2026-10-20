@@ -111,7 +111,8 @@ server client, log forwarding, the error overlay: `dev.rs`). The runtime needs m
   menu bar shows that (the development host has no bundle; `nsh run` passes it the app's name with `--name`). The standalone event loop
   ends when its window closes, a minimized one too; `windowWillClose:` schedules
   its stop after the close callback. `set_ui_sets`
-  replaces the default sets (`nsh/ui`, `nsh/ui/mobile`) for apps with Rust components of their own.
+  serves the UI sets beside the runtime's modules (`nsh/base` by default; an app with Rust components of its own passes
+  `nsh_base::registry()` and its sets).
 
 ## How each area maps to AppKit
 

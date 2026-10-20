@@ -7,6 +7,7 @@
 
 use std::rc::Rc;
 
+use nsh_base::{KeyboardAvoidingView, KeyboardAvoidingViewProps, SafeAreaView, SafeAreaViewProps};
 use nsh_core::{
     Size,
     ui::{
@@ -14,8 +15,6 @@ use nsh_core::{
         prelude::*,
     },
 };
-use nsh_ui::{SafeAreaView, SafeAreaViewProps};
-use nsh_ui_mobile::{KeyboardAvoidingView, KeyboardAvoidingViewProps};
 
 use crate::{
     nav,

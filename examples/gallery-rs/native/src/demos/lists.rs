@@ -7,8 +7,8 @@
 
 use std::{rc::Rc, time::Duration};
 
+use nsh_base::{KeyboardAvoidingView, KeyboardAvoidingViewProps};
 use nsh_core::ui::{LayoutAnimation, prelude::*};
-use nsh_ui_mobile::{KeyboardAvoidingView, KeyboardAvoidingViewProps};
 
 use crate::ui::{
     Appear, AppearProps, Badge, Button, ButtonVariant, Finish, Finished, IconName, IconTile, MONO,

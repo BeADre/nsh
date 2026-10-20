@@ -33,7 +33,7 @@ mount(App);
 
 `List` 从 [`nsh/list`](../modules/nsh-list.md) 导入。它是泛型组件：`List<T>` 会检查 `each` 与行函数的条目类型是否一致，TypeScript 会从 `each` 推断出条目类型。
 
-如果列表很短、所有行都应该存在（设置页、表单），在 [`<Scroll>`](./scroll.md) 里用 [`<Each>`](./control-flow.md) 更简单。分组表格样式的列表见 [`ListView`](../components/list-view.md)。[列表指南](../docs/lists.md) 介绍了常见模式：无限加载、聊天、分组。
+如果列表很短、所有行都应该存在（设置页、表单），在 [`<Scroll>`](./scroll.md) 里用 [`<Each>`](./control-flow.md) 更简单。分组表格样式的列表见[设置风格的列表](../docs/lists.md#a-settings-style-list)。[列表指南](../docs/lists.md) 介绍了常见模式：无限加载、聊天、分组。
 
 ## 行会被复用
 

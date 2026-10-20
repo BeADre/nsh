@@ -1,6 +1,6 @@
-// The Button of `nsh/ui/mobile` written in TSX, as it was before components
-// moved into Rust (commit 8ac6eb7), restyled to draw exactly like the Rust
-// one with the default theme: the baseline of the component benchmarks.
+// A Button written in TSX (as NSH's own was before components moved into
+// Rust, commit 8ac6eb7), drawn exactly like the benchmark's Rust Button with
+// the default theme: the baseline of the component benchmarks.
 
 import type { JSX, StyleProp, ViewStyle } from "nsh";
 import { Text, View } from "nsh";

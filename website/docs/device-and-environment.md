@@ -15,16 +15,16 @@ The environment an app runs in changes while it runs: the window resizes (rotati
 | `windowSize()` | `nsh/device` | `{ width, height }` of the surface, in points. |
 | `colorScheme()` | `nsh/device` | `"light"` or `"dark"`: the system's, or the app's own (`setColorScheme`). |
 | `fontScale()` | `nsh/device` | The user's preferred text size relative to the default (1 is the default). |
-| `safeArea()` | `nsh/ui` | Insets of the surface not covered by system UI: `{ top, right, bottom, left }`. |
-| `useSafeAreaInsets()` | `nsh/ui` | The insets where the calling component renders (a screen, a modal). |
-| `keyboard()` | `nsh/ui/mobile` | `{ height, duration }` of the software keyboard. |
+| `safeArea()` | `nsh/base` | Insets of the surface not covered by system UI: `{ top, right, bottom, left }`. |
+| `useSafeAreaInsets()` | `nsh/base` | The insets where the calling component renders (a screen, a modal). |
+| `keyboard()` | `nsh/base` | `{ height, duration }` of the software keyboard. |
 | `I18nManager.isRTL` | `nsh/device` | Whether the app lays out right to left. |
 | `reduceMotion()`, `screenReaderEnabled()` | `nsh/accessibility` | See [Accessibility](./accessibility.md). |
 
 ```tsx
 import { mount, Text, View } from "nsh";
 import { colorScheme, fontScale, windowSize } from "nsh/device";
-import { safeArea } from "nsh/ui";
+import { safeArea } from "nsh/base";
 
 function App() {
   return (
@@ -89,11 +89,11 @@ const palette = computed(() =>
 </View>
 ```
 
-The components of `nsh/ui` and `nsh/ui/mobile` take their colors from the component theme, which has light and dark values (`nsh.json` `"theme"`), so they switch with the system as well. To match the status bar to your background, see [`StatusBar`](../components/status-bar.md).
+Rust components from your app's own crate take their colors from the theme, which has light and dark values (`nsh.json` `"theme"`, see [Building with Rust](./rust.md)), so they switch with the system as well. To match the status bar to your background, see [`StatusBar`](../modules/nsh-base.md#status-bar).
 
 ### An app with its own appearance
 
-An app that is always dark (or always light) says so in `nsh.json`, and `colorScheme()`, `dark:` classes, the component theme, the status bar's default style and alerts follow it from the first frame (packaged apps also launch in it):
+An app that is always dark (or always light) says so in `nsh.json`, and `colorScheme()`, `dark:` classes, the theme, the status bar's default style and alerts follow it from the first frame (packaged apps also launch in it):
 
 ```json
 { "appearance": "dark" }
@@ -102,9 +102,12 @@ An app that is always dark (or always light) says so in `nsh.json`, and `colorSc
 `setColorScheme` from `nsh/device` changes it at run time, for an in-app appearance setting; `"system"` follows the system again:
 
 ```tsx
+import { Text, View } from "nsh";
 import { colorScheme, setColorScheme } from "nsh/device";
 
-<Button title={colorScheme() === "dark" ? "Light" : "Dark"} onPress={() => setColorScheme(colorScheme() === "dark" ? "light" : "dark")} />
+<View onPress={() => setColorScheme(colorScheme() === "dark" ? "light" : "dark")} accessibilityRole="button" class="rounded-lg px-4 py-2 bg-neutral-200 dark:bg-neutral-800">
+  <Text class="text-neutral-900 dark:text-neutral-50">{colorScheme() === "dark" ? "Light" : "Dark"}</Text>
+</View>
 ```
 
 > [!TIP]
@@ -131,11 +134,11 @@ Notches, the home indicator, the status bar, Android's navigation bar and the Ma
 
 - `safeArea()` gives the surface's insets.
 - `useSafeAreaInsets()` gives the insets **where the component renders**: inside a navigation [screen](./navigation.md#safe-areas-under-the-header) they are measured below its header, inside a [modal](./navigation.md#modals) they are the modal's. Prefer it in components that may be shown in several places.
-- `SafeAreaView` from `nsh/ui` is a view padded by those insets (all edges by default, or `edges={["top", "bottom"]}`), on top of its own padding.
+- `SafeAreaView` from `nsh/base` is a view padded by those insets (all edges by default, or `edges={["top", "bottom"]}`), on top of its own padding.
 
 ```tsx
 import { View } from "nsh";
-import { SafeAreaView, useSafeAreaInsets } from "nsh/ui";
+import { SafeAreaView, useSafeAreaInsets } from "nsh/base";
 
 function Screen() {
   return (
@@ -242,5 +245,5 @@ Horizontal scroll views and lists start at the right end in right-to-left layout
 - [`nsh/device`](../modules/nsh-device.md): the reference.
 - [Platform-specific code](./platform-specific.md): `Platform.select`, platform props and modules.
 - [Accessibility](./accessibility.md): screen readers and reduced motion.
-- [`SafeAreaView`](../components/safe-area-view.md) and [`StatusBar`](../components/status-bar.md).
+- [`SafeAreaView`](../modules/nsh-base.md#safeareaview) and [`StatusBar`](../modules/nsh-base.md#status-bar).
 - [Tailwind](./tailwind.md): `dark:`, breakpoint and orientation variants.

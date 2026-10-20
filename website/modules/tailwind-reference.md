@@ -534,7 +534,7 @@ With this theme, `bg-brand-500`, `bg-brand` (the `DEFAULT` shade), `text-accent`
 | `ease` | `{ name: [x1, y1, x2, y2] }` | `ease-*` |
 
 > [!NOTE]
-> The Tailwind theme shapes only your app's classes. The components of `nsh/ui` and `nsh/ui/mobile` take their colors from the component theme, the `"theme"` key of `nsh.json`; see [Components](../components/index.md).
+> The Tailwind theme shapes only your app's classes. Rust components take their colors from the component theme, the `"theme"` key of `nsh.json`; see [Rust](../docs/rust.md).
 
 ## Related
 

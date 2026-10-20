@@ -267,7 +267,7 @@ updates the app in place, logs appear in the `nsh dev` terminal, and errors show
   The JS engine runs on its own thread; the main thread never waits for it.
 - **Status bar.** The embedded app's `StatusBar` changes what `NshAppView.preferredStatusBarStyle` and friends return;
   the hosting view controller must forward them, as in the example above.
-- **Safe area.** Apps use `SafeAreaView` or `useSafeAreaInsets()` from [`nsh/ui`](../components/safe-area-view.md)
+- **Safe area.** Apps use `SafeAreaView` or `useSafeAreaInsets()` from [`nsh/base`](../modules/nsh-base.md#safeareaview)
   as usual. An `NshAppView` placed below your own header gets the insets that apply to it, not the window's.
 - **Mac Catalyst.** The same framework works in Catalyst apps.
 

@@ -1,15 +1,13 @@
 # JS modules
 
-Two layers. `nsh` and `nsh/<module>` are the primitives and the environment that every UI set builds on. The UI sets
-split by form factor, each export with one home: `nsh/ui` has what every form factor shares (navigation stacks, modals,
-safe areas, alerts and its components, one look on every platform, written in Rust in `crates/nsh-ui`; they adapt
-their styling, never their structure, to the form factor), `nsh/ui/<form factor>` only what one form factor has:
-`nsh/ui/mobile` the status bar, sheets, action sheets and the software keyboard (`crates/nsh-ui-mobile`); a desktop
-set is planned as a separate one (`nsh/ui/desktop`). Apps import from both.
-Shared vs one form factor decides the layer, not JS vs native.
+NSH ships two layers of modules. `nsh` and `nsh/<module>` are the primitives every UI is made of, the environment and
+the capabilities. `nsh/base` (the crate `nsh-base`) is the unstyled foundation every app's UI builds on: navigation stacks,
+screens and modals, safe areas, the system's dialogs, the software keyboard and the status bar. NSH provides no styled
+components: the look of an app is the app's, drawn from the primitives, or from Rust components in the app's own crate,
+whose UI set is a module of its own (`app/native`; `docs/dev/components.md`, `tooling.md`). Each export has one home.
 
 Every module is native: `nsh-js` serves it (`modules.rs`: NSH's own modules by `nsh_core::js::NATIVE_MODULES`, then the
-registries: the runtime's `nsh_core::runtime::registries()` and the UI sets a host serves), and the bundler keeps
+registries: the runtime's `nsh_core::runtime::registries()` and the UI sets a host serves, `nsh/base` and the app's), and the bundler keeps
 imports of them as imports (`plugin.rs`; how apps are compiled: `native-pipeline.md`). A module can be both: the
 hand-written exports of `nsh/android` and `nsh/accessibility` are joined by their registry's. There is no JS file of
 NSH's and no internal module apps could reach.
@@ -18,7 +16,7 @@ Declarations: each export of a module of NSH's own carries its TypeScript declar
 `signal`'s signatures next to `reactive::signal`), each module its own interfaces (`types`); a registry's components
 and modules are declared from their specs (`nsh_core::ui::declarations`, `docs/dev/components.md`), the styles, the
 host elements' props and events, the easings and the canvas methods from the core's tables. `nsh-js`'s
-`declarations.rs` assembles one file per module (`nsh/list.d.ts`, `nsh/ui.d.ts`), `nsh/types.d.ts` (the
+`declarations.rs` assembles one file per module (`nsh/list.d.ts`, `nsh/base.d.ts`), `nsh/types.d.ts` (the
 element and JSX types `nsh` exports), `nsh/jsx-runtime.d.ts` and `nsh/globals.d.ts`, and tests check every module's
 exports against its declarations; the CLI writes them into `.nsh/types` (`tooling.md`).
 `nsh` itself only has the reactive API, `mount`, the primitives every UI is made of (`View`, `Text`, `Scroll`,
@@ -45,8 +43,8 @@ globals.
 | `nsh/ios` | `isAvailable`, `InputAccessoryView` | `platform_modules.rs` |
 | `nsh/android` | `isAvailable`, `Toast.show(message, "short" \| "long")`, `BackHandler` (`addEventListener` native, `exitApp` Rust), `setStatusBarBackgroundColor` (the status bar's base layer) | `platform_modules.rs` + its registry |
 | `nsh/desktop` | `isAvailable`, `titleBar()` (the environment's `title_bar`), `Menu.setApplicationMenu` / `Menu.popup` (decoded natively into `nsh_core::desktop::MenuItem`s, the items' functions kept by id, called on the root's `onMenu`), `Window` (Rust: `setTitle`, `setTitleBar`, `minimize`, `toggleMaximize`, `toggleFullScreen`, `setFrame`, `setLevel`, `close`); all of it is `Command::Desktop` on the root, which mobile platforms ignore | `desktop.rs` + its registry |
-| `nsh/ui` | `Stack`, `Screen`, `createNavigator`, `Modal`; the Rust components and modules of `nsh-ui`: `SafeAreaView`, `Alert.alert` (a promise of the index chosen), `Button`, `Card`, `Group`, `ListView`, `Stepper`, `TextField`, `SelectList`; re-exported from the runtime: `safeArea()`, `useSafeAreaInsets()` | `navigation.rs`; the registry (`components.rs`), `env.rs` |
-| `nsh/ui/mobile` | The Rust components and modules of `nsh-ui-mobile`: `KeyboardAvoidingView`, `StatusBar` (and `StatusBar.setBarStyle` / `setHidden`), `ActionSheet.show` (a promise of the index chosen; a list dialog on Android), `Keyboard.dismiss`, `Sheet`; re-exported from the runtime: `keyboard()` | the registry (`components.rs`), `env.rs` |
+| `nsh/base` | The unstyled foundation of an app's UI. Navigation: `Stack`, `Screen`, `createNavigator`, `Modal` (natives of `nsh-js`, `Registry::native_values`). Safe areas: `SafeAreaView` (Rust, with `Edge`), `safeArea()`, `useSafeAreaInsets()`, `Insets` (re-exported from the environment). Dialogs: `Alert.alert`, `ActionSheet.show` (promises of the index chosen; an action sheet is a list dialog on Android), the platform's own. The keyboard: `KeyboardAvoidingView` (Rust, with `AvoidBehavior`), `Keyboard.dismiss`, `keyboard()` (re-exported from the environment). The status bar: `StatusBar` (Rust: a component with `StatusBar.setBarStyle` / `setHidden`; `BarStyle`, `BarAnimation`) | `nsh_base::registry()` (`crates/nsh-base`); `navigation.rs`, `env.rs` |
+| an app's UI set (`app/native`) | The Rust components, modules and classes of the app's crate (`#[native_module("app/native")]`) | the registry (`components.rs`, `classes.rs`) |
 
 `nsh:hot` (hot module replacement, `hot.rs`) is only imported by development bundles. The same loader also compiles
 the chunks of a split bundle (`Screen.js`: a name that is no native module, with code the host gave; `chunks.rs`,
@@ -71,13 +69,20 @@ the chunks of a split bundle (`Screen.js`: a name that is no native module, with
 
 ## Where new things go
 
-- A primitive or environment both UI sets need: a module of NSH's own (`nsh/<module>`), natives in `crates/nsh-js`
+- A primitive, the environment or a capability: a module of NSH's own (`nsh/<module>`), natives in `crates/nsh-js`
   listed in `modules.rs` and `nsh_core::js::NATIVE_MODULES`, each export with its declaration (`Ts`) and the
   module's interfaces in its `types`. Functions that only ask the platform (a command, a request answered by an event)
   are a Rust `#[module]` in `crates/nsh-core/src/runtime/`, registered in `runtime::registries()` under the module's
   specifier: their JS face and declarations come from the spec, with nothing written per function.
-- UI or interaction every form factor has: `nsh/ui`; its components are Rust, in `crates/nsh-ui` (see its README).
-  What only phones and tablets have: `nsh/ui/mobile` (`crates/nsh-ui-mobile`).
+- An unstyled base component (`nsh-base` is NSH's `gpui-base`, `architecture.md` "Layers"): behavior, state, focus,
+  keyboard or accessibility a UI needs, or system UI (insets, the keyboard's avoidance, the status bar's setting, a
+  dialog; controls such as a toggle, a slider or a popover as their behavior is written): a Rust component or
+  `#[module]` in `crates/nsh-base`, registered in `nsh_base::registry()` (`docs/dev/components.md`). It never styles
+  (no colors, paddings, radii, fonts or variants of its own), takes the app's styles, exposes its parts and reports
+  changes of state the app owns.
+- A styled widget (a button with a look, a card, a list row): never in NSH, which has no `gpui-component`. Apps
+  draw their own on `nsh/base` and the primitives, or ship them, as a third party does, as Rust components in a
+  crate of their own (`docs/dev/components.md`).
 - Something only one platform has: `nsh/ios` / `nsh/android`, or a prop in `ios={{…}}` / `android={{…}}` /
   `desktop={{…}}`.
 - Never a compatibility re-export when something moves, never a React Native compatibility wrapper.

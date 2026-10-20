@@ -3,16 +3,15 @@ import { AccessibilityInfo, reduceMotion, screenReaderEnabled } from "nsh/access
 import { LayoutAnimation } from "nsh/animated";
 import { PixelRatio, Platform } from "nsh/device";
 import { InputAccessoryView } from "nsh/ios";
-import { Button, Card, Modal, SafeAreaView, Screen } from "nsh/ui";
-import { KeyboardAvoidingView } from "nsh/ui/mobile";
+import { KeyboardAvoidingView, Modal, SafeAreaView, Screen } from "nsh/base";
 import { Icon, type IconName } from "../icons";
 import { nav } from "../nav";
 import {
   Appear,
   Badge,
-  Button as UiButton,
+  Button,
   Caption,
-  Card as UiCard,
+  Card,
   colors,
   DemoPage,
   finish,
@@ -100,7 +99,7 @@ function LayoutAnimations() {
     change();
   };
   return (
-    <UiCard icon="animation" title="Layout animation" subtitle="configureNext, then change the tree" right={<Badge label={`${items().length}`} />}>
+    <Card icon="animation" title="Layout animation" subtitle="configureNext, then change the tree" right={<Badge label={`${items().length}`} />}>
       <Segmented options={presets} value={preset()} onChange={(p) => preset.set(p)} size="small" />
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, minHeight: 56 }}>
         <Each of={items()}>
@@ -123,18 +122,18 @@ function LayoutAnimations() {
         </Each>
       </View>
       <View style={{ flexDirection: "row", gap: 8 }}>
-        <Cell><UiButton label="Add" icon="plus" onPress={() => animate(() => items.set([next++, ...items()]))} /></Cell>
-        <Cell><UiButton label="Shuffle" variant="secondary" onPress={() => animate(() => items.set([...items()].sort(() => Math.random() - 0.5)))} /></Cell>
-        <Cell><UiButton label="Remove" variant="secondary" disabled={items().length === 0} onPress={() => animate(() => items.set(items().slice(1)))} /></Cell>
+        <Cell><Button label="Add" icon="plus" onPress={() => animate(() => items.set([next++, ...items()]))} /></Cell>
+        <Cell><Button label="Shuffle" variant="secondary" onPress={() => animate(() => items.set([...items()].sort(() => Math.random() - 0.5)))} /></Cell>
+        <Cell><Button label="Remove" variant="secondary" disabled={items().length === 0} onPress={() => animate(() => items.set(items().slice(1)))} /></Cell>
       </View>
-    </UiCard>
+    </Card>
   );
 }
 
 function PressableSheet() {
   const sheet = signal(false);
   return (
-    <UiCard icon="components" title="Sheet" subtitle="A Tailwind active: variant opens it">
+    <Card icon="components" title="Sheet" subtitle="A Tailwind active: variant opens it">
       <View
         onPress={() => sheet.set(true)}
         accessibilityRole="button"
@@ -164,11 +163,11 @@ function PressableSheet() {
               </Text>
             </View>
             <View style={{ flex: 1 }} />
-            <UiButton label="Close" onPress={() => sheet.set(false)} />
+            <Button label="Close" onPress={() => sheet.set(false)} />
           </View>
         </SafeAreaView>
       </Modal>
-    </UiCard>
+    </Card>
   );
 }
 
@@ -201,7 +200,7 @@ function PressFeedback() {
   const last = signal("None yet");
   const disabled = signal(false);
   return (
-    <UiCard icon="gestures" title="Press feedback" subtitle={hint("Drawn natively while the finger is down", "Drawn natively while the button is down")}>
+    <Card icon="gestures" title="Press feedback" subtitle={hint("Drawn natively while the finger is down", "Drawn natively while the button is down")}>
       <View style={tile()} activeOpacity={0.4} onPress={() => last.set("Fading tile")}>
         <Tile title="Fades while pressed" note="activeOpacity={0.4}" />
       </View>
@@ -219,7 +218,7 @@ function PressFeedback() {
         </View>
         <Toggle value={disabled()} onChange={(v) => disabled.set(v)} label="Disable the third tile" />
       </View>
-    </UiCard>
+    </Card>
   );
 }
 
@@ -227,7 +226,7 @@ function Accessory() {
   const text = signal("");
   let input: YNode | undefined;
   return (
-    <UiCard icon="text" title="Input accessory" subtitle="A bar over the iOS keyboard" right={<Badge label="nsh/ios" />}>
+    <Card icon="text" title="Input accessory" subtitle="A bar over the iOS keyboard" right={<Badge label="nsh/ios" />}>
       <Field
         ref={(node) => (input = node)}
         value={text()}
@@ -250,11 +249,11 @@ function Accessory() {
           }}
         >
           <Text style={{ flex: 1, fontSize: 13, color: colors.muted, fontVariant: ["tabular-nums"] }}>{`${text().length} characters`}</Text>
-          <UiButton label="Clear" variant="secondary" onPress={() => text.set("")} />
-          <UiButton label="Done" onPress={() => input?.blur()} />
+          <Button label="Clear" variant="secondary" onPress={() => text.set("")} />
+          <Button label="Done" onPress={() => input?.blur()} />
         </View>
       </InputAccessoryView>
-    </UiCard>
+    </Card>
   );
 }
 
@@ -277,10 +276,10 @@ function AvoidingPage() {
       <KeyboardAvoidingView behavior={behavior()} style={{ flex: 1, backgroundColor: tints.info }} contentContainerStyle={{ flex: 1 }}>
         <View style={{ flex: 1, padding: 16, gap: 16 }}>
           <Appear>
-            <UiCard icon="form" title={`behavior="${behavior()}"`} subtitle="Focus the field at the bottom">
+            <Card icon="form" title={`behavior="${behavior()}"`} subtitle="Focus the field at the bottom">
               <Segmented options={behaviors} value={behavior()} onChange={(b) => behavior.set(b)} />
               <Text style={{ fontSize: 14, lineHeight: 20, color: colors.muted }}>{behaviorNote[behavior()]}</Text>
-            </UiCard>
+            </Card>
           </Appear>
           <View style={{ flex: 1 }} />
           <Field placeholder="Type here" />
@@ -294,7 +293,7 @@ function ModalOptions() {
   const visible = signal(false);
   const translucent = signal(false);
   return (
-    <UiCard
+    <Card
       icon="system"
       title="Modal options"
       subtitle="statusBarTranslucent, orientations"
@@ -304,7 +303,7 @@ function ModalOptions() {
         Android: translucent content reaches under the status bar. iOS: this modal allows portrait and landscape.
       </Text>
       <Caption label="statusBarTranslucent" note={String(translucent())} />
-      <UiButton label="Open the modal" variant="secondary" onPress={() => visible.set(true)} />
+      <Button label="Open the modal" variant="secondary" onPress={() => visible.set(true)} />
       <Modal
         visible={visible()}
         animationType="slide"
@@ -322,11 +321,11 @@ function ModalOptions() {
               The olive background starts {translucent() ? "under" : "below"} the status bar on Android.
             </Text>
             <View style={{ flex: 1 }} />
-            <UiButton label="Close" onPress={() => visible.set(false)} />
+            <Button label="Close" onPress={() => visible.set(false)} />
           </SafeAreaView>
         </View>
       </Modal>
-    </UiCard>
+    </Card>
   );
 }
 
@@ -344,7 +343,7 @@ function PlatformInfo() {
   const announced = signal(0);
   let target: YNode | undefined;
   return (
-    <UiCard icon="spark" title="Platform" subtitle="Platform, PixelRatio, AccessibilityInfo" right={<Badge label={Platform.OS} tone="accent" />}>
+    <Card icon="spark" title="Platform" subtitle="Platform, PixelRatio, AccessibilityInfo" right={<Badge label={Platform.OS} tone="accent" />}>
       <View>
         <Each of={rows()}>
           {(row, i) => (
@@ -362,64 +361,19 @@ function PlatformInfo() {
       <View style={{ height: hairline, backgroundColor: colors.accent }} />
       <Caption label="The line above is one device pixel tall" note={`${hairline.toFixed(3)} pt`} />
       <View style={{ flexDirection: "row", gap: 8 }}>
-        <Cell><UiButton
+        <Cell><Button
           label="Announce"
           onPress={() => {
             announced.set(announced() + 1);
             AccessibilityInfo.announceForAccessibility(`Announcement ${announced()}`);
           }}
         /></Cell>
-        <Cell><UiButton label="Focus the note" variant="secondary" onPress={() => target && AccessibilityInfo.setAccessibilityFocus(target)} /></Cell>
+        <Cell><Button label="Focus the note" variant="secondary" onPress={() => target && AccessibilityInfo.setAccessibilityFocus(target)} /></Cell>
       </View>
       <Text ref={(node) => (target = node)} style={{ fontSize: 13, lineHeight: 18, color: colors.faint }}>
         With VoiceOver or TalkBack on, the buttons above speak and move the reader here.
       </Text>
-    </UiCard>
-  );
-}
-
-/** The components of nsh/ui (Rust, `nsh-ui`). */
-function MobileComponents() {
-  const presses = signal(0);
-  return (
-    <UiCard icon="mobile" title="nsh/ui" subtitle="Rust components, the app's theme" right={<Badge label={`${presses()} ${presses() === 1 ? hint("tap", "click") : hint("taps", "clicks")}`} tone={presses() ? "accent" : "neutral"} />}>
-      <Button title="Primary" onPress={() => presses.set(presses() + 1)} />
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <View style={{ flex: 1 }}>
-          <Button title="Secondary" variant="secondary" onPress={() => presses.set(presses() + 1)} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Button title="Danger" variant="danger" onPress={() => presses.set(presses() + 1)} />
-        </View>
-      </View>
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <View style={{ flex: 1 }}>
-          <Button title="Plain" variant="plain" onPress={() => presses.set(presses() + 1)} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Button title="Disabled" variant="secondary" disabled onPress={() => presses.set(presses() + 1)} />
-        </View>
-      </View>
-      <Card
-        header={<Text>Card with slots</Text>}
-        footer={
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <View style={{ flex: 1 }}>
-              <Button title="Reset" variant="secondary" onPress={() => presses.set(0)} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Button title="Add one" onPress={() => presses.set(presses() + 1)} />
-            </View>
-          </View>
-        }
-      >
-        <Text>The header, this body and the footer are JSX in a Rust component's slots and children.</Text>
-      </Card>
-      <Card variant="outlined">
-        <Text>An outlined card, children only.</Text>
-      </Card>
-      <Caption label="Colors come from the app's theme" note="theme.json" />
-    </UiCard>
+    </Card>
   );
 }
 
@@ -428,17 +382,16 @@ export function Components() {
     <DemoPage
       keyboardDismissMode="interactive"
       cards={[
-        MobileComponents,
         PressFeedback,
         PressableSheet,
         LayoutAnimations,
         Accessory,
         () => (
-          <UiCard title="Keyboard avoidance" subtitle="Content outside scroll views" flush>
+          <Card title="Keyboard avoidance" subtitle="Content outside scroll views" flush>
             <Inset padding={0} gap={0}>
               <LinkRow icon="form" title="KeyboardAvoidingView" note="padding / height / position" onPress={() => nav.push({ name: "page", page: AvoidingPage })} />
             </Inset>
-          </UiCard>
+          </Card>
         ),
         ModalOptions,
         PlatformInfo,

@@ -202,7 +202,7 @@ fn element_types() -> String {
     out
 }
 
-/// The file of module `specifier` (`nsh/ui/mobile` -> `nsh/ui/mobile.d.ts`).
+/// The file of module `specifier` (`nsh/base` -> `nsh/base.d.ts`).
 fn path_of(specifier: &str) -> String {
     match specifier {
         "nsh" => "nsh/index.d.ts".to_owned(),
@@ -265,7 +265,7 @@ fn bodies(ui_sets: &[Registry]) -> Vec<(String, String)> {
         exports(&mut body, m.exports);
         files.push((path_of(m.name), body));
     }
-    // The registries that are modules of their own (`nsh/ui`, `nsh/image`).
+    // The registries that are modules of their own (`nsh/base`, `nsh/image`).
     for registry in &registries {
         let Some(specifier) = registry.specifier() else {
             continue;
@@ -457,7 +457,7 @@ fn relative(from: &str, to: &str) -> String {
 }
 
 /// The files of `.nsh/types` for apps whose hosts serve `ui_sets`
-/// (`nsh/ui`, ...), as (path relative to it, contents): one per
+/// (`nsh/base`, ...), as (path relative to it, contents): one per
 /// module apps import, `nsh/types.d.ts` (the element types `nsh` exports),
 /// `nsh/jsx-runtime.d.ts` (where TypeScript finds the JSX namespace:
 /// `jsxImportSource: "nsh"`) and `nsh/globals.d.ts`.
@@ -591,11 +591,8 @@ mod tests {
     #[test]
     fn paths_are_relative() {
         assert_eq!(relative("nsh/list.d.ts", "nsh/types.d.ts"), "./types");
-        assert_eq!(relative("nsh/ui/mobile.d.ts", "nsh/types.d.ts"), "../types");
-        assert_eq!(
-            relative("nsh/types.d.ts", "nsh/ui/mobile.d.ts"),
-            "./ui/mobile"
-        );
+        assert_eq!(relative("nsh/acme/ui.d.ts", "nsh/types.d.ts"), "../types");
+        assert_eq!(relative("nsh/types.d.ts", "nsh/acme/ui.d.ts"), "./acme/ui");
     }
 
     #[test]
@@ -614,7 +611,7 @@ mod tests {
     /// A name a file imports is declared in one file only.
     #[test]
     fn imports_are_unambiguous() {
-        let files = bodies(&[nsh_ui::registry(), nsh_ui_mobile::registry()]);
+        let files = bodies(&[nsh_base::registry()]);
         let mut owners: BTreeMap<String, Vec<&str>> = BTreeMap::new();
         for (path, body) in &files {
             for name in exported_names(body) {
@@ -756,11 +753,7 @@ mod tests {
     /// (with a set of classes besides the UI sets).
     #[test]
     fn declarations_match_the_modules() {
-        let sets = vec![
-            nsh_ui::registry(),
-            nsh_ui_mobile::registry(),
-            crate::classes::tests::registry(),
-        ];
+        let sets = vec![nsh_base::registry(), crate::classes::tests::registry()];
         let host = crate::Host::with_options(crate::HostOptions {
             ui_sets: sets.clone(),
             ..crate::HostOptions::default()

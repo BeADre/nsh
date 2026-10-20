@@ -99,8 +99,8 @@ in a resizable split.
   sheets, popovers and notifications (drawn by `Root` above the content) cover it and take the input, while its app
   keeps running.
 - **The host's theme in NSH.** `AppView::set_theme(Some(theme), cx)` gives the surface a `nsh_core::ui::Theme`
-  (re-exported as `nsh_platform_gpui::Theme`) and `set_theme_json(json, cx)` one in gpui-kit's JSON: the components of
-  the UI sets render with it instead of the app's own theme (`Core::set_host_theme`, which wins until cleared with
+  (re-exported as `nsh_platform_gpui::Theme`) and `set_theme_json(json, cx)` one in gpui-kit's JSON: the Rust
+  components (the app's UI sets) render with it instead of the app's own theme (`Core::set_host_theme`, which wins until cleared with
   `None`), and the surface is drawn on its `background`. It applies at once and to every app loaded later, in their
   first frame (the surface starts engines with `Engine::start_with`, sending the theme before the start).
   `set_appearance(Appearance::Light | Dark, cx)` is the host's mode, standing in for the system's (`System` follows

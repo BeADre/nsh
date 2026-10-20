@@ -1,10 +1,9 @@
 import { cleanup, computed, effect, Scroll, signal, Text, untracked, View } from "nsh";
 import { createNativeValue } from "nsh/animated";
 import { Canvas } from "nsh/canvas";
-import { Modal, Screen, useSafeAreaInsets } from "nsh/ui";
-import { Sheet } from "nsh/ui/mobile";
+import { Modal, Screen, useSafeAreaInsets } from "nsh/base";
 import { Icon } from "../../icons";
-import { Button, colors, finish, header, Press, Stat } from "../../ui";
+import { Button, colors, finish, header, Press, Sheet, Stat } from "../../ui";
 import { Depth, OrderBook } from "./Book";
 import { Chart } from "./Chart";
 import { compact, type Market, percent, price, sectors, type Stock, signed, time, toneOf } from "./market";
