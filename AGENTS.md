@@ -23,7 +23,8 @@ the module docs of the code (`//!`, Javadoc), which are the reference for how a 
 crates/
   nsh-core/            Platform-independent core: shadow tree, styles (RN semantics), Taffy layout (flex + grid), text merging, list virtualization,
                        mount items; CSS values (`css.rs`: colors, lengths, shadows, gradients, filters), effects (`effects.rs`), Tailwind (`tailwind/`);
-                       the reactive graph both sides run on (`reactive.rs`, Solid's algorithm, generic over the host);
+                       the reactive graph both sides run on (`reactive.rs`, Solid's algorithm, generic over the host), the loads of
+                       resources both faces share (`resource.rs`);
                        Rust components that run once (`ui/`: signals, elements, bindings, typed styles, the theme;
                        `core/components.rs`, `core/views.rs`), classes TS uses with `new` (`ui/class.rs`), JS's calls into
                        Rust and what comes back, typed (`ui/call.rs`: ops carrying closures, the event stream, posts); UI sets as data for the
@@ -38,7 +39,7 @@ crates/
   nsh-js/              QuickJS host and NSH's runtime: console / timers, bytecode compilation and loading, limits (`sandbox.rs`);
                        the native modules apps import (`modules.rs`: module table and loader; docs/dev/js-modules.md), the
                        renderer of compiled JSX (`dom.rs`, `nsh:rt`), JS's reactive graph (`reactive.rs`: `nsh-core`'s
-                       graph with JS values: signals, memos, effects, owners, context), Rust components' and modules' JS face (`components.rs`), navigation,
+                       graph with JS values: signals, memos, effects, owners, context), `resource` (`resource.rs`), Rust components' and modules' JS face (`components.rs`), navigation,
                        lists, canvas, animation (`navigation.rs`, `list.rs`, `canvas.rs`, `animated.rs`), touches and the
                        responder system (`touch.rs`), the environment (`env.rs`), hot module replacement (`hot.rs`),
                        Rust classes (`classes.rs`: on the web classes' machinery);
@@ -51,7 +52,7 @@ crates/
   nsh-bundler/         Bundler: rolldown + Oxc (TS stripping) + NSH's JSX compiler (`jsx.rs`, docs/dev/native-pipeline.md) + source maps;
                        imports of the native modules stay imports (`plugin.rs`), so a bundle holds only the app's code;
                        the app's themes (nsh.json `tailwind` / `theme`, checked, handed to the renderer by the entry) and the
-                       unknown-class check (`classes.rs`);
+                       unknown-class check (`classes.rs`); the warning of components taking their props apart (`props.rs`);
                        development bundles with hot module replacement (`hot.rs`); the bundler's part of `.nsh/types`
                        (`types.rs`: asset imports); feature `bundle` (default off in the workspace; the CLI turns it on) is
                        all of that, without it only `compile_module` (`compile.rs`: one module, no rolldown) is left, which
@@ -129,7 +130,8 @@ examples/             Example apps (gallery: a demo index, one module per demo; 
 ```
 
 Dependency direction: `nsh-core` ← `nsh-js` ← `nsh-engine` (also ← `nsh-package`) ← `nsh-platform-*` ←
-`nsh-ios-host` / `nsh-ios-app` / `nsh-linux-host` / `nsh-linux-app` / `nsh-macos-host` / `nsh-macos-app` / `nsh-windows-host` / `nsh-windows-app` / `nsh-gpui-host` / `nsh-gpui-app`; `nsh-cli` depends on `nsh-bundler`, `nsh-js` and `nsh-engine`; `nsh-ui-mobile` depends
+`nsh-ios-host` / `nsh-ios-app` / `nsh-linux-host` / `nsh-linux-app` / `nsh-macos-host` / `nsh-macos-app` / `nsh-windows-host` / `nsh-windows-app` / `nsh-gpui-host` / `nsh-gpui-app`; `nsh-cli` depends on `nsh-bundler`, `nsh-js` and `nsh-engine`; `nsh-bundler`'s feature `bundle` depends on `nsh-js` (to check
+imports against the names native modules export); `nsh-ui-mobile` depends
 on `nsh-core` only and is used by the bundler (declarations), the platforms and the CLI (registry). An app's own crates
 are never linked into the CLI: it reads their UI sets as data (`nsh_core::ui::description`). `nsh-core` must not depend
 on any platform or JS crate.

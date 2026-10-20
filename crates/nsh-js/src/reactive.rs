@@ -190,6 +190,7 @@ struct Classes {
     signal: qjs::JSClassID,
     setter: qjs::JSClassID,
     memo: qjs::JSClassID,
+    resource: qjs::JSClassID,
 }
 
 /// The graph of `ctx`.
@@ -781,6 +782,7 @@ pub(crate) fn new_graph(raw: *mut JsContext) -> Graph {
                 true,
                 qjs::JS_DupValue(raw, function_proto),
             ),
+            resource: crate::resource::register(raw),
         };
         qjs::JS_FreeValue(raw, function_proto);
         Graph::new(JsData {
@@ -878,6 +880,15 @@ pub(crate) unsafe extern "C" fn signal(
     object(ctx, class, id)
 }
 
+/// Whether `v` (borrowed) is a signal object (`signal()`), and whether
+/// it is a memo's (`memo()`, read-only).
+pub(crate) fn signal_kind(ctx: *mut JsContext, v: JsValue) -> (bool, bool) {
+    let classes = unsafe { graph(ctx) }.data.classes;
+    // SAFETY: reads the class of a live value.
+    let class = unsafe { qjs::JS_GetClassID(v) };
+    (class == classes.signal, class == classes.memo)
+}
+
 /// The signal `this` names, or a thrown `TypeError`.
 fn this_signal(ctx: *mut JsContext, this: JsValue) -> Result<u32, JsValue> {
     let class = unsafe { graph(ctx) }.data.classes.signal;
@@ -968,6 +979,19 @@ pub(crate) fn new_signal(ctx: *mut JsContext, value: JsValue) -> JsValue {
     let mut args = [value];
     // SAFETY: borrowed arguments, as `signal` takes them.
     unsafe { signal(ctx, UNDEFINED, 1, args.as_mut_ptr()) }
+}
+
+/// The class of resource objects (`crate::resource`).
+pub(crate) fn resource_class(ctx: *mut JsContext) -> qjs::JSClassID {
+    unsafe { graph(ctx) }.data.classes.resource
+}
+
+/// Registers `f` (owned) to run before the current owner runs again or is
+/// disposed (freed at once with no owner).
+pub(crate) fn add_cleanup(ctx: *mut JsContext, f: JsValue) {
+    if let Err(f) = unsafe { graph(ctx) }.on_cleanup(f) {
+        unsafe { qjs::JS_FreeValue(ctx, f) };
+    }
 }
 
 /// Writes `value` (owned) to signal object `obj` (does nothing for a dead

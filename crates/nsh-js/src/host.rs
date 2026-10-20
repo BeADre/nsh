@@ -832,6 +832,16 @@ fn payload_object<'js>(ctx: &Ctx<'js>, payload: &EventPayload) -> rquickjs::Resu
             obj.set("metaKey", e.modifiers.cmd)?;
             obj.set("shiftKey", e.modifiers.shift)?;
         }
+        EventPayload::ContextMenu(e) => {
+            obj.set("locationX", e.location_x)?;
+            obj.set("locationY", e.location_y)?;
+            obj.set("pageX", e.page_x)?;
+            obj.set("pageY", e.page_y)?;
+            obj.set("altKey", e.modifiers.alt)?;
+            obj.set("ctrlKey", e.modifiers.ctrl)?;
+            obj.set("metaKey", e.modifiers.cmd)?;
+            obj.set("shiftKey", e.modifiers.shift)?;
+        }
         EventPayload::FileDrop(uris) => {
             let list = rquickjs::Array::new(ctx.clone())?;
             for (index, uri) in uris.iter().enumerate() {
@@ -1011,7 +1021,7 @@ declare function clearInterval(id: number | undefined): void;
 declare function queueMicrotask(callback: () => void): void;
 /** Runs `callback` at the next display frame with its time in milliseconds. */
 declare function requestAnimationFrame(callback: (time: number) => void): number;
-declare function cancelAnimationFrame(id: number): void;
+declare function cancelAnimationFrame(id: number | undefined): void;
 declare function atob(data: string): string;
 declare function btoa(data: string): string;
 
@@ -1082,8 +1092,8 @@ fn install(ctx: &Ctx<'_>, shared: &Rc<Shared>) -> rquickjs::Result<()> {
     let s = shared.clone();
     globals.set(
         "cancelAnimationFrame",
-        Function::new(ctx.clone(), move |id: Opt<u32>| {
-            if let Some(id) = id.0 {
+        Function::new(ctx.clone(), move |id: Opt<Value<'_>>| {
+            if let Some(id) = handle_id(id) {
                 s.frames.borrow_mut().retain(|(i, _)| *i != id);
             }
         })?,
@@ -1092,14 +1102,34 @@ fn install(ctx: &Ctx<'_>, shared: &Rc<Shared>) -> rquickjs::Result<()> {
         let s = shared.clone();
         globals.set(
             name,
-            Function::new(ctx.clone(), move |id: Opt<u32>| {
-                if let Some(id) = id.0 {
+            Function::new(ctx.clone(), move |id: Opt<Value<'_>>| {
+                if let Some(id) = handle_id(id) {
                     s.timers.borrow_mut().cancel(id);
                 }
             })?,
         )?;
     }
     Ok(())
+}
+
+/// The id `clearTimeout`, `clearInterval` and `cancelAnimationFrame` were
+/// given, read as the web reads it (a number, truncated; a numeric string);
+/// anything else (`undefined`, `null`, objects) names no timer and is ignored,
+/// never thrown at: libraries call these with ids they never got.
+fn handle_id(id: Opt<Value<'_>>) -> Option<u32> {
+    let id = id.0?;
+    let n = match id.as_number() {
+        Some(n) => n,
+        None => id
+            .as_string()?
+            .to_string()
+            .ok()?
+            .trim()
+            .parse::<f64>()
+            .ok()?,
+    };
+    let n = n.trunc();
+    (n.is_finite() && n >= 1.0 && n <= f64::from(u32::MAX)).then_some(n as u32)
 }
 
 #[cfg(test)]
@@ -1109,6 +1139,130 @@ mod tests {
     use nsh_core::{EventKind, Op};
 
     use super::*;
+
+    #[test]
+    fn strings_outside_a_text_are_reported_once_per_element() {
+        let host = Host::new().unwrap();
+        host.eval_source(
+            r#"import { append, element, insert, prop, text } from "nsh:rt";
+            const view = element("view");
+            insert(view, () => "a");
+            insert(view, () => "b");
+            const label = element("text");
+            insert(label, () => "shown");
+            // A Rust component places what is put in it.
+            const card = element("view");
+            prop(card, "component", "Card");
+            insert(card, () => "placed");
+            const scroll = element("scroll");
+            append(scroll, text("c"));"#,
+        )
+        .unwrap();
+        let tags = host
+            .ctx
+            .with(|ctx| crate::dom::unshown_text_tags(ctx.as_raw().as_ptr()));
+        let bit = |t: nsh_core::Tag| 1u64 << t as u32;
+        assert_eq!(tags, bit(nsh_core::Tag::View) | bit(nsh_core::Tag::Scroll));
+    }
+
+    #[test]
+    fn resources_follow_their_source_and_count_the_latest_load_only() {
+        let host = Host::new().unwrap();
+        host.eval_source(&format!(
+            r#"{REPORT}
+import {{ effect, resource, signal }} from "nsh";
+const id = signal(1);
+const loads = [];
+globalThis.report = report;
+globalThis.id = id;
+globalThis.loads = loads;
+globalThis.user = resource(id, (n, info) => new Promise((resolve, reject) => {{
+  loads.push({{ n, resolve, reject, info }});
+  info.signal.addEventListener("abort", () => report(`aborted ${{n}}`));
+}}));
+effect(() => report(`${{user.state()}}|${{user() ?? ""}}|${{user.error() ?? ""}}|${{user.loading()}}`));"#
+        ))
+        .unwrap();
+        assert_eq!(reported(&host), ["pending|||true"]);
+        let step = |code: &str| {
+            host.eval_source(code).unwrap();
+            reported(&host)
+        };
+        // A new source aborts the running load; the old one ending later
+        // changes nothing.
+        assert_eq!(step("id.set(2);"), ["aborted 1"]);
+        assert_eq!(step(r#"loads[0].resolve("one");"#), Vec::<String>::new());
+        assert_eq!(step(r#"loads[1].resolve("two");"#), ["ready|two||false"]);
+        // A refetch keeps the value and says so to the fetcher.
+        assert_eq!(
+            step("user.refetch(); report(`refetching ${loads[2].info.refetching}`);"),
+            ["refreshing|two||true", "refetching true"]
+        );
+        // A failure keeps the value too.
+        assert_eq!(
+            step(r#"loads[2].reject(new Error("boom"));"#),
+            ["errored|two|Error: boom|false"]
+        );
+        // A value set here clears the error; no source loads nothing.
+        assert_eq!(step(r#"user.mutate("local");"#), ["ready|local||false"]);
+        assert!(step("id.set(null);").is_empty());
+        // Three loads in all: none for the unset source.
+        host.eval_source("if (loads.length !== 3) throw new Error(`${loads.length} loads`);")
+            .unwrap();
+    }
+
+    #[test]
+    fn resources_without_a_source_with_values_and_throws() {
+        let host = Host::new().unwrap();
+        host.eval_source(&format!(
+            r#"{REPORT}
+import {{ effect, resource }} from "nsh";
+const now = resource(() => 42);
+const kept = resource(() => new Promise(() => {{}}), {{ initialValue: "first" }});
+const thrown = resource(() => {{ throw new Error("no"); }});
+effect(() => report(`${{now.state()}} ${{now()}} | ${{kept.state()}} ${{kept()}} | ${{thrown.state()}} ${{thrown.error()}}`));
+// The methods are bound: they work taken off their resource.
+const {{ loading, state }} = kept;
+report(`${{loading()}} ${{state()}}`);"#
+        ))
+        .unwrap();
+        assert_eq!(
+            reported(&host),
+            [
+                "ready 42 | refreshing first | errored Error: no",
+                "true refreshing"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_resource_going_with_its_owner_aborts_its_load() {
+        let host = Host::new().unwrap();
+        host.eval_source(&format!(
+            r#"{REPORT}
+import {{ cond, component, element, insert }} from "nsh:rt";
+import {{ effect, resource, signal }} from "nsh";
+const shown = signal(true);
+globalThis.shown = shown;
+function Card() {{
+  const r = resource((info) => new Promise((resolve) => {{
+    globalThis.later = resolve;
+    info.signal.addEventListener("abort", () => report("aborted"));
+  }}));
+  effect(() => report(r.state()));
+  return element("view");
+}}
+const root = element("view");
+insert(root, cond(() => shown(), () => component(Card, {{}})));"#
+        ))
+        .unwrap();
+        assert_eq!(reported(&host), ["pending"]);
+        host.eval_source("shown.set(false);").unwrap();
+        assert_eq!(reported(&host), ["aborted"]);
+        // Its load ending later finds nothing to change.
+        host.eval_source(r#"later("late");"#).unwrap();
+        assert!(reported(&host).is_empty());
+    }
 
     fn ops(host: &Host) -> Vec<Op> {
         let mut out = Vec::new();
@@ -1163,6 +1317,37 @@ const report = (v) => text(String(v));
             );
             assert!(flag("shiftKey") && flag("metaKey"));
             assert!(!flag("altKey") && !flag("ctrlKey"));
+        });
+    }
+
+    #[test]
+    fn context_menu_payload_has_both_positions() {
+        let host = Host::new().unwrap();
+        let event = nsh_core::ContextMenuEvent {
+            location_x: 1.0,
+            location_y: 2.0,
+            page_x: 11.0,
+            page_y: 22.0,
+            modifiers: nsh_core::keymap::Modifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        };
+        host.ctx.with(|ctx| {
+            let value = payload_object(&ctx, &EventPayload::ContextMenu(event)).unwrap();
+            let obj = value.as_object().unwrap();
+            let num = |k: &str| obj.get::<_, f64>(k).unwrap();
+            assert_eq!(
+                (
+                    num("locationX"),
+                    num("locationY"),
+                    num("pageX"),
+                    num("pageY")
+                ),
+                (1.0, 2.0, 11.0, 22.0)
+            );
+            assert!(obj.get::<_, bool>("ctrlKey").unwrap());
+            assert!(!obj.get::<_, bool>("metaKey").unwrap());
         });
     }
 
@@ -1321,6 +1506,39 @@ const report = (v) => text(String(v));
         host.eval_source(&format!("{REPORT}report(log.join(\",\"));"))
             .unwrap();
         assert_eq!(reported(&host), ["micro,a,b"]);
+    }
+
+    #[test]
+    fn clearing_ids_that_name_no_timer_is_ignored() {
+        let host = Host::new().unwrap();
+        host.eval_source(
+            r#"
+            globalThis.log = [];
+            const t = setTimeout(() => log.push("timeout"), 0);
+            const i = setInterval(() => { log.push("interval"); clearInterval(i); }, 0);
+            const f = requestAnimationFrame(() => log.push("frame"));
+            for (const clear of [clearTimeout, clearInterval, cancelAnimationFrame]) {
+                clear();
+                for (const id of [undefined, null, 0, -1, NaN, Infinity, 1e12, 0.5, 99999, "x", "", {}, [], true, Symbol()])
+                    clear(id);
+            }
+            const gone = setTimeout(() => log.push("cancelled by string"), 0);
+            clearTimeout(String(gone));
+            const gone2 = setTimeout(() => log.push("cancelled by fraction"), 0);
+            clearTimeout(gone2 + 0.7);
+            const gone3 = requestAnimationFrame(() => log.push("cancelled frame"));
+            cancelAnimationFrame(gone3);
+            "#,
+        )
+        .unwrap();
+        host.run_frame();
+        while let Some(next) = host.next_timer() {
+            std::thread::sleep(next.saturating_duration_since(Instant::now()));
+            host.run_timers(Instant::now());
+        }
+        host.eval_source(&format!("{REPORT}report(log.join(\",\"));"))
+            .unwrap();
+        assert_eq!(reported(&host), ["frame,timeout,interval"]);
     }
 
     fn sandboxed(limits: Limits) -> Host {
