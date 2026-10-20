@@ -532,8 +532,8 @@ fn PressEvents() -> impl IntoElement {
         .right(Badge::new(move || count.get().to_string()))
         .child(
             view()
-                .on_press_in(fire("pressIn"))
-                .on_press_out(fire("pressOut"))
+                .on_press_down(fire("pressIn"))
+                .on_press_up(fire("pressOut"))
                 .on_press(fire("press"))
                 .on_long_press(fire("longPress"))
                 .active(|s| s.opacity(0.55))

@@ -407,8 +407,8 @@ export interface WebViewNavigation {
 pub const EVENTS: &[(EventKind, u32, &str, &str)] = &[
     (EventKind::Press, on::ALL, "() => void", ""),
     (EventKind::LongPress, on::ALL, "() => void", ""),
-    (EventKind::PressIn, on::ALL, "() => void", ""),
-    (EventKind::PressOut, on::ALL, "() => void", ""),
+    (EventKind::PressDown, on::ALL, "() => void", ""),
+    (EventKind::PressUp, on::ALL, "() => void", ""),
     (
         EventKind::HoverIn,
         on::ALL,

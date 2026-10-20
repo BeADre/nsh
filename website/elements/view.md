@@ -53,7 +53,7 @@ The Tailwind `flex` class follows CSS rather than the style default: `class="fle
 ## Props
 
 `<View>` has no props of its own beyond the [common props](./index.md#common-props): `style` (`ViewStyle`), `class`,
-`classList`, `disabled`, the press props (`onPress`, `onLongPress`, `onPressIn`, `onPressOut`, `delayLongPress`,
+`classList`, `disabled`, the press props (`onPress`, `onLongPress`, `onPressDown`, `onPressUp`, `delayLongPress`,
 `hitSlop`, `pointerEvents`), the state styles (`activeStyle`, `hoverStyle`, `focusStyle`, `disabledStyle`), `onHoverIn` / `onHoverMove` / `onHoverOut`, `onContextMenu`,
 `onFileDragEnter` / `onFileDragLeave` / `onFileDrop`, `onLayout`, `ref`, `nativeID`,
 `testID`, the gesture props (`pan`, `pinch`, `rotation` and their events), the touch and responder props, the
@@ -93,7 +93,7 @@ On Android, `android={{ ripple: { color: "#0000001f" } }}` adds the material rip
 |---|---|---|
 | `onPress` | none | A tap ended inside the view. |
 | `onLongPress` | none | The finger stayed down for `delayLongPress` (500 ms). |
-| `onPressIn` / `onPressOut` | none | A finger went down / lifted or left. |
+| `onPressDown` / `onPressUp` | none | A finger went down / lifted or left. |
 | `onHoverIn` / `onHoverOut` | none | The mouse came over the view (or a view inside it) / left it or the window ([hover](./index.md#hover)). |
 | `onHoverMove` | `HoverEvent` | The mouse moved over the view with no button down: `locationX` / `locationY`, `pageX` / `pageY`, the modifier keys; at most once a frame. |
 | `onContextMenu` | `ContextMenuEvent` | The secondary button was pressed over the view ([context menus](./index.md#context-menus)). |

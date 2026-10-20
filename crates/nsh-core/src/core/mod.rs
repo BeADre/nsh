@@ -4835,8 +4835,8 @@ fn directed_align(align: TextAlign, rtl: bool) -> TextAlign {
 const PRESSES: [EventKind; 4] = [
     EventKind::Press,
     EventKind::LongPress,
-    EventKind::PressIn,
-    EventKind::PressOut,
+    EventKind::PressDown,
+    EventKind::PressUp,
 ];
 
 /// The background a nested text's view style gives its characters.

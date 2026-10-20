@@ -48,7 +48,7 @@ Tailwind 的 `flex` 类遵循 CSS 而不是样式的默认值：`class="flex"` �
 
 ## 属性
 
-除[通用属性](./index.md)外，`<View>` 没有自己的属性：`style`（`ViewStyle`）、`class`、`classList`、`disabled`，按压属性（`onPress`、`onLongPress`、`onPressIn`、`onPressOut`、`delayLongPress`、`hitSlop`、`pointerEvents`），状态样式（`activeStyle`、`hoverStyle`、`focusStyle`、`disabledStyle`），`onHoverIn` / `onHoverMove` / `onHoverOut`、`onContextMenu`，`onFileDragEnter` / `onFileDragLeave` / `onFileDrop`，`onLayout`、`ref`、`nativeID`、`testID`，手势属性（`pan`、`pinch`、`rotation` 及其事件），触摸与响应者属性，无障碍属性，以及 `ios` / `android` / `desktop`。
+除[通用属性](./index.md)外，`<View>` 没有自己的属性：`style`（`ViewStyle`）、`class`、`classList`、`disabled`，按压属性（`onPress`、`onLongPress`、`onPressDown`、`onPressUp`、`delayLongPress`、`hitSlop`、`pointerEvents`），状态样式（`activeStyle`、`hoverStyle`、`focusStyle`、`disabledStyle`），`onHoverIn` / `onHoverMove` / `onHoverOut`、`onContextMenu`，`onFileDragEnter` / `onFileDragLeave` / `onFileDrop`，`onLayout`、`ref`、`nativeID`、`testID`，手势属性（`pan`、`pinch`、`rotation` 及其事件），触摸与响应者属性，无障碍属性，以及 `ios` / `android` / `desktop`。
 
 ## 按压反馈
 
@@ -81,7 +81,7 @@ Tailwind 的 `flex` 类遵循 CSS 而不是样式的默认值：`class="flex"` �
 |---|---|---|
 | `onPress` | 无 | 在视图内完成一次点击。 |
 | `onLongPress` | 无 | 手指按住达到 `delayLongPress`（500 ms）。 |
-| `onPressIn` / `onPressOut` | 无 | 手指按下 / 抬起或移出。 |
+| `onPressDown` / `onPressUp` | 无 | 手指按下 / 抬起或移出。 |
 | `onHoverIn` / `onHoverOut` | 无 | 鼠标移到视图（或其内部的视图）上 / 离开视图或窗口（见[悬停](./index.md#悬停)）。 |
 | `onHoverMove` | `HoverEvent` | 没有按下按键时鼠标在视图上移动：`locationX` / `locationY`、`pageX` / `pageY` 和修饰键；每帧最多一次。 |
 | `onContextMenu` | `ContextMenuEvent` | 辅助按钮在视图上按下（见[上下文菜单](./index.md#上下文菜单)）。 |
