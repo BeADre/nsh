@@ -66,7 +66,7 @@
 //!   `Enter`, ...), the text unchanged;
 //! - `scroll <selector> <x> <y>`: the scroll view the selector names
 //!   scrolled to content offset `<x> <y>` (`onScroll` then reports it,
-//!   with the sizes the core knows);
+//!   with the sizes the core knows, and its `contentOffset` reads it);
 //! - `fontscale <scale>`: before anything else (with `viewport`), the
 //!   user's text size (1 by default), which scales the fonts of texts and
 //!   inputs;
@@ -76,11 +76,17 @@
 //!   (`none`: in none). A platform reports only the states the core asked
 //!   it to track (`activeStyle`, `hover:`, ...), so the step waits for the
 //!   view to track the states it names and fails when it does not;
+//! - `origin <selector> <x> <y>`: the first view on screen the selector
+//!   names is at `<x> <y>` on the surface: its frames' origins added up,
+//!   scroll offsets aside (a list's row, whose frame is its cell's), waits
+//!   for it;
 //! - `covers <item>`: no step, a claim: the script checks what `<item>` (a
 //!   part of the API as `api/uncovered.txt` names it) does (compat/coverage.rs
 //!   verifies it).
 //!
-//! A selector is one word (`id:<testID>`, `label:<label>`, `text:<text>`);
+//! A selector is one word (`id:<testID>`, `label:<label>`, `text:<text>`,
+//! and `scroll:<selector>`, the nearest scroll view around the view the
+//! inner selector names: a list, by one of its rows);
 //! the steps after `frame` also take the part after `:` quoted, for one
 //! with spaces: `text:"Taps: 0"`. Any error the app reports fails it. `NSH_API_DUMP=1` prints the texts
 //! on screen after each step, for writing scripts.
@@ -211,6 +217,7 @@ impl Views {
                 }
                 _ => {}
             }
+            values::animated(Some(item));
             if let Some(id) = Mounted::target(item) {
                 self.nodes.entry(id).or_default().mounted.apply(item);
             }
@@ -261,6 +268,9 @@ impl Views {
 
     /// The first view on screen `selector` names.
     fn find_view(&self, selector: &str) -> Option<NodeId> {
+        if let Some(inner) = selector.strip_prefix("scroll:") {
+            return self.scroll_around(inner);
+        }
         let is = |value: &Option<Arc<str>>, want: &str| value.as_deref() == Some(want);
         let test: Box<dyn Fn(&View) -> bool> = if let Some(want) = selector.strip_prefix("id:") {
             Box::new(move |v| is(&v.test_id, want))
@@ -276,6 +286,18 @@ impl Views {
         self.attached()
             .into_iter()
             .find(|id| self.nodes.get(id).is_some_and(&test))
+    }
+
+    /// The nearest scroll view around the first view on screen `selector`
+    /// names (a list has no `testID` of its own: its rows name it).
+    fn scroll_around(&self, selector: &str) -> Option<NodeId> {
+        let mut id = self.find_view(selector)?;
+        loop {
+            id = self.nodes.get(&id)?.parent?;
+            if self.nodes.get(&id)?.mounted.is_scroll() {
+                return Some(id);
+            }
+        }
     }
 
     /// The mounted state of the first view on screen `selector` names, and
@@ -486,6 +508,7 @@ pub(crate) fn run(code: String, script: &str, assets: &Path) -> Result<(), Failu
         }
         lines.next();
     }
+    values::animated(None);
     let mut run = Run::start(Bundle::source(code), viewport, environment, assets);
     if !run.until(EXPECT_WAIT, |v| !v.attached().is_empty()) {
         return Err(Failure {
@@ -746,6 +769,25 @@ pub(crate) fn run(code: String, script: &str, assets: &Path) -> Result<(), Failu
                     return failed("no such view".into(), &run);
                 };
                 run.control.scroll(id, x, y, 0);
+                if let Some(view) = run.views.nodes.get_mut(&id) {
+                    view.mounted.scrolled(x, y);
+                }
+            }
+            "origin" => {
+                let (selector, at) = selector(arg);
+                let [x, y] = numbers::<2>(at)
+                    .ok_or_else(|| format!("`{line}`: origin <selector> <x> <y>"))?;
+                let at = |v: &Views| v.find_view(&selector).map(|id| page_origin(v, id));
+                let fits = |v: &Views| {
+                    at(v).is_some_and(|(left, top)| (left - x).abs() < 0.5 && (top - y).abs() < 0.5)
+                };
+                if !run.until(EXPECT_WAIT, fits) {
+                    let what = match at(&run.views) {
+                        Some((left, top)) => format!("at {left} {top}"),
+                        None => "no such view".to_owned(),
+                    };
+                    return failed(what, &run);
+                }
             }
             "state" => {
                 let (selector, names) = selector(arg);
