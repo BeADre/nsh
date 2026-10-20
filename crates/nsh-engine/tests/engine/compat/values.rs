@@ -61,6 +61,8 @@ pub(crate) struct Mounted {
     screen: Option<Box<ScreenConfig>>,
     modal: Option<ModalConfig>,
     native: Option<NativeProps>,
+    /// The keys [`Later`] reads.
+    later: Later,
 }
 
 impl Mounted {
@@ -101,6 +103,7 @@ impl Mounted {
             MountItem::NativeProps { props, .. } => self.native = Some(props.clone()),
             _ => {}
         }
+        self.later.apply(item);
     }
 
     /// The view an item this module reads is addressed to.
@@ -120,7 +123,11 @@ impl Mounted {
             | MountItem::InputValue { id, .. }
             | MountItem::ScreenConfig { id, .. }
             | MountItem::ModalConfig { id, .. }
-            | MountItem::NativeProps { id, .. } => *id,
+            | MountItem::NativeProps { id, .. }
+            | MountItem::Gestures { id, .. }
+            | MountItem::StickyCells { id, .. }
+            | MountItem::ScrollBy { id, .. }
+            | MountItem::Command { id, .. } => *id,
             _ => return None,
         })
     }
@@ -397,6 +404,7 @@ impl Mounted {
             }
             _ => {}
         }
+        self.later.props(self.kind, &mut out);
         out
     }
 
@@ -1004,4 +1012,140 @@ fn values_are_written_as_apps_write_them() {
     assert_eq!(styles["shadowOffset"], "width=0 height=-3");
     assert_eq!(styles["transformOrigin"], "50% 50% 0");
     assert_eq!(view.props()["accessibilityState"], "{}");
+}
+
+/// Keys added after the ones above, read from what the platform is told
+/// to do with a view rather than what it is set to:
+///
+/// - `contentOffset` (scroll views and lists): where the platform holds
+///   the view scrolled, `{ x?, y? }`: the last `ScrollTo` it was told
+///   (`contentOffset`, a list starting at its end, `scrollTo()`), moved
+///   by the `ScrollBy`s since and set by the script's `scroll` steps (the
+///   user); missing until one of them;
+/// - `zoomScale` (scroll views): the zoom the platform was last told;
+/// - `stickyHeaderIndices` (lists): the sticky cells as the platform pins
+///   them, `start=<n> end=<n>` each (content points along the main axis,
+///   `end` `Infinity` for the last), in the core's order;
+/// - `scrollValue`, `pan` (`{ x?, y? }`), `pinch` (`{ scale? }`),
+///   `rotation` (`{ angle? }`): the animated values the scroll offset
+///   and the gestures drive, each written as the value it was created
+///   with (so a script tells them apart).
+#[derive(Default, Clone)]
+struct Later {
+    offset: Option<(f32, f32)>,
+    zoom: Option<f32>,
+    sticky: Option<Vec<(f32, f32)>>,
+    /// `pan.x`, `pan.y`, `pinch.scale`, `rotation.angle`, by animated
+    /// node.
+    gestures: Option<[Option<nsh_core::nsh_animation::NodeId>; 4]>,
+    scroll_value: Option<nsh_core::nsh_animation::NodeId>,
+}
+
+impl Later {
+    fn apply(&mut self, item: &MountItem) {
+        match item {
+            MountItem::Command { command, .. } => match *command {
+                nsh_core::Command::ScrollTo { x, y, .. } => self.offset = Some((x, y)),
+                nsh_core::Command::ZoomTo { scale, .. } => self.zoom = Some(scale),
+                _ => {}
+            },
+            MountItem::ScrollBy { dx, dy, .. } => {
+                let (x, y) = self.offset.unwrap_or_default();
+                self.offset = Some((x + dx, y + dy));
+            }
+            MountItem::StickyCells { cells, .. } => {
+                self.sticky = Some(cells.iter().map(|c| (c.start, c.end)).collect());
+            }
+            MountItem::Gestures { values, .. } => {
+                self.gestures = Some([values.pan_x, values.pan_y, values.pinch, values.rotation]);
+            }
+            MountItem::ScrollConfig { scroll_value, .. } => self.scroll_value = *scroll_value,
+            _ => {}
+        }
+    }
+
+    fn props(&self, kind: Option<ViewKind>, out: &mut Out) {
+        let animated = |node: Option<nsh_core::nsh_animation::NodeId>| {
+            let node = node?;
+            ANIMATED.with(|a| a.borrow().get(&node).map(|v| num(*v)))
+        };
+        if kind == Some(ViewKind::Scroll) {
+            if let Some((x, y)) = self.offset {
+                let mut o = Object::default();
+                o.opt("x", (x != 0.0).then(|| num(x)));
+                o.opt("y", (y != 0.0).then(|| num(y)));
+                out.put("contentOffset", o.done());
+            }
+            if let Some(v) = self.zoom {
+                out.put("zoomScale", num(v));
+            }
+            if let Some(cells) = &self.sticky {
+                out.put(
+                    "stickyHeaderIndices",
+                    list(cells.iter().map(|(s, e)| {
+                        let end = if e.is_finite() {
+                            num(*e)
+                        } else {
+                            "Infinity".into()
+                        };
+                        format!("start={} end={end}", num(*s))
+                    })),
+                );
+            }
+            if let Some(v) = animated(self.scroll_value) {
+                out.put("scrollValue", v);
+            }
+        }
+        if let Some([x, y, scale, angle]) = self.gestures {
+            let mut o = Object::default();
+            o.opt("x", animated(x));
+            o.opt("y", animated(y));
+            if x.is_some() || y.is_some() {
+                out.put("pan", o.done());
+            }
+            if scale.is_some() {
+                let mut o = Object::default();
+                o.opt("scale", animated(scale));
+                out.put("pinch", o.done());
+            }
+            if angle.is_some() {
+                let mut o = Object::default();
+                o.opt("angle", animated(angle));
+                out.put("rotation", o.done());
+            }
+        }
+    }
+}
+
+impl Mounted {
+    /// Whether the view is a scroll view (a list's included).
+    pub(crate) fn is_scroll(&self) -> bool {
+        self.kind == Some(ViewKind::Scroll)
+    }
+
+    /// The user scrolled the view to `x`, `y` (a script's `scroll` step).
+    pub(crate) fn scrolled(&mut self, x: f32, y: f32) {
+        self.later.offset = Some((x, y));
+    }
+}
+
+thread_local! {
+    /// The value each animated node of the run on this thread was created
+    /// with: the mount items create them before views bind them.
+    static ANIMATED: std::cell::RefCell<std::collections::HashMap<nsh_core::nsh_animation::NodeId, f32>> =
+        Default::default();
+}
+
+/// Takes in the animated values `item` creates; `None` starts a run.
+pub(crate) fn animated(item: Option<&MountItem>) {
+    ANIMATED.with(|a| match item {
+        None => a.borrow_mut().clear(),
+        Some(MountItem::Animation(nsh_core::nsh_animation::AnimationOp::CreateValue {
+            node,
+            value,
+        })) => {
+            a.borrow_mut().insert(*node, *value);
+        }
+        Some(_) => {}
+    });
 }
