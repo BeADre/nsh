@@ -226,8 +226,7 @@ whose short side is at least 600, else `phone`; the player's `idiom` option over
 (desktop OS, or the web in the desktop idiom) decides `desktop={{…}}` props, `Platform.select`'s `desktop` key and
 `Platform.isDesktop`; `Os::is_desktop()` stays the desktop backends' OSes (`nsh/desktop`'s windows and menus). Like the
 desktop backends, the web gives the core no header heights (`NO_NATIVE_HEADER`): a page's `header` slot is all
-there is at its top. `Command::StatusBar`'s `background` (from
-`StatusBar`'s `web={{ themeColor }}`) becomes `<meta name="theme-color">`.
+there is at its top. The browser's bars are the browser's: `StatusBar` does nothing on the web.
 
 ## The protocol
 

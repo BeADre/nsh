@@ -491,7 +491,6 @@ pub(crate) fn encode(batch: MountBatch) -> Encoded {
                         });
                         e.bool(c.hidden);
                         e.bool(c.animated);
-                        opt_color(&mut e, c.background);
                     }
                     Command::Dialog(d) => {
                         e.int(12);

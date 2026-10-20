@@ -1132,8 +1132,6 @@ pub struct StatusBarConfig {
     pub hidden: bool,
     /// Animate the change.
     pub animated: bool,
-    /// Background (Android before edge-to-edge; the web's theme color).
-    pub background: Option<Color>,
 }
 
 /// A status bar setting: what it sets; the fields it leaves out keep the
@@ -1146,8 +1144,6 @@ pub struct StatusBarSetting {
     pub hidden: Option<bool>,
     /// Animate the change.
     pub animated: Option<bool>,
-    /// Background (Android before edge-to-edge; the web's theme color).
-    pub background: Option<Color>,
 }
 
 impl StatusBarSetting {
@@ -1157,7 +1153,6 @@ impl StatusBarSetting {
             style: self.style.or(below.style),
             hidden: self.hidden.or(below.hidden),
             animated: self.animated.or(below.animated),
-            background: self.background.or(below.background),
         }
     }
 }

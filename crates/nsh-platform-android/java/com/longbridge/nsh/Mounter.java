@@ -64,10 +64,9 @@ final class Mounter {
     boolean rtl;
     /** The app's appearance (`nsh_core::platform::Appearance`): 0 the system's, 1 light, 2 dark. */
     int appearance;
-    /** The status bar the app asked for last (style, hidden, background), applied again when the appearance changes. */
+    /** The status bar the app asked for last (style, hidden), applied again when the appearance changes. */
     private int barStyle = -1;
     private boolean barHidden;
-    private Integer barBackground;
 
     /** Dark appearance as shown: the app's, else the system's. */
     boolean night() {
@@ -306,7 +305,7 @@ final class Mounter {
                 }
                 case APPEARANCE: {
                     appearance = b.getInt();
-                    if (barStyle == 0) SystemUi.statusBar(context, barStyle, barHidden, barBackground, night());
+                    if (barStyle == 0) SystemUi.statusBar(context, barStyle, barHidden, night());
                     break;
                 }
                 case LAYOUT_DIRECTION: {
@@ -1779,11 +1778,9 @@ final class Mounter {
                 int style = b.getInt();
                 boolean hidden = b.getInt() != 0;
                 b.getInt(); // animated: the system animates bar changes
-                Integer background = optColor(b);
                 barStyle = style;
                 barHidden = hidden;
-                barBackground = background;
-                SystemUi.statusBar(context, style, hidden, background, night());
+                SystemUi.statusBar(context, style, hidden, night());
                 break;
             }
             case 12: {

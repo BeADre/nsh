@@ -75,7 +75,6 @@ impl StatusBars {
             style: merged.style.unwrap_or_default(),
             hidden: merged.hidden.unwrap_or(false),
             animated: merged.animated.unwrap_or(false),
-            background: merged.background,
         };
         (self.shown != Some(config)).then(|| {
             self.shown = Some(config);
@@ -87,7 +86,7 @@ impl StatusBars {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{StatusBarStyle, ui::Color};
+    use crate::StatusBarStyle;
 
     fn style(style: StatusBarStyle) -> StatusBarSetting {
         StatusBarSetting {
@@ -108,16 +107,12 @@ mod tests {
         let globals = SharedStatusBars::default();
         let shown = |f: &dyn Fn(&mut StatusBars)| {
             StatusBars::update(&globals, f);
-            StatusBars::take_changed(&globals).map(|c| (c.style, c.hidden, c.background))
+            StatusBars::take_changed(&globals).map(|c| (c.style, c.hidden))
         };
-        let red = Color::parse("#f00");
         assert_eq!(StatusBars::take_changed(&globals), None, "nothing set");
         assert_eq!(
-            shown(&|b| b.set_base(StatusBarSetting {
-                background: red,
-                ..style(StatusBarStyle::Dark)
-            })),
-            Some((StatusBarStyle::Dark, false, red))
+            shown(&|b| b.set_base(style(StatusBarStyle::Dark))),
+            Some((StatusBarStyle::Dark, false))
         );
         let first = StatusBars::update(&globals, |b| b.add(style(StatusBarStyle::Light)));
         let second = StatusBars::update(&globals, |b| b.add(hidden()));
@@ -129,7 +124,7 @@ mod tests {
         assert_eq!(shown(&|b| b.set(second, hidden())), None, "unchanged");
         assert_eq!(
             shown(&|b| b.remove(first)),
-            Some((StatusBarStyle::Dark, true, red))
+            Some((StatusBarStyle::Dark, true))
         );
     }
 }

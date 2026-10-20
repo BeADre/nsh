@@ -29,13 +29,11 @@ final class SystemUi {
      * content, 2 dark content.
      */
     @SuppressWarnings("deprecation")
-    static void statusBar(Context context, int style, boolean hidden, Integer background, boolean night) {
+    static void statusBar(Context context, int style, boolean hidden, boolean night) {
         Activity activity = activity(context);
         if (activity == null) return;
         Window window = activity.getWindow();
         boolean darkIcons = style == 2 || (style == 0 && !night);
-        // Before edge-to-edge (API 35) the bar has a color of its own.
-        if (background != null && Build.VERSION.SDK_INT < 35) window.setStatusBarColor(background);
         if (Build.VERSION.SDK_INT >= 30) {
             WindowInsetsController c = window.getInsetsController();
             if (c == null) return;

@@ -1,9 +1,6 @@
 //! `StatusBar`: what the status bar shows while it renders.
 
-use nsh_core::{
-    platform::Os,
-    ui::{StatusBarSetting, StatusBarStyle, prelude::*},
-};
+use nsh_core::ui::{StatusBarSetting, StatusBarStyle, prelude::*};
 
 /// What the status bar shows while this renders: the most recently
 /// mounted `StatusBar` wins, prop by prop. In an app embedded in a native
@@ -17,16 +14,6 @@ pub struct StatusBarProps {
     pub hidden: Prop<Option<bool>>,
     /// Animate changes of `foreground` and `hidden`.
     pub animated: Prop<Option<bool>>,
-    /// What only the web has.
-    pub web: Prop<Option<StatusBarWeb>>,
-}
-
-/// The props of a [`StatusBar`] only the web has.
-#[derive(Debug, Clone, Default, PartialEq, JsObject)]
-pub struct StatusBarWeb {
-    /// The color the browser gives its own bars around the page (the
-    /// page's `<meta name="theme-color">`).
-    pub theme_color: Option<Color>,
 }
 
 /// The color of the status bar's content.
@@ -50,19 +37,12 @@ impl From<Foreground> for StatusBarStyle {
     }
 }
 
-/// What `props` set (reading subscribes): the background is the
-/// browser's theme color on the web.
+/// What `props` set (reading subscribes).
 fn setting(props: &StatusBarProps) -> StatusBarSetting {
-    let background = if os() == Os::Web {
-        props.web.get().and_then(|w| w.theme_color)
-    } else {
-        None
-    };
     StatusBarSetting {
         style: props.foreground.get().map(Into::into),
         hidden: props.hidden.get(),
         animated: props.animated.get(),
-        background,
     }
 }
 
