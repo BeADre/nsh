@@ -4,11 +4,16 @@
 //! platform's is: what a merged change recorded stays, and nothing is frozen
 //! per release.
 //!
-//! `--keep <app>...` adds fixtures, `api/apps/<app>-<version>/`: example
-//! apps as this checkout's `nsh build --release` writes them, for when the
-//! JSX compiler's output changes (new `nsh:rt` calls), so the record keeps
-//! what the new compiler writes next to what the older ones wrote
-//! (docs/dev/compatibility.md).
+//! It also removes from `api/uncovered.txt` what the fixture apps exercise
+//! now (the list only shrinks).
+//!
+//! `--keep <app>...` adds fixtures, `api/apps/<app>-<version>/`: apps as
+//! this checkout's `nsh build --release` writes them, for when the JSX
+//! compiler's output changes (new `nsh:rt` calls), so the record keeps what
+//! the new compiler writes next to what the older ones wrote, and for a new
+//! API, which comes with a fixture that uses it. An app is an example's
+//! name (`counter`) or the path of an app's directory or entry module, as
+//! the small cases of `api/cases/<case>.tsx` (docs/dev/compatibility.md).
 
 use std::{
     path::{Path, PathBuf},
@@ -25,11 +30,15 @@ pub(crate) fn api(keep: &[String]) -> anyhow::Result<()> {
         Command::new("cargo")
             .current_dir(&root)
             .args(["test", "-p", "nsh-engine", "--test", "engine", "--"])
-            .args(["--exact", "compat::surface_is_recorded"])
+            .args([
+                "--exact",
+                "compat::surface_is_recorded",
+                "compat::coverage::every_api_is_tested",
+            ])
             .env("NSH_API_UPDATE", "1"),
         "and recording the API",
     )?;
-    term::done("recorded api/runtime.txt and api/types");
+    term::done("recorded api/runtime.txt, api/types and api/uncovered.txt");
     if keep.is_empty() {
         return Ok(());
     }
@@ -39,15 +48,13 @@ pub(crate) fn api(keep: &[String]) -> anyhow::Result<()> {
     let kept: Vec<_> = keep
         .iter()
         .map(|app| {
-            let dir = apps.join(format!("{app}-{version}"));
+            let (name, source) = source(&root, app)?;
+            let dir = apps.join(format!("{name}-{version}"));
             if dir.exists() {
                 // Fixtures are what apps built then call: never rewritten.
                 bail!("{}: already kept", shown(&root, &dir));
             }
-            if !root.join("examples").join(app).is_dir() {
-                bail!("examples/{app}: no such app");
-            }
-            Ok((app, dir))
+            Ok((name, source, dir))
         })
         .collect::<anyhow::Result<_>>()?;
     term::cargo(
@@ -56,7 +63,8 @@ pub(crate) fn api(keep: &[String]) -> anyhow::Result<()> {
             .args(["build", "-p", "nsh-cli"]),
         "nsh",
     )?;
-    for (app, dir) in kept {
+    for (app, source, dir) in kept {
+        let app = app.as_str();
         let out = root.join("target/api").join(app);
         let _ = std::fs::remove_dir_all(&out);
         term::run(
@@ -64,7 +72,7 @@ pub(crate) fn api(keep: &[String]) -> anyhow::Result<()> {
                 .current_dir(&root)
                 .args(["build", "--release", "-o"])
                 .arg(&out)
-                .arg(Path::new("examples").join(app)),
+                .arg(&source),
         )?;
         // The script comes before the new fixture exists, so it is the
         // newest older one's.
@@ -94,6 +102,41 @@ pub(crate) fn api(keep: &[String]) -> anyhow::Result<()> {
         "run `cargo test -p nsh-engine --test engine compat::apps_still_run` to check the fixtures",
     );
     Ok(())
+}
+
+/// The fixture's name and the app `keep` names: an example of `examples/`
+/// by its name, or the path of an app's directory or entry module (from
+/// the current directory or the repository's root), named after the
+/// directory or the module's file stem.
+fn source(root: &Path, keep: &str) -> anyhow::Result<(String, PathBuf)> {
+    let example = root.join("examples").join(keep);
+    if !keep.contains(['/', '\\']) && example.is_dir() {
+        return Ok((keep.to_owned(), example));
+    }
+    let path = [Path::new(keep).to_path_buf(), root.join(keep)]
+        .into_iter()
+        .find(|p| p.exists())
+        .with_context(|| format!("{keep}: no such example app, directory or module"))?;
+    let path = path.canonicalize()?;
+    let name = if path.is_dir() {
+        path.file_name()
+    } else {
+        path.file_stem()
+    };
+    let name = name
+        .and_then(|n| n.to_str())
+        .filter(|n| {
+            !n.is_empty()
+                && n.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+        })
+        .with_context(|| {
+            format!(
+                "{}: a fixture's name is lower case letters, digits, `-` and `_`",
+                path.display()
+            )
+        })?;
+    Ok((name.to_owned(), path))
 }
 
 fn shown(root: &Path, path: &Path) -> String {

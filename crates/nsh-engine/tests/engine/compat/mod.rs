@@ -14,7 +14,9 @@
 
 mod apps;
 mod compare;
+mod coverage;
 mod surface;
+mod tailwind;
 
 use std::{
     collections::BTreeMap,
@@ -69,6 +71,7 @@ fn write_surface(dir: &Path) {
     let _ = std::fs::remove_dir_all(dir.join("types"));
     std::fs::create_dir_all(dir).unwrap();
     std::fs::write(dir.join("runtime.txt"), surface::runtime()).unwrap();
+    std::fs::write(dir.join("tailwind.txt"), tailwind::record()).unwrap();
     for (path, text) in surface::types() {
         let path = dir.join("types").join(path);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -99,6 +102,12 @@ fn surface_is_recorded() {
     stale.dedup();
     if runtime != recorded_runtime {
         stale.push("runtime.txt");
+    }
+    let recorded_tailwind = std::fs::read(dir.join("tailwind.txt"))
+        .map(text)
+        .unwrap_or_default();
+    if tailwind::record() != recorded_tailwind {
+        stale.push("tailwind.txt");
     }
     assert!(
         stale.is_empty(),
@@ -277,13 +286,21 @@ fn nothing_merged_is_removed() {
             .unwrap_or_default(),
     );
     let apps = read_files(&dir.join("apps")).into_iter().collect();
-    let breaks = record_breaks(
+    let mut breaks = record_breaks(
         &base,
         &surface::runtime(),
         &surface::types(),
         &apps,
         &closed,
     );
+    if let Some(base_tailwind) = base.get("tailwind.txt") {
+        let base_tailwind = text(base_tailwind.clone());
+        breaks.extend(tailwind::breaks(
+            &base_tailwind,
+            &tailwind::record(),
+            &closed,
+        ));
+    }
     assert!(
         breaks.is_empty(),
         "what api/ recorded at {rev} is no longer offered (docs/dev/compatibility.md):\n{}",

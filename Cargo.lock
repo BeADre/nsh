@@ -2271,6 +2271,7 @@ dependencies = [
  "oxc_sourcemap",
  "rustc-hash",
  "serde_json",
+ "taffy",
  "tokio",
  "ureq",
 ]

@@ -13,7 +13,13 @@
 //! - `tap <selector>`: presses the first view on screen `id:<testID>`,
 //!   `label:<accessibility label>` or `text:<text>` names, or its nearest
 //!   pressable ancestor (as `nsh trace --tap`);
-//! - `wait <ms>`: lets timers and animations run.
+//! - `wait <ms>`: lets timers and animations run;
+//! - `frame <selector> <x> <y> <width> <height>`: the first view on screen
+//!   the selector names (itself, pressable or not) is laid out at that
+//!   frame, in points relative to its parent (waits for it);
+//! - `covers <item>`: no step, a claim: the script checks what `<item>` (a
+//!   part of the API as `api/uncovered.txt` names it) does (compat/coverage.rs
+//!   verifies it).
 //!
 //! Any error the app reports fails it. `NSH_API_DUMP=1` prints the texts
 //! on screen after each step, for writing scripts.
@@ -26,7 +32,9 @@ use std::{
 };
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
-use nsh_core::{ApproxTextEngine, EventKind, EventPayload, MountBatch, MountItem, NodeId, Size};
+use nsh_core::{
+    ApproxTextEngine, EventKind, EventPayload, MountBatch, MountItem, NodeId, Rect, Size,
+};
 use nsh_engine::{Assets, Bundle, Engine, EngineConfig, EngineControl, MountSink};
 
 /// The surface's root view.
@@ -83,6 +91,7 @@ struct View {
     test_id: Option<Arc<str>>,
     label: Option<Arc<str>>,
     text: Option<String>,
+    frame: Option<Rect>,
 }
 
 impl Views {
@@ -122,6 +131,9 @@ impl Views {
                 }
                 MountItem::Text { id, text, .. } => {
                     self.nodes.entry(*id).or_default().text = Some(text.text.clone());
+                }
+                MountItem::Frame { id, frame, .. } => {
+                    self.nodes.entry(*id).or_default().frame = Some(*frame);
                 }
                 _ => {}
             }
@@ -166,6 +178,12 @@ impl Views {
     /// The first view on screen `selector` names, or its nearest pressable
     /// ancestor.
     fn find(&self, selector: &str) -> Option<NodeId> {
+        self.find_view(selector)
+            .and_then(|id| self.pressable_from(id))
+    }
+
+    /// The first view on screen `selector` names.
+    fn find_view(&self, selector: &str) -> Option<NodeId> {
         let is = |value: &Option<Arc<str>>, want: &str| value.as_deref() == Some(want);
         let test: Box<dyn Fn(&View) -> bool> = if let Some(want) = selector.strip_prefix("id:") {
             Box::new(move |v| is(&v.test_id, want))
@@ -176,12 +194,9 @@ impl Views {
         } else {
             panic!("selector `{selector}`: expected id:, label: or text:")
         };
-        self.attached().into_iter().find_map(|id| {
-            self.nodes
-                .get(&id)
-                .filter(|v| test(v))
-                .and_then(|_| self.pressable_from(id))
-        })
+        self.attached()
+            .into_iter()
+            .find(|id| self.nodes.get(id).is_some_and(&test))
     }
 
     fn pressable_from(&self, mut id: NodeId) -> Option<NodeId> {
@@ -271,6 +286,37 @@ impl Run {
 pub(crate) fn run_app(dir: &Path) -> Result<(), String> {
     let code = std::fs::read_to_string(dir.join("bundle.js")).map_err(|e| e.to_string())?;
     let script = std::fs::read_to_string(dir.join("script.txt")).map_err(|e| e.to_string())?;
+    run(code, &script, &dir.join("assets")).map_err(|f| f.message)
+}
+
+/// Why a script failed.
+pub(crate) struct Failure {
+    /// The step that failed, when one of its checks did (not an error the
+    /// app reported, nor a malformed script).
+    pub(crate) check: Option<String>,
+    /// Whether the app reported errors.
+    pub(crate) errors: bool,
+    pub(crate) message: String,
+}
+
+impl From<String> for Failure {
+    fn from(message: String) -> Failure {
+        Failure {
+            check: None,
+            errors: false,
+            message,
+        }
+    }
+}
+
+impl From<&str> for Failure {
+    fn from(message: &str) -> Failure {
+        message.to_owned().into()
+    }
+}
+
+/// Runs the bundle `code` with its `assets` through `script`.
+pub(crate) fn run(code: String, script: &str, assets: &Path) -> Result<(), Failure> {
     let dump = std::env::var_os("NSH_API_DUMP").is_some();
     let mut lines = script
         .lines()
@@ -285,12 +331,13 @@ pub(crate) fn run_app(dir: &Path) -> Result<(), String> {
         viewport = Size::new(w.parse().unwrap(), h.parse().unwrap());
         lines.next();
     }
-    let mut run = Run::start(Bundle::source(code), viewport, &dir.join("assets"));
+    let mut run = Run::start(Bundle::source(code), viewport, assets);
     if !run.until(EXPECT_WAIT, |v| !v.attached().is_empty()) {
-        return Err(format!(
-            "the app rendered nothing; errors: {:?}",
-            run.errors()
-        ));
+        return Err(Failure {
+            check: None,
+            errors: !run.errors().is_empty(),
+            message: format!("the app rendered nothing; errors: {:?}", run.errors()),
+        });
     }
     if dump {
         run.settle(EXPECT_WAIT);
@@ -300,12 +347,16 @@ pub(crate) fn run_app(dir: &Path) -> Result<(), String> {
     for (n, line) in lines.enumerate() {
         let (step, arg) = line.split_once(' ').unwrap_or((line, ""));
         let failed = |what: String, run: &Run| {
-            Err(format!(
-                "step {} `{line}`: {what}\non screen: {:?}\nerrors: {:?}",
-                n + 1,
-                run.views.texts(),
-                run.errors()
-            ))
+            let errors = run.errors();
+            Err(Failure {
+                check: (what != "the app reported errors").then(|| line.to_owned()),
+                errors: !errors.is_empty(),
+                message: format!(
+                    "step {} `{line}`: {what}\non screen: {:?}\nerrors: {errors:?}",
+                    n + 1,
+                    run.views.texts(),
+                ),
+            })
         };
         match step {
             "expect" => {
@@ -331,7 +382,33 @@ pub(crate) fn run_app(dir: &Path) -> Result<(), String> {
                 let ms: u64 = arg.parse().map_err(|_| format!("wait `{arg}`"))?;
                 run.until(Duration::from_millis(ms), |_| false);
             }
-            other => return Err(format!("unknown step `{other}`")),
+            "frame" => {
+                let mut parts = arg.split(' ');
+                let selector = parts.next().unwrap_or_default();
+                let want: Vec<f32> = parts.filter_map(|p| p.parse().ok()).collect();
+                let [x, y, w, h] = want[..] else {
+                    return Err(
+                        format!("frame `{arg}`: <selector> <x> <y> <width> <height>").into(),
+                    );
+                };
+                let at = |v: &Views| v.find_view(selector).and_then(|id| v.nodes.get(&id)?.frame);
+                let fits = |v: &Views| {
+                    at(v).is_some_and(|f| {
+                        [f.x - x, f.y - y, f.width - w, f.height - h]
+                            .iter()
+                            .all(|d| d.abs() < 0.5)
+                    })
+                };
+                if !run.until(EXPECT_WAIT, fits) {
+                    let what = match at(&run.views) {
+                        Some(f) => format!("laid out at {} {} {} {}", f.x, f.y, f.width, f.height),
+                        None => "no such view".to_owned(),
+                    };
+                    return failed(what, &run);
+                }
+            }
+            "covers" => continue,
+            other => return Err(format!("unknown step `{other}`").into()),
         }
         if dump {
             run.settle(EXPECT_WAIT);
@@ -348,6 +425,10 @@ pub(crate) fn run_app(dir: &Path) -> Result<(), String> {
     run.settle(EXPECT_WAIT);
     match run.errors() {
         errors if errors.is_empty() => Ok(()),
-        errors => Err(format!("the app reported errors: {errors:?}")),
+        errors => Err(Failure {
+            check: None,
+            errors: true,
+            message: format!("the app reported errors: {errors:?}"),
+        }),
     }
 }

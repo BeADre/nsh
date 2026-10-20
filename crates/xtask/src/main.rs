@@ -11,9 +11,10 @@
 //!   `NativeShellDev.xcframework`) into `dist/nsh/embed/ios`.
 //! - `web`: the WebAssembly runtime, its player and the website's demos
 //!   (`website/public/play` by default).
-//! - `api`: records the API apps use in `api/runtime.txt` and `api/types`;
-//!   `--keep <app>...` adds example apps built by this checkout to the
-//!   fixtures in `api/apps` (docs/dev/compatibility.md).
+//! - `api`: records the API apps use in `api/runtime.txt` and `api/types`
+//!   and shrinks `api/uncovered.txt`; `--keep <app>...` adds apps built by
+//!   this checkout (examples by name, other apps or `api/cases/<case>.tsx`
+//!   by path) to the fixtures in `api/apps` (docs/dev/compatibility.md).
 
 mod android;
 mod api;
@@ -81,9 +82,11 @@ enum Task {
     },
     /// Record the API apps use in `api/runtime.txt` and `api/types`.
     Api {
-        /// Also keep these example apps, as this checkout builds them, in
+        /// Also keep these apps, as this checkout builds them, in
         /// `api/apps/<app>-<version>` (when the JSX compiler's output
-        /// changes); a kept fixture is never rewritten.
+        /// changes, or for a new API); a kept fixture is never rewritten.
+        /// An app is an example's name or the path of an app's directory or
+        /// entry module (`api/cases/<case>.tsx`).
         #[arg(long, value_name = "APP", num_args = 1..)]
         keep: Vec<String>,
     },
