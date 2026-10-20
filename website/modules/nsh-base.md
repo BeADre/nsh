@@ -184,7 +184,7 @@ and pass it to `<NavStack state>`. Any code can import it to navigate.
 | `pop(count?: number): void` | Pops `count` pages (default 1). At least one page always stays. |
 | `popToRoot(): void` | Pops back to the first page. |
 | `replace(route: R): void` | Replaces the top page. |
-| `setRoutes(routes: R[]): void` | Replaces all pages. |
+| `setRoutes(routes: R[]): void` | Replaces the pages; a route that stays (the same value) keeps its page and its state. |
 | `remove(route: R): void` | Removes the topmost page of `route` (compared with `===`), wherever it is in the stack. |
 
 ```tsx

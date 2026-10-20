@@ -856,3 +856,65 @@ fn inputs_and_list_slots() {
         assert!(seen.contains(&wanted.to_owned()), "{wanted}: {seen:?}");
     }
 }
+
+const SET_ROUTES: &str = r#"import { mount, signal, Text, View } from "nsh";
+import { Dialog, NavPage, NavStack, createNavStack } from "nsh/base";
+
+const home = { name: "home" };
+const nav = createNavStack([home]);
+const made = signal(0);
+setTimeout(() => nav.setRoutes([home, { name: "a" }, { name: "b" }]), 0);
+
+mount(() => (
+  <View style={{ flex: 1 }}>
+    <NavStack state={nav} testID="stack" style={{ flex: 1 }}>
+      {(route) => {
+        if (route === home) made.update((n) => n + 1);
+        return (
+          <NavPage title={route.name} testID={`page-${route.name}`}>
+            <Text>{`home made ${made()}`}</Text>
+          </NavPage>
+        );
+      }}
+    </NavStack>
+    <Dialog testID="dialog" backdropClass="bg-black/50" backdropTestID="backdrop">
+      <Text>in dialog</Text>
+    </Dialog>
+  </View>
+));
+"#;
+
+/// `setRoutes` keeps the page of a route that stays; pages, stacks,
+/// dialogs and their backdrops take test ids.
+#[test]
+fn set_routes_keeps_pages_that_stay_and_parts_take_test_ids() {
+    let (_engine, rx) = start_app(SET_ROUTES);
+    let mut batches = Vec::new();
+    while let Ok(b) = rx.recv_timeout(Duration::from_millis(500)) {
+        batches.push(b);
+    }
+    let all: Vec<String> = batches.iter().flat_map(texts).collect();
+    assert!(all.contains(&"home made 1".to_owned()), "{all:?}");
+    assert!(
+        !all.contains(&"home made 2".to_owned()),
+        "home was made again: {all:?}"
+    );
+    let ids: Vec<String> = batches
+        .iter()
+        .flat_map(|b| b.items.iter())
+        .filter_map(|i| match i {
+            MountItem::ViewProps { props, .. } => props.test_id.as_deref().map(str::to_owned),
+            _ => None,
+        })
+        .collect();
+    for wanted in [
+        "stack",
+        "page-home",
+        "page-a",
+        "page-b",
+        "dialog",
+        "backdrop",
+    ] {
+        assert!(ids.iter().any(|i| i == wanted), "{wanted} in {ids:?}");
+    }
+}

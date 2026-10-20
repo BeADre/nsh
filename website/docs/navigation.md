@@ -86,7 +86,7 @@ mount(App);
 | `pop(count?)` | Pops `count` pages (default 1); at least one stays. |
 | `popToRoot()` | Pops back to the first page. |
 | `replace(route)` | Replaces the top page. |
-| `setRoutes(routes)` | Replaces all pages, e.g. after signing in. |
+| `setRoutes(routes)` | Replaces the pages, e.g. after signing in; a route that stays (the same value) keeps its page and its state. |
 | `remove(route)` | Removes the topmost page of `route`, wherever it is. |
 
 To start several pages deep, pass more routes: `createNavStack<Route>([{ name: "inbox" }, { name: "message", id: 3 }])`.

@@ -88,7 +88,7 @@ mount(App);
 | `pop(count?)` | 弹出 `count` 个页面（默认 1）；至少保留一个。 |
 | `popToRoot()` | 回到第一个页面。 |
 | `replace(route)` | 替换栈顶页面。 |
-| `setRoutes(routes)` | 替换所有页面，例如登录之后。 |
+| `setRoutes(routes)` | 替换页面，例如登录之后；保留下来的路由（同一个值）保留它的页面和状态。 |
 | `remove(route)` | 移除 `route` 最上面的那个页面，无论它在哪个位置。 |
 
 要一开始就处在多层深处，多传几个路由：`createNavStack<Route>([{ name: "inbox" }, { name: "message", id: 3 }])`。

@@ -123,7 +123,8 @@ export interface NavStackState<R> {
   popToRoot(): void;
   /** Replaces the top page. */
   replace(route: R): void;
-  /** Replaces all pages. */
+  /** Replaces the pages with `routes`; a route that stays (the same value)
+   * keeps its page and its state. */
   setRoutes(routes: R[]): void;
   /** Removes the topmost page of `route`, wherever it is. */
   remove(route: R): void;
@@ -131,6 +132,8 @@ export interface NavStackState<R> {
 
 export interface NavStackProps<R> {
   state: NavStackState<R>;
+  /** Finds the stack in tests and `nsh trace`. */
+  testID?: string;
   style?: StyleProp<ViewStyle>;
   class?: string;
   /** Renders a route; return a `<NavPage>` for header options. */
@@ -147,6 +150,8 @@ export interface HeaderStyle {
 }
 
 export interface NavPageProps extends NavPageHostProps {
+  /** Finds the page in tests and `nsh trace`. */
+  testID?: string;
   /** The app's header on the desktops and the web, which have no system
    * header: placed at the top of the page, as wide as the page and as tall
    * as it lays out, with the content below it. NSH draws nothing else
@@ -181,6 +186,8 @@ export interface NavPageProps extends NavPageHostProps {
 export type DialogChangeReason = "cancel" | "backdropPress" | "swipe";
 
 export interface DialogProps extends DialogHostProps {
+  /** Finds the dialog in tests and `nsh trace`. */
+  testID?: string;
   /** Shown while true (default). */
   open?: boolean;
   /** How it comes in and goes (default `"slide"`). */
@@ -209,6 +216,8 @@ export interface DialogProps extends DialogHostProps {
   backdropStyle?: StyleProp<ViewStyle>;
   /** The backdrop's classes (see `backdropStyle`). */
   backdropClass?: string;
+  /** Finds the backdrop in tests and `nsh trace`. */
+  backdropTestID?: string;
   children?: JSX.Element;
   ios?: IOSDialogHostProps;
   android?: AndroidDialogHostProps;
@@ -372,13 +381,33 @@ unsafe extern "C" fn navigate(
             routes.push(entry(ctx, dup(a0)));
         }
         4 => {
-            for v in routes.drain(..) {
-                free(ctx, v);
-            }
+            // A route that stays keeps its page (its entry), in order: the
+            // first unused entry of the same route.
+            let mut old: Vec<Option<JsValue>> = routes.drain(..).map(Some).collect();
             routes = routes_of(ctx, a0)
                 .into_iter()
-                .map(|route| entry(ctx, route))
+                .map(|route| {
+                    let kept = old.iter_mut().find(|slot| {
+                        slot.is_some_and(|e| {
+                            let r = route_of(ctx, e);
+                            // SAFETY: an identity comparison of live values.
+                            let same = unsafe { qjs::JS_IsStrictEqual(ctx, r, route) };
+                            free(ctx, r);
+                            same
+                        })
+                    });
+                    match kept.and_then(Option::take) {
+                        Some(e) => {
+                            free(ctx, route);
+                            e
+                        }
+                        None => entry(ctx, route),
+                    }
+                })
                 .collect();
+            for e in old.into_iter().flatten() {
+                free(ctx, e);
+            }
         }
         5 => {
             // The topmost screen showing the route.
@@ -1003,6 +1032,7 @@ unsafe extern "C" fn modal_run(
                     "style",
                     "backdropClass",
                     "backdropStyle",
+                    "backdropTestID",
                     "onInsets",
                     "onOpen",
                     "onClose",
@@ -1135,6 +1165,10 @@ unsafe extern "C" fn backdrop_part(
         let style = reader(ctx, props, "backdropStyle");
         let r = dom::bind_prop_with(ctx, view, "style", style);
         free(ctx, style);
+        r?;
+        let test_id = reader(ctx, props, "backdropTestID");
+        let r = dom::bind_prop_with(ctx, view, "testID", test_id);
+        free(ctx, test_id);
         r?;
         // SAFETY: the three data values, which the function keeps dups of.
         let press = native(ctx, backdrop_press, 0, unsafe {

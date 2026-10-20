@@ -166,7 +166,7 @@ function createNavStack<R>(routes: R[]): NavStackState<R>
 | `pop(count?: number): void` | 弹出 `count` 个页面（默认 1）。至少保留一个页面。 |
 | `popToRoot(): void` | 返回到第一个页面。 |
 | `replace(route: R): void` | 替换栈顶页面。 |
-| `setRoutes(routes: R[]): void` | 替换所有页面。 |
+| `setRoutes(routes: R[]): void` | 替换页面；保留下来的路由（同一个值）保留它的页面和状态。 |
 | `remove(route: R): void` | 移除 `route`（用 `===` 比较）最上面的那个页面，无论它在栈中的什么位置。 |
 
 ```tsx
