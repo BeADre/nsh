@@ -117,8 +117,8 @@ pub(super) struct Instance {
     inner: Inner,
     spec: Option<Arc<ComponentSpec>>,
     /// The app's `class` and `classList` on the host.
-    class: Box<str>,
-    class_list: Vec<Box<str>>,
+    pub(super) class: Box<str>,
+    pub(super) class_list: Vec<Box<str>>,
     /// The app's classes, or the styles the view this one is in gives it:
     /// applied after the root's own.
     pub(super) user: Option<Arc<ClassList>>,
@@ -361,6 +361,53 @@ enum Awaited {
     Value(AnswerSlot<f32>),
 }
 
+/// What the platform answered a clipboard read with (the root's
+/// `Clipboard` event).
+#[derive(Default)]
+pub(super) struct ClipboardAnswer {
+    /// Whether it holds what was asked.
+    pub(super) has: bool,
+    /// The text, for a text read.
+    pub(super) text: Option<String>,
+    /// The image, for an image read.
+    pub(super) image: Option<crate::ui::ClipboardImage>,
+    /// The files' `file:` URLs, for a files read.
+    pub(super) files: Vec<String>,
+}
+
+impl ClipboardAnswer {
+    pub(super) fn from_payload(payload: &EventPayload) -> ClipboardAnswer {
+        let mut answer = ClipboardAnswer::default();
+        let EventPayload::Map(entries) = payload else {
+            return answer;
+        };
+        let (mut uri, mut width, mut height) = (None, 0.0, 0.0);
+        for (k, v) in entries {
+            match (*k, v) {
+                ("has", crate::PayloadValue::Bool(b)) => answer.has = *b,
+                ("text", crate::PayloadValue::Str(t)) => answer.text = Some(t.clone()),
+                ("uri", crate::PayloadValue::Str(u)) => uri = Some(u.clone()),
+                ("width", crate::PayloadValue::Number(n)) => width = *n,
+                ("height", crate::PayloadValue::Number(n)) => height = *n,
+                ("files", crate::PayloadValue::Str(f)) => {
+                    answer.files = f
+                        .lines()
+                        .filter(|l| !l.is_empty())
+                        .map(str::to_owned)
+                        .collect()
+                }
+                _ => {}
+            }
+        }
+        // Only an image NSH can show, a `data:` URI, and only one the VM
+        // can hold (the web's player encodes its own).
+        answer.image = uri
+            .filter(|u| u.starts_with("data:") && crate::platform::clipboard::uri_within_limit(u))
+            .map(|uri| crate::ui::ClipboardImage { uri, width, height });
+        answer
+    }
+}
+
 /// An HTTP request of a task in flight ([`Core::fetch_event`]).
 struct PendingFetch {
     /// What arrived so far.
@@ -374,7 +421,7 @@ pub(super) struct Components {
     /// The specs of the components made by type (not by name from the
     /// registry), one per type.
     specs: FxHashMap<&'static str, Arc<ComponentSpec>>,
-    theme: Arc<Theme>,
+    pub(super) theme: Arc<Theme>,
     /// The app's theme (`nsh.json`, a Rust app's root): drawn with while
     /// the embedding app sets none ([`Core::set_host_theme`]).
     app_theme: Arc<Theme>,
@@ -629,20 +676,27 @@ impl<M: TextEngine> Core<M> {
     /// so only the bindings that read it run again, and only when it
     /// changed.
     fn theme_changed(&mut self) {
-        let theme = self
-            .components
-            .host_theme
-            .clone()
-            .unwrap_or_else(|| self.components.app_theme.clone());
+        let theme = match &self.components.host_theme {
+            // The app's own tokens the host's theme does not have stay.
+            Some(host) => {
+                let mut theme = (**host).clone();
+                theme.inherit(&self.components.app_theme);
+                Arc::new(theme)
+            }
+            None => self.components.app_theme.clone(),
+        };
         if *theme == *self.components.theme {
             self.components.theme = theme;
             return;
         }
-        let _entered = self.components.runtime.enter();
-        self.components.theme = theme;
-        self.components
-            .runtime
-            .set_theme(self.components.theme.clone());
+        {
+            let _entered = self.components.runtime.enter();
+            self.components.theme = theme;
+            self.components
+                .runtime
+                .set_theme(self.components.theme.clone());
+        }
+        self.theme_tokens_changed();
     }
 
     /// Mounts a Rust app's root component as the content of the root view;
@@ -1204,7 +1258,7 @@ impl<M: TextEngine> Core<M> {
     }
 
     /// The app's classes on `host` changed.
-    fn update_user_class(&mut self, host: NodeId) {
+    pub(super) fn update_user_class(&mut self, host: NodeId) {
         let inst = &self.components.instances[&host];
         let mut combined = String::with_capacity(inst.class.len() + 16 * inst.class_list.len());
         combined.push_str(&inst.class);
@@ -4175,11 +4229,25 @@ impl<M: TextEngine> Core<M> {
             Action::ReadClipboard(read) => {
                 let id = self.components.next_clipboard_read;
                 self.components.next_clipboard_read += 1;
-                let has_only = matches!(read, ClipboardRead::Has(_));
+                let command = match &read {
+                    ClipboardRead::Text(_) => Command::ReadClipboard {
+                        id,
+                        has_only: false,
+                    },
+                    ClipboardRead::Has(_) => Command::ReadClipboard { id, has_only: true },
+                    ClipboardRead::Image(_) => Command::ReadClipboardImage {
+                        id,
+                        has_only: false,
+                    },
+                    ClipboardRead::HasImage(_) => {
+                        Command::ReadClipboardImage { id, has_only: true }
+                    }
+                    ClipboardRead::Files(_) => Command::ReadClipboardFiles { id },
+                };
                 self.components.clipboard_reads.insert(id, read);
                 let _ = self.apply_op(Op::Command {
                     id: crate::ROOT_ID,
-                    command: Command::ReadClipboard { id, has_only },
+                    command,
                 });
             }
         }
@@ -4267,14 +4335,24 @@ impl<M: TextEngine> Core<M> {
         true
     }
 
-    /// The answer to clipboard read `id`: the text, `None` when it holds
-    /// none.
-    pub(super) fn answer_clipboard(&mut self, id: u32, text: Option<String>, has: bool) {
+    /// Resolves clipboard read `id` with the platform's answer (an empty
+    /// one when the clipboard is not granted).
+    pub(super) fn answer_clipboard(&mut self, id: u32, answer: ClipboardAnswer) {
+        let ClipboardAnswer {
+            has,
+            text,
+            image,
+            files,
+        } = answer;
         match self.components.clipboard_reads.remove(&id) {
-            Some(ClipboardRead::Text(answer)) => {
-                answer.borrow_mut().deliver(text.unwrap_or_default())
+            Some(ClipboardRead::Text(slot)) => slot.borrow_mut().deliver(text.unwrap_or_default()),
+            Some(ClipboardRead::Has(slot) | ClipboardRead::HasImage(slot)) => {
+                slot.borrow_mut().deliver(has)
             }
-            Some(ClipboardRead::Has(answer)) => answer.borrow_mut().deliver(has),
+            Some(ClipboardRead::Image(slot)) => slot
+                .borrow_mut()
+                .deliver(image.filter(|i| !i.uri.is_empty())),
+            Some(ClipboardRead::Files(slot)) => slot.borrow_mut().deliver(files),
             None => {}
         }
     }
@@ -4362,17 +4440,8 @@ impl<M: TextEngine> Core<M> {
                 let Some(request) = number("id") else {
                     return false;
                 };
-                let (mut text, mut has) = (None, false);
-                if let EventPayload::Map(entries) = payload {
-                    for (k, v) in entries {
-                        match (*k, v) {
-                            ("text", crate::PayloadValue::Str(t)) => text = Some(t.clone()),
-                            ("has", crate::PayloadValue::Bool(b)) => has = *b,
-                            _ => {}
-                        }
-                    }
-                }
-                self.answer_clipboard(request as u32, text, has);
+                let answer = ClipboardAnswer::from_payload(payload);
+                self.answer_clipboard(request as u32, answer);
                 true
             }
             EventKind::Insets => {

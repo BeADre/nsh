@@ -175,6 +175,16 @@ impl Tools {
         MARKS.with_borrow_mut(|marks| marks.push(word));
     }
 
+    /// Records `word` as an op that may fail: it fails on "no".
+    pub(crate) fn mark_or_fail(word: String, cx: &mut ModuleCx) -> Result<(), String> {
+        let _ = cx;
+        if word == "no" {
+            return Err(format!("refused {word:?}"));
+        }
+        MARKS.with_borrow_mut(|marks| marks.push(word));
+        Ok(())
+    }
+
     /// The words recorded so far, at once.
     pub(crate) fn marks() -> Vec<String> {
         MARKS.with_borrow(Clone::clone)
@@ -543,15 +553,19 @@ const VOID: &str = r#"import { mount, signal, Text } from "nsh";
 import { Tools } from "test/classes";
 
 const shown = signal("waiting");
+const msg = (f) => { try { return String(f()); } catch (e) { return `threw ${e.name}: ${e.message}`; } };
 setTimeout(async () => {
   const lines = [];
-  // An op returning nothing is a promise too: settled once it ran, in
-  // order with the ops before it.
+  // An op returning nothing is a plain call: `undefined`, run in order
+  // with the ops before it once the turn ends; a wrong argument throws.
   const first = Tools.mark("a");
-  const second = Tools.mark("b");
-  lines.push(`${first instanceof Promise} ${Tools.marks().join(",") || "none"}`);
-  lines.push(`${await second} ${Tools.marks().join(",")}`);
-  // A task returning nothing, likewise.
+  lines.push(`${first} ${msg(() => Tools.mark(1))} ${Tools.marks().join(",") || "none"}`);
+  // An op returning `Result<(), E>` is a promise: resolved once it ran
+  // (after the ones before it), rejected with an `Err`.
+  const fine = Tools.markOrFail("b");
+  lines.push(`${fine instanceof Promise} ${await fine} ${Tools.marks().join(",")}`);
+  try { await Tools.markOrFail("no"); lines.push("resolved"); } catch (e) { lines.push(`${e.name}: ${e.message}`); }
+  // A task returning nothing is a promise, resolved when it ends.
   const heard = [];
   const later = Tools.postLater((w) => heard.push(w), 5);
   lines.push(`${later instanceof Promise} ${await later} ${heard.join(",") || "none"}`);
@@ -561,13 +575,37 @@ setTimeout(async () => {
 mount(() => <Text>{shown()}</Text>);
 "#;
 
+const UNAWAITED: &str = r#"import { mount, signal, Text } from "nsh";
+import { Tools } from "test/classes";
+
+const shown = signal("waiting");
+setTimeout(async () => {
+  // Nobody waits for the first: its `Err` is an unhandled rejection.
+  Tools.markOrFail("no");
+  Tools.markOrFail("no").catch(() => {});
+  await Tools.markOrFail("yes");
+  shown.set("done");
+}, 0);
+mount(() => <Text>{shown()}</Text>);
+"#;
+
 #[test]
-fn ops_and_tasks_returning_nothing_resolve_once_they_ran() {
+fn an_op_failing_unawaited_logs_an_unhandled_rejection() {
+    crate::logs::capture();
+    let (_engine, rx) = start(UNAWAITED, vec![registry()]);
+    assert_eq!(shown(&rx, "done"), "done");
+    let lines = crate::logs::wait_for("refused \"no\"");
+    assert_eq!(lines, ["unhandled rejection: Error: refused \"no\""]);
+}
+
+#[test]
+fn ops_returning_nothing_are_plain_calls_and_others_promises() {
     let (_engine, rx) = start(VOID, vec![registry()]);
     // A task's posts reach JS before its result.
     assert_eq!(
         shown(&rx, "done"),
-        "done true none|undefined a,b|true undefined task"
+        "done undefined threw TypeError: Tools.mark: `word`: expected a string, got 1 none|\
+         true undefined a,b|Error: refused \"no\"|true undefined task"
     );
 }
 

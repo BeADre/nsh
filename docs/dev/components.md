@@ -185,7 +185,7 @@ reasons: `reactive-components.md`.
   | `I18nManager.forceRTL` / `allowRTL` | `force_rtl(bool)` / `allow_rtl(bool)`: the root's direction at once, `rtl()` readers follow |
   | `import logo from "./logo@2x.png"`, `import font from "./a.ttf"` | `const LOGO: ImageAsset = asset!("logo@2x.png");` (`image(LOGO)` lays out at its natural size), `const A: FontAsset = asset!("a.ttf");` (`.font_family(A.family)`), with `registry.assets(assets!())` (below) |
   | `Image.getSize(uri)`, `Image.prefetch(uri)` | `image_size(uri)` / `prefetch_image(uri)`: answers to await in a task |
-  | `Clipboard.setString(text)`, `await Clipboard.getString()` / `hasString()` (`nsh/clipboard`) | `set_clipboard(text)`, `clipboard_string()` / `clipboard_has_string()`: answers to await in a task (the app's `capabilities.clipboard` applies as for JS) |
+  | `Clipboard.setString(text)`, `await Clipboard.getString()` / `hasString()`, `setImage(uri)`, `getImage()` / `hasImage()`, `getFiles()` (`nsh/clipboard`) | `set_clipboard(text)`, `clipboard_string()` / `clipboard_has_string()`, `set_clipboard_image(uri)`, `clipboard_image()` (an `Option<ClipboardImage>`) / `clipboard_has_image()`, `clipboard_files()`: answers to await in a task (the app's `capabilities.clipboard` applies as for JS) |
   | `await Storage.getItem(k)`, `setItem(k, v)`, `removeItem(k)`, `getAllKeys()`, `clear()` (`nsh/storage`) | `nsh_core::storage::Storage::get_item(k)`, `set_item(k, v)` (`Err(StorageFull)` past the quota), `remove_item(k)`, `get_all_keys()`, `clear()`: synchronous (the entries are in memory on the engine thread), and the same entries the app's JS uses, so a TSX entry and a Rust entry of one app read each other's data |
   | `AccessibilityInfo.announceForAccessibility`, `setAccessibilityFocus(ref)` | `announce_for_accessibility(msg)`, `note.set_accessibility_focus()` (an `ElementRef`) |
   | `Toast.show(msg, "long")` (`nsh/android`) | `toast(msg, ToastDuration::Long)` (nothing happens off Android) |
@@ -268,11 +268,13 @@ write: `#[methods] impl StepperApi { pub fn set_value(&self, v: f64) {..} pub fn
 implements `Api`, the view registers it with `cx.methods(StepperApi { .. })` for as long as it lives, and
 `#[component(methods = StepperApi)]` (`Component::METHODS = Methods::of::<StepperApi>()`) names it in the spec, so the
 JS face builds the ref (`StepperRef`: `node` and the methods, typed from the Rust signatures and docs) with no TS
-written. A call converts its arguments in the JS call (a wrong one rejects its promise) into a closure an op
-carries (`RustCall::Method`), so it runs in order with the props JS set before it, with the API the view
-registered. Every method gives JS a `Promise` of its value (`Promise<void>` for one returning nothing, settled once
-it ran), settled from the core's events (`JsEvent::Reply`, the boxed value converted then) in the same frame's
-commit rounds. Rust calls them directly: `ComponentRef::api::<StepperApi>()`.
+written. A call converts its arguments in the JS call into a closure an op carries (`RustCall::Method`), so it runs
+in order with the props JS set before it, with the API the view registered. Its return type decides what TS gets:
+a method returning `()` gives `void`, with no reply (JS calls it and moves on, a wrong argument throws in the call);
+one returning `Result<(), E>` gives `Promise<void>` (rejected with the `Err`'s message: the method runs at the
+commit, after the JS call returned, so it cannot throw); one returning a value gives `Promise<T>` (a wrong argument
+rejects it). Promises settle from the core's events (`JsEvent::Reply`, the boxed value converted then) in the same
+frame's commit rounds. Rust calls the methods directly: `ComponentRef::api::<StepperApi>()`.
 
 ## Modules
 
@@ -286,11 +288,12 @@ parameters at the end may be left out). The signature decides how a call runs (`
   (signals, `dialog`, `theme()`) are not there (the reactive graph is not entered).
 - **A last `cx: &mut ModuleCx`** (`Op`): the platform's services, applied in order right after the call (a dialog,
   the status bar, focus). Its arguments are converted in the JS call into a closure an op carries
-  (`RustCall::Op`, in order with the ops before it); JS gets a `Promise` of its value, settled like a method's
-  (`Promise<void>` for `()`, once the op ran), and a conversion error rejects it.
+  (`RustCall::Op`, in order with the ops before it). As for a method: returning `()`, it gives `void`, with no
+  reply (a conversion error throws); returning `Result<(), E>`, `Promise<void>`; returning a value, `Promise<T>`,
+  settled like a method's (a conversion error rejects it).
 - **`async fn`** (`Async`): no context; it runs as a root task, reaching the platform with the same free functions
-  views use (`Alert.alert` awaits `dialog(..)`), sent as the op above; a `Promise` of its value, rejected with an
-  `Err`'s message or a panic's.
+  views use (`Alert.alert` awaits `dialog(..)`), sent as the op above; it gives a Promise of its value
+  (`Promise<void>` for `()`), rejected with an `Err`'s message or a panic's.
 
 Parameters are `Arg`s: the `JsValue` types, instances (`Instance<T>`) and `Callback`s; results are `Ret`s. In an op
 or a task, instances and functions ride in its closure as they are (`docs/dev/rust-classes.md`, "How calls
@@ -449,8 +452,9 @@ is no string to parse and no `.class()`.
 `secondary`, `danger`, `muted`, `border`, `group_box`, `list_*`, `switch*`, `tab*`, ...: the fields mobile components
 use) plus `radius`, `radius_lg` and `font_size`, and derefs to its colors (`theme.primary`). The default
 (`default-theme.json`) is gpui-kit's default theme with mobile radii. An app sets its own in `nsh.json`: `"theme":
-"brand.json"` (a gpui-kit theme file, relative to `nsh.json`) or the same JSON inline. Keys only desktop components
-use are ignored; a pressed color the theme leaves out is derived from its base; null colors (gpui-kit serializes unset
+"brand.json"` (a gpui-kit theme file, relative to `nsh.json`) or the same JSON inline. Keys no field has (desktop
+components', the app's own) are kept by key, colors and numbers alike (`Theme::color` / `number`, `set_color` /
+`set_number`): tokens of the app's classes (`styles.md`), a host's theme inheriting the app's it lacks; a pressed color the theme leaves out is derived from its base; null colors (gpui-kit serializes unset
 ones so) are left as they are; colors are CSS colors or Tailwind palette names. The bundler checks the theme; the entry
 hands it to the renderer (`nsh:rt` `setup`), which sends it to the root (`uiTheme`) before any view is made.
 `theme()` reads it from a signal of the surface: a new theme runs again the bindings that read it. An embedding app
