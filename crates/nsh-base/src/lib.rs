@@ -1,7 +1,7 @@
 //! `nsh/base`: the behavior and infrastructure foundation of NSH apps' UI,
 //! written in Rust, with no look of its own (as `gpui-base` is GPUI Kit's):
 //! controls (`Button`), navigation (stacks and pages), dialogs, safe areas,
-//! the system's dialogs, the software keyboard and the status bar.
+//! the system's dialogs and the software keyboard.
 //!
 //! What it renders lays out or tells the platform, never styles: the look
 //! of an app is the app's, drawn with nsh's primitives or the components of
@@ -13,7 +13,6 @@ mod alert_dialog;
 mod button;
 mod keyboard;
 mod safe_area;
-mod status_bar;
 
 use std::sync::Arc;
 
@@ -27,7 +26,6 @@ pub use crate::{
     button::{Button, ButtonEvent, ButtonProps},
     keyboard::{AvoidBehavior, Keyboard, KeyboardAvoidingView, KeyboardAvoidingViewProps},
     safe_area::{Edge, SafeAreaView, SafeAreaViewProps},
-    status_bar::{Foreground, StatusBar, StatusBarProps},
 };
 
 /// The JS module apps import the foundation as.
@@ -40,7 +38,6 @@ pub fn registry() -> Registry {
         .register::<Button>()
         .register::<SafeAreaView>()
         .register::<KeyboardAvoidingView>()
-        .register::<StatusBar>()
         .module::<AlertDialog>()
         .module::<Keyboard>()
         // The environment's accessors and hooks, as they are.
@@ -69,12 +66,7 @@ mod tests {
         let components: Vec<_> = registry.specs().iter().map(|s| s.export.clone()).collect();
         assert_eq!(
             components,
-            [
-                "Button",
-                "KeyboardAvoidingView",
-                "SafeAreaView",
-                "StatusBar"
-            ]
+            ["Button", "KeyboardAvoidingView", "SafeAreaView"]
         );
         let modules: Vec<_> = registry.module_specs().iter().map(|m| m.name).collect();
         assert_eq!(modules, ["AlertDialog", "Keyboard"]);

@@ -2,7 +2,7 @@ import { cleanup, signal, Text, View } from "nsh";
 import { createNativeValue, Easing } from "nsh/animated";
 import { Toast } from "nsh/android";
 import { colorScheme, fontScale, windowSize } from "nsh/device";
-import { AlertDialog, keyboardFrame, safeArea, StatusBar } from "nsh/base";
+import { AlertDialog, Dialog, keyboardFrame, safeArea, type StatusBarForeground } from "nsh/base";
 import { keymap } from "nsh/keymap";
 import { Icon, type IconName } from "../icons";
 import {
@@ -100,16 +100,16 @@ function Environment() {
   );
 }
 
-type Foreground = "light" | "dark" | "auto";
-
 function StatusBarCard() {
   // Until one is picked, the content follows the appearance (light content on the dark page).
-  const picked = signal<Foreground | null>(null);
+  const picked = signal<StatusBarForeground | null>(null);
   const foreground = () => picked() ?? (isDark() ? "light" : "dark");
   const barHidden = signal(false);
+  const open = signal(false);
+  // The preview's background: the one its content is for.
+  const backdrop = () => (foreground() === "light" ? "#101113" : foreground() === "dark" ? "#f4f4f2" : colors.background);
   return (
-    <Card icon="mobile" title="Status bar" subtitle="StatusBar: foreground and visibility, animated">
-      <StatusBar foreground={foreground()} hidden={barHidden()} animated />
+    <Card icon="mobile" title="Status bar" subtitle="A dialog's statusBar: over the page's while it is open">
       <Segmented
         options={[
           { value: "light", label: "Light" },
@@ -126,6 +126,20 @@ function StatusBarCard() {
         </View>
         <Toggle value={barHidden()} onChange={(v) => barHidden.set(v)} label="Hide the status bar" />
       </Row>
+      <Button label="Preview" icon="mobile" onPress={() => open.set(true)} />
+      <Dialog
+        open={open()}
+        animation="fade"
+        statusBar={{ foreground: foreground(), hidden: barHidden(), animated: true }}
+        onOpenChange={(o) => open.set(o)}
+      >
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 16, backgroundColor: backdrop() }}>
+          <Text style={{ fontSize: 13, color: foreground() === "light" ? "#ffffff" : "#111214", fontFamily: mono }}>
+            {`statusBar: { foreground: "${foreground()}", hidden: ${barHidden()} }`}
+          </Text>
+          <Button label="Close" onPress={() => open.set(false)} />
+        </View>
+      </Dialog>
     </Card>
   );
 }

@@ -7,8 +7,8 @@ use std::sync::Arc;
 use super::host::{HostCx, HostInput, HostValue, field};
 use crate::{
     AccessibilityProp, AccessibilityRole, AccessibilityState, AutoFill, CellSlot, EdgeInsets,
-    ImageSource, KeyboardTaps, ListContentStyle, ModalProp, Prop, ScrollProp, Viewability,
-    WebSource,
+    ImageSource, KeyboardTaps, ListContentStyle, ModalProp, Prop, ScrollProp, StatusBarSetting,
+    StatusBarStyle, Viewability, WebSource,
     mount::ModalConfig,
     props::{AccessibilityActionDef, AccessibilityValue, Checked, PanActivation, Ripple},
     ui::TsTypes,
@@ -97,6 +97,30 @@ impl HostValue for ListContentStyle {
              columnGap?: number;\n}"
                 .into()
         })
+    }
+}
+
+/// A page's or dialog's `statusBar`: `{ foreground, hidden, animated }`
+/// (`StatusBar`, declared with the navigation in `nsh/base`); the fields
+/// left out keep what is below. An unknown `foreground` is left out.
+impl HostValue for StatusBarSetting {
+    fn decode<I: HostInput>(input: &I, _: &mut HostCx) -> Option<Self> {
+        if !input.is_object() {
+            return None;
+        }
+        let flag = |key| input.field(key).and_then(|v| v.as_bool());
+        Some(StatusBarSetting {
+            style: input
+                .field("foreground")
+                .and_then(|v| v.as_string())
+                .and_then(|s| StatusBarStyle::from_name(&s)),
+            hidden: flag("hidden"),
+            animated: flag("animated"),
+        })
+    }
+
+    fn ts_type(_: &mut TsTypes) -> String {
+        "StatusBar".into()
     }
 }
 

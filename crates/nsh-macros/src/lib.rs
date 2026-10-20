@@ -1288,7 +1288,7 @@ fn module_cx(ty: &Type) -> bool {
 /// nothing, a [`JsValue`], an instance, or a `Result` of one (an `Err`
 /// throws or rejects with its message). A UI set registers the module
 /// (`Registry::module::<Alert>()`); a component exported under the same
-/// name gets the functions too (`StatusBar.setHidden(...)`).
+/// name gets the functions too (`Chart.clear(...)` for a `Chart` component).
 /// `#[module(flat)]` exports the functions one by one instead of as an
 /// object.
 #[proc_macro_attribute]

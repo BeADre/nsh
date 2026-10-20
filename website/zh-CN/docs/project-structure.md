@@ -73,13 +73,14 @@ mount(App);
 | `icon` | string | `package` | 一张正方形 PNG，最好是 1024×1024，路径相对于 `nsh.json`。 |
 | `tailwind` | object | 每次构建 | 扩展 `class` 字符串所依据的 Tailwind 主题（[Tailwind](./tailwind.md)）。 |
 | `theme` | string 或 object | 每次构建 | 应用的 Rust 组件绘制时使用的主题：相对于 `nsh.json` 的主题文件路径，或直接内联的主题（[用 Rust 开发](./rust.md#主题)）。 |
+| `statusBar` | object | 每次构建、`package` | 所有页面和对话框之下的状态栏默认值（iOS 和 Android）：`{ "foreground": "auto" \| "light" \| "dark", "hidden": boolean }`，两个字段都可省略。打包的 iOS 应用从启动屏起就使用它（[状态栏](../modules/nsh-base.md#status-bar)）。 |
 | `capabilities` | object | 每次构建 | 应用可以访问 VM 之外的哪些资源：网络主机、网页视图主机、状态栏（[沙箱与权限](./sandbox-and-capabilities.md)）。 |
 | `rust` | string 或 string[] | 每个命令 | 应用的 Rust crate 或 crate 列表，路径相对于 `nsh.json`：其中的组件和模块，TSX 按每个 crate 的 `#[native_module]` 名称导入（[用 Rust 开发](./rust.md#多个-crate)）。 |
 | `root` | string | `run`, `package` | Rust 应用的根组件，即它在 `rust` crate（列表时为第一个）中的路径（`App`、`shell::Gallery`）：对应用目录执行 `nsh run` 和 `nsh package` 时，在所有平台上直接挂载它，不使用 QuickJS；`nsh run App.tsx` 仍然运行 TSX 入口（[用 Rust 开发](./rust.md)）。 |
 
 `nsh package` 和 `nsh publish` 的参数（`--name`、`--id`、`--app-version`、`--build`、`--icon`）会覆盖文件中的值（[CLI](./cli.md)）。
 
-`tailwind`、`theme` 和 `capabilities` 在构建应用时会被校验。拼写错误会导致构建失败，而不是变成一个悄无声息不起作用的设置：
+`tailwind`、`theme`、`statusBar` 和 `capabilities` 在构建应用时会被校验。拼写错误会导致构建失败，而不是变成一个悄无声息不起作用的设置：
 
 ```text
 error building App.tsx failed
@@ -179,7 +180,7 @@ const open = async () => {
 | 模块 | 内容 |
 |---|---|
 | `nsh` | 响应式（`signal`、`computed`、`effect` 等）、`mount`、`split`、`context`；`View`、`Text`、`Scroll`、`Input`（[参考](../modules/nsh.md)） |
-| `nsh/base` | 应用界面的无样式基础：导航栈及其页面（`NavStack`、`NavPage`、`createNavStack`）、对话框（`Dialog`）、按压目标（`Button`）、安全区域（`SafeAreaView`、`safeArea`、`safeAreaInsets`）、系统警告对话框（`AlertDialog`）、软键盘（`Keyboard`、`keyboardFrame`、`KeyboardAvoidingView`）和状态栏（`StatusBar`）（[参考](../modules/nsh-base.md)） |
+| `nsh/base` | 应用界面的无样式基础：导航栈及其页面（`NavStack`、`NavPage`、`createNavStack`）、对话框（`Dialog`）、按压目标（`Button`）、安全区域（`SafeAreaView`、`safeArea`、`safeAreaInsets`）、系统警告对话框（`AlertDialog`）、软键盘（`Keyboard`、`keyboardFrame`、`KeyboardAvoidingView`）；页面和对话框设置状态栏（`statusBar`）（[参考](../modules/nsh-base.md)） |
 | `nsh/list` | `List`：虚拟化、可复用的列表 |
 | `nsh/animated` | 原生动画 |
 | `nsh/canvas` | 2D 绘图 |

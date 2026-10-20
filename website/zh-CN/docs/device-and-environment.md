@@ -89,7 +89,7 @@ const palette = computed(() =>
 </View>
 ```
 
-应用自己 crate 中的 Rust 组件从主题中取色，主题为每种颜色提供浅色和深色两个值（`nsh.json` 的 `"theme"`，见[用 Rust 开发](./rust.md)），所以它们也会随系统切换。要让状态栏与背景相配，见 [`StatusBar`](../modules/nsh-base.md#status-bar)。
+应用自己 crate 中的 Rust 组件从主题中取色，主题为每种颜色提供浅色和深色两个值（`nsh.json` 的 `"theme"`，见[用 Rust 开发](./rust.md)），所以它们也会随系统切换。要让状态栏与背景相配，为页面和对话框设置 [`statusBar`](../modules/nsh-base.md#status-bar)，或在 `nsh.json` 中为应用设置。
 
 ### 应用自己的外观
 
@@ -242,5 +242,5 @@ const hairline = 1 / PixelRatio.get();
 - [`nsh/device`](../modules/nsh-device.md)：参考。
 - [平台特定代码](./platform-specific.md)：`Platform.select`、平台属性与模块。
 - [无障碍](./accessibility.md)：屏幕阅读器与减少动态效果。
-- [`SafeAreaView`](../modules/nsh-base.md#safeareaview) 与 [`StatusBar`](../modules/nsh-base.md#status-bar)。
+- [`SafeAreaView`](../modules/nsh-base.md#safeareaview) 与[状态栏](../modules/nsh-base.md#status-bar)。
 - [Tailwind](./tailwind.md)：`dark:`、断点与方向变体。

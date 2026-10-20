@@ -31,7 +31,6 @@ use crate::{
     style::{EllipsizeMode, Style, StylePatch, TextAlign, TextStyle, ViewStyle},
     tailwind::{ClassEnvironment, ClassList, ClassProps, Tailwind},
     text::{AttributedText, MeasureCache, ResolvedTextStyle, TextEngine, TextLayout},
-    ui::status_bar::StatusBars,
 };
 
 /// Slab index of a node. Internal links use keys, never ids, to avoid the
@@ -107,6 +106,11 @@ struct RootState {
     slot: HeaderSlot,
     /// `nativeID` (input accessories).
     native_id: Option<Box<str>>,
+    /// `statusBar` (screens and modals).
+    status_bar: Option<crate::StatusBarSetting>,
+    /// Its entry in the surface's status bars, while the node is in the
+    /// tree ([`Core::sync_status_bars`]).
+    status_bar_entry: Option<crate::ui::status_bar::StatusBarEntry>,
 }
 
 /// Paragraph settings of a text block (or input).
@@ -629,6 +633,12 @@ pub struct Core<M: TextEngine> {
     commands: Vec<(NodeId, Command)>,
     /// Animates the layout changes of the next commit.
     layout_animation: Option<LayoutAnimation>,
+    /// The screens and modals with a `statusBar`, in the order they got
+    /// it: few, so attaching and detaching only flag them for the commit.
+    status_bar_nodes: Vec<Key>,
+    /// The tree changed with `status_bar_nodes` in it: the commit checks
+    /// which are in the tree.
+    status_bars_moved: bool,
     /// The user's preferred text size (1.0 is the default).
     font_scale: f32,
     queue: Vec<Key>,
@@ -705,6 +715,8 @@ impl<M: TextEngine> Core<M> {
             batches: 0,
             commands: Vec::new(),
             layout_animation: None,
+            status_bar_nodes: Vec::new(),
+            status_bars_moved: false,
             font_scale: 1.0,
             queue: Vec::new(),
             needs_layout: true,
@@ -1098,7 +1110,7 @@ impl<M: TextEngine> Core<M> {
                 id: crate::ROOT_ID,
                 command: Command::SetStatusBar(patch),
             } => {
-                StatusBars::update(&self.components.status_bars, |bars| bars.set_base(patch));
+                self.components.status_bars.set_base(patch);
                 Ok(())
             }
             // JS's responder blocks native scroll views as the components'
@@ -1192,7 +1204,8 @@ impl<M: TextEngine> Core<M> {
         self.update_lists(relayout);
         self.flush_text();
         // What this turn's status bar settings add up to, once.
-        if let Some(config) = StatusBars::take_changed(&self.components.status_bars) {
+        self.sync_status_bars();
+        if let Some(config) = self.components.status_bars.take_changed() {
             self.commands
                 .push((crate::ROOT_ID, Command::StatusBar(config)));
         }
@@ -1757,6 +1770,10 @@ impl<M: TextEngine> Core<M> {
             prop => prop,
         };
         let prop = self.check_prop(key, prop);
+        if let Prop::Screen(ScreenProp::StatusBar(setting)) = prop {
+            self.set_status_bar(key, setting);
+            return Ok(());
+        }
         let node = &mut self.nodes[key as usize];
         let mut flags = 0;
         match prop {
@@ -2229,6 +2246,8 @@ impl<M: TextEngine> Core<M> {
                         ScreenProp::PopOnSwipe(v) => c.gesture_enabled = v,
                         ScreenProp::PopOnBack(v) => c.prevent_back = !v,
                         ScreenProp::Animation(v) => c.animation = v,
+                        // Taken by `set_prop`.
+                        ScreenProp::StatusBar(_) => {}
                     }
                     // Header changes move the content.
                     root.laid_out = None;
@@ -2480,6 +2499,7 @@ impl<M: TextEngine> Core<M> {
         self.set_inline(child, inline);
         self.nodes[child as usize].parent = parent;
         self.nodes[parent as usize].children.insert(pos, child);
+        self.status_bars_moved |= !self.status_bar_nodes.is_empty();
         self.update_direction(child);
         if self.nodes[child as usize]
             .classes
@@ -2564,6 +2584,7 @@ impl<M: TextEngine> Core<M> {
         }
         let node = &mut self.nodes[key as usize];
         node.parent = NO_KEY;
+        self.status_bars_moved |= !self.status_bar_nodes.is_empty();
         let (inline, layout, created, id) = (node.inline, node.layout, node.created, node.id);
         if inline {
             self.mark_text_block(parent);
@@ -2636,6 +2657,61 @@ impl<M: TextEngine> Core<M> {
         self.needs_layout = true;
     }
 
+    /// A page's or dialog's `statusBar`: changed in place while the node
+    /// is in the tree (so it keeps its place among the others); its entry
+    /// is added or removed by [`Core::sync_status_bars`].
+    fn set_status_bar(&mut self, key: Key, setting: Option<crate::StatusBarSetting>) {
+        let Some(root) = self.nodes[key as usize].root.as_mut() else {
+            return;
+        };
+        root.status_bar = setting;
+        let entry = root.status_bar_entry;
+        match (setting, entry) {
+            (Some(s), Some(e)) => self.components.status_bars.set(e, s),
+            (Some(_), None) => {
+                if !self.status_bar_nodes.contains(&key) {
+                    self.status_bar_nodes.push(key);
+                }
+                self.status_bars_moved = true;
+            }
+            (None, entry) => {
+                if let Some(e) = entry {
+                    self.components.status_bars.remove(e);
+                    if let Some(root) = self.nodes[key as usize].root.as_mut() {
+                        root.status_bar_entry = None;
+                    }
+                }
+                self.status_bar_nodes.retain(|&k| k != key);
+            }
+        }
+    }
+
+    /// The `statusBar` of each screen and modal in the tree has an entry,
+    /// added in the order they got their setting; the others have none
+    /// (once per commit, after the tree changed).
+    fn sync_status_bars(&mut self) {
+        if !std::mem::take(&mut self.status_bars_moved) {
+            return;
+        }
+        for i in 0..self.status_bar_nodes.len() {
+            let key = self.status_bar_nodes[i];
+            let in_tree = self.is_ancestor(self.root, key);
+            let Some(root) = self.nodes[key as usize].root.as_mut() else {
+                continue;
+            };
+            match (in_tree, root.status_bar_entry, root.status_bar) {
+                (true, None, Some(setting)) => {
+                    root.status_bar_entry = Some(self.components.status_bars.add(setting));
+                }
+                (false, Some(entry), _) => {
+                    root.status_bar_entry = None;
+                    self.components.status_bars.remove(entry);
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn release(&mut self, id: NodeId) -> Result<(), ApplyError> {
         let key = self.key(id)?;
         if key == self.root {
@@ -2655,6 +2731,14 @@ impl<M: TextEngine> Core<M> {
         }
         if node.kind.is_root() {
             self.roots.retain(|&k| k != key);
+        }
+        if let Some(root) = node.root.as_ref()
+            && root.status_bar.is_some()
+        {
+            if let Some(entry) = root.status_bar_entry {
+                self.components.status_bars.remove(entry);
+            }
+            self.status_bar_nodes.retain(|&k| k != key);
         }
         // Children are released by their own ops (the whole subtree became
         // unreachable in JS); orphan them so they never point at a dead key.

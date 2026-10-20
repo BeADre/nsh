@@ -83,7 +83,7 @@ One Oxc pass removes TypeScript and lowers JSX (`plugin.rs` `compile_native`):
 - Code is generated as JS text with holes, parsed, and the app's expressions are moved into the holes: they keep their
   spans (the source map points at the app), generated nodes take their JSX element's span.
 - The entry's prologue gives the renderer the app's themes (`setup`: the Tailwind theme and the components' `uiTheme`,
-  before anything renders). A font import (`import Inter from "./Inter.ttf"`) compiles to `import { font } from
+  the appearance and the status bar's default, `nsh.json` `"statusBar"`, before anything renders). A font import (`import Inter from "./Inter.ttf"`) compiles to `import { font } from
   "nsh:rt"; export default font(uri, family)`: its family, registered by the host before the first frame.
 
 ## The renderer (`crates/nsh-js/src/dom.rs`)

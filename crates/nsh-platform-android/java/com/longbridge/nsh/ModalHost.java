@@ -115,7 +115,16 @@ final class ModalHost {
         });
     }
 
-    /** The dialog's bar icons as the activity's (`StatusBar` sets those). */
+    /**
+     * The status bar while the dialog is up: its window's, which the bar
+     * follows over the activity's (`Command::StatusBar`; the topmost page's
+     * or dialog's `statusBar`).
+     */
+    void statusBar(int style, boolean hidden, boolean night) {
+        if (dialog != null && !closing) SystemUi.statusBar(dialog.getWindow(), style, hidden, night);
+    }
+
+    /** The dialog's bar icons as the activity's. */
     @SuppressWarnings("deprecation")
     private void matchSystemBars(Window window) {
         android.app.Activity activity = SystemUi.activity(mounter.context);

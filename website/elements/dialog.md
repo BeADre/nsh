@@ -52,6 +52,7 @@ when it becomes `false`, and it gives its content the dialog's safe-area insets,
 | `closeOnEscape` | `boolean` | `true` | Escape and the Android back button close it natively. |
 | `closeOnBackdropPress` | `boolean` | `true` | A press on the backdrop closes it. |
 | `closeOnSwipe` | `boolean` | `true` | Swiping a sheet down (iOS, phone browsers) closes it natively. |
+| `statusBar` | `{ foreground?, hidden?, animated? }` | none | iOS and Android: the status bar while the dialog is open, over the pages' ([Status bar](../modules/nsh-base.md#status-bar)). |
 | `onOpen` | `() => void` | | It finished appearing. |
 | `onClose` | `() => void` | | It went away: the user closed it, or the app removed it. |
 | `onCancel` | `() => void` | | The user tried to close it (Escape, back, a backdrop press, a swipe down), whether or not a `closeOn*` flag let it close. |

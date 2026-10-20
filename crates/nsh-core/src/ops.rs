@@ -846,6 +846,14 @@ pub enum ScreenProp {
     /// `animation`: how the page enters and leaves.
     #[prop(js = "animation", on = SCREEN)]
     Animation(ScreenAnimation),
+    /// `statusBar`: what the status bar shows while the page or dialog is
+    /// up (iOS and Android; ignored on the desktops and the web), as a view
+    /// controller's `preferredStatusBarStyle` decides it on iOS. The most
+    /// recently shown page or dialog wins, field by field, over the pages
+    /// below it and over the app's default (`nsh.json` `statusBar`). Pages
+    /// and dialogs share it.
+    #[prop(js = "statusBar", on = SCREEN | MODAL)]
+    StatusBar(Option<StatusBarSetting>),
 }
 
 /// How a modal appears (`animation`).
@@ -1063,7 +1071,20 @@ pub enum StatusBarStyle {
     Dark,
 }
 
-/// The status bar (React Native's `StatusBar`).
+impl StatusBarStyle {
+    /// The style of a TS `StatusBarForeground` (`"auto"`, `"light"`,
+    /// `"dark"`).
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "auto" => Some(Self::Default),
+            "light" => Some(Self::Light),
+            "dark" => Some(Self::Dark),
+            _ => None,
+        }
+    }
+}
+
+/// What the status bar shows.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct StatusBarConfig {
     /// Content color.
@@ -1087,6 +1108,58 @@ pub struct StatusBarSetting {
 }
 
 impl StatusBarSetting {
+    /// Sets the content's color.
+    pub const fn foreground(mut self, style: StatusBarStyle) -> Self {
+        self.style = Some(style);
+        self
+    }
+
+    /// Hides or shows the bar.
+    pub const fn hidden(mut self, hidden: bool) -> Self {
+        self.hidden = Some(hidden);
+        self
+    }
+
+    /// Animates the change to this setting.
+    pub const fn animated(mut self, animated: bool) -> Self {
+        self.animated = Some(animated);
+        self
+    }
+
+    /// The app's default (`nsh.json` `"statusBar"`): `{ "foreground":
+    /// "auto" | "light" | "dark", "hidden": bool }`, both optional. The
+    /// error says what is wrong, for `nsh.json: statusBar: …`.
+    pub fn from_json(value: &crate::JsonValue) -> Result<Self, String> {
+        let Some(object) = value.as_object() else {
+            return Err(format!(
+                "expected an object ({{ \"foreground\": \"light\", \"hidden\": false }}), got {value}"
+            ));
+        };
+        let mut setting = Self::default();
+        for (key, v) in object {
+            match key.as_str() {
+                "foreground" => {
+                    let style = v.as_str().and_then(StatusBarStyle::from_name);
+                    setting.style = Some(style.ok_or_else(|| {
+                        format!("foreground: {v} is not \"auto\", \"light\" or \"dark\"")
+                    })?);
+                }
+                "hidden" => {
+                    setting.hidden = Some(
+                        v.as_bool()
+                            .ok_or_else(|| format!("hidden: {v} is not true or false"))?,
+                    );
+                }
+                other => {
+                    return Err(format!(
+                        "unknown key {other:?} (\"foreground\" and \"hidden\" are known)"
+                    ));
+                }
+            }
+        }
+        Ok(setting)
+    }
+
     /// This setting over `below`.
     pub fn over(self, below: Self) -> Self {
         Self {

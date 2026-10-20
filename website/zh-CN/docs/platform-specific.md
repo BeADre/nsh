@@ -57,7 +57,7 @@ group: platforms
 | `desktop={{ allowsBackForwardNavigationGestures }}` | `WebView` | macOS：双指在触控板上轻扫，在页面历史中前进后退；Windows：在触摸屏上轻扫；Linux：在触控板上轻扫。 |
 | `desktop={{ windowDrag }}` | 所有元素 | 按住它拖动窗口，像系统标题栏一样（见 [nsh/desktop](../modules/nsh-desktop.md#自定义标题栏)）。 |
 
-`desktop={{…}}` 和 `web={{…}}` 在所有地方都可以使用（[`StatusBar`](../modules/nsh-base.md#status-bar) 接受 `web={{ themeColor }}`）。类型（`IOSProps`、`AndroidProps`、`DesktopProps` 及其各元素的形式）会告诉编辑器每个元素接受什么。
+`desktop={{…}}` 和 `web={{…}}` 在所有地方都可以使用。类型（`IOSProps`、`AndroidProps`、`DesktopProps` 及其各元素的形式）会告诉编辑器每个元素接受什么。
 
 两个及以上平台都有的功能是顶层属性，在有意义的平台上生效：`NavPage` 的 `title`、`headerStyle`、`headerLargeTitle` 和 `headerBackTitle` 设置 iOS 和 Android 的系统标题栏，它的 `header` 插槽是桌面和 Web 上的标题栏，`Dialog` 的 `presentation` 选择 iOS 的表单样式。`AlertDialog.show` 的 `closeOnBackdropPress`、`pagingEnabled`、`refreshing`、`hitSlop` 等在所有平台上都可用。
 
@@ -121,18 +121,17 @@ function Player() {
 
 ### 状态栏
 
-状态栏在两个平台上都用 `nsh/base` 中的 [`StatusBar`](../modules/nsh-base.md#status-bar) 设置：`foreground`（`"auto"`、深色背景用 `"light"`、浅色背景用 `"dark"`）、`hidden` 和 `animated`。最近挂载的 `StatusBar` 按属性逐项生效，所以页面可以为自己渲染一个，页面消失后之前的设置会恢复。
+在两个平台上，状态栏都属于最上层的页面或对话框，和 UIKit 中由最上层视图控制器决定一样：[`NavPage` 和 `Dialog` 接受 `statusBar`](../modules/nsh-base.md#status-bar)，其中有 `foreground`（`"auto"`、深色背景用 `"light"`、浅色背景用 `"dark"`）、`hidden` 和 `animated`。最近显示的页面或对话框按字段逐项生效，它离开后下面那个重新生效。`nsh.json` 的 `"statusBar"` 是它们之下的应用默认值。
 
 ```tsx
 import { View } from "nsh";
-import { StatusBar } from "nsh/base";
+import { NavPage } from "nsh/base";
 
 function PhotoViewer() {
   return (
-    <View style={{ flex: 1, backgroundColor: "#000000" }}>
-      <StatusBar foreground="light" animated />
-      …
-    </View>
+    <NavPage headerShown={false} statusBar={{ foreground: "light", animated: true }}>
+      <View style={{ flex: 1, backgroundColor: "#000000" }}>…</View>
+    </NavPage>
   );
 }
 ```

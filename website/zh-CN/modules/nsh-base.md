@@ -1,24 +1,25 @@
 ---
 title: nsh/base
-description: 应用界面的无样式基础组件：按钮、导航栈与对话框、安全区、系统警告对话框、软键盘和状态栏。
+description: 应用界面的无样式基础组件：按钮、导航栈与对话框、安全区、系统警告对话框、软键盘，以及页面和对话框的状态栏。
 order: 2.5
 demo: ui-navigation
 ---
 
 # nsh/base
 
-`nsh/base` 是应用界面的基础组件层：不带样式、负责行为、状态、焦点和无障碍的组件，各平台通用。它位于基础元素（`nsh` 和各个 `nsh/<module>` 模块）与应用自己的组件库之间，就像 GPUI Kit 中 `gpui-base` 位于 `gpui` 与带样式的组件库之间（见[模块](./index.md#three-layers)）。它提供控件（`Button`）、导航（由 `createNavStack` 创建的状态驱动、由多个 `NavPage` 组成的 `NavStack`，以及在所有内容之上展示内容的 `Dialog`）、安全区（`SafeAreaView`、`safeArea()` 和 `safeAreaInsets()`）、系统警告对话框（`AlertDialog`）、软键盘（`Keyboard`、`keyboardFrame()` 和 `KeyboardAvoidingView`）以及状态栏（`StatusBar`）。
+`nsh/base` 是应用界面的基础组件层：不带样式、负责行为、状态、焦点和无障碍的组件，各平台通用。它位于基础元素（`nsh` 和各个 `nsh/<module>` 模块）与应用自己的组件库之间，就像 GPUI Kit 中 `gpui-base` 位于 `gpui` 与带样式的组件库之间（见[模块](./index.md#three-layers)）。它提供控件（`Button`）、导航（由 `createNavStack` 创建的状态驱动、由多个 `NavPage` 组成的 `NavStack`，以及在所有内容之上展示内容的 `Dialog`）、安全区（`SafeAreaView`、`safeArea()` 和 `safeAreaInsets()`）、系统警告对话框（`AlertDialog`）、软键盘（`Keyboard`、`keyboardFrame()` 和 `KeyboardAvoidingView`）。页面和对话框还决定状态栏（`statusBar`）。
 
 外观由应用决定：页面、对话框或标题栏里的内容都是你自己的 JSX，用基础元素配合样式、[Tailwind](../docs/tailwind.md) 类和主题绘制；或者是[你自己的 crate](../docs/rust.md) 中的 Rust 组件；也可以是社区基于 `nsh/base` 构建的组件库。每个宿主都提供 `nsh/base`；Rust 应用通过 `nsh-base` crate 使用同一套 API（`nsh_base::{SafeAreaView, …}`）。
 
 ```tsx
 import {
   AlertDialog, Button, createNavStack, Dialog, Keyboard, keyboardFrame, KeyboardAvoidingView, NavPage, NavStack,
-  SafeAreaView, safeArea, safeAreaInsets, StatusBar,
+  SafeAreaView, safeArea, safeAreaInsets,
 } from "nsh/base";
 import type {
   AlertDialogAction, AlertDialogOptions, AlertDialogPresentation, AlertDialogRole, AvoidBehavior, ButtonProps,
-  DialogChangeReason, DialogProps, Edge, Foreground, HeaderStyle, Insets, NavPageProps, NavStackProps, NavStackState,
+  DialogChangeReason, DialogProps, Edge, HeaderStyle, Insets, NavPageProps, NavStackProps, NavStackState, StatusBar,
+  StatusBarForeground,
 } from "nsh/base";
 ```
 
@@ -224,6 +225,7 @@ const depth = () => nav.routes().length;
 | `popOnBack` | `boolean` | `true` | 返回按钮和侧滑返回会弹出页面。见[离开页面](#leaving-a-page)。 |
 | `popOnSwipe` | `boolean` | `true` | 交互式返回手势会弹出页面：iOS 侧滑返回、Android 跟随手指的预测性返回。返回按钮无论如何都会弹出页面。 |
 | `animation` | `"default" \| "slide" \| "fade" \| "none"` | `"default"` | 页面进入和离开的方式。 |
+| `statusBar` | `{ foreground?, hidden?, animated? }` | 无 | iOS 和 Android：页面在最上层时的状态栏。见[状态栏](#status-bar)。 |
 | `style`、`class` | | 无 | 页面样式。 |
 | `children` | `JSX.Element` | 无 | 内容。 |
 | `onBackPress` | `() => void` | 无 | 用户在该页面按了返回（标题栏的返回按钮、Android 返回键、桌面平台上的 Escape、Alt+左方向键或鼠标后退键、浏览器的后退），无论 `popOnBack` 是否让它弹出。 |
@@ -314,6 +316,7 @@ function Settings() {
 | `closeOnEscape` | `boolean` | `true` | Escape 和 Android 返回键会关闭它。 |
 | `closeOnBackdropPress` | `boolean` | `true` | 按压背景层会关闭它。 |
 | `closeOnSwipe` | `boolean` | `true` | 向下轻扫 sheet（iOS、手机浏览器）会关闭它。 |
+| `statusBar` | `{ foreground?, hidden?, animated? }` | 无 | iOS 和 Android：对话框打开期间的状态栏。见[状态栏](#status-bar)。 |
 | `class`、`style` | | 无 | 弹出层的样式。 |
 | `backdropClass`、`backdropStyle` | | 无 | 设置任一项时，背景层铺满对话框，位于弹出层后面。 |
 | `ios` | `{ supportedOrientations?: (…)[] }` | 无 | iOS：允许的屏幕方向（默认沿用呈现者的）。 |
@@ -654,71 +657,56 @@ mount(App);
 
 ## 状态栏
 
-`StatusBar` 决定某部分 UI 显示期间系统状态栏的外观：内容（时间、电量、信号）的颜色，以及状态栏是否隐藏。
-
-### StatusBar
-
-渲染出来的 `StatusBar` 不占任何空间，它的设置在挂载期间生效：
+状态栏属于屏幕上正在显示的内容，和 UIKit 一样：在 UIKit 中，每个视图控制器声明自己的 `preferredStatusBarStyle`，由最上层的那个决定。在 NSH 中，页面和对话框就是这些视图控制器：`NavPage` 或 `Dialog` 用 `statusBar` 声明它需要的状态栏，应用则在 `nsh.json` 中声明默认值。
 
 ```tsx
-import { mount, Text, View } from "nsh";
-import { StatusBar } from "nsh/base";
+import { NavPage } from "nsh/base";
 
-function App() {
-  return (
-    <View style={{ flex: 1, backgroundColor: "#0b0b0f" }}>
-      <StatusBar foreground="light" />
-      <Text style={{ color: "#ffffff", padding: 16, paddingTop: 64 }}>Dark screen, light status bar</Text>
-    </View>
-  );
-}
-
-mount(App);
-```
-
-可以同时渲染多个 `StatusBar`，比如每个页面一个。**最后挂载**的那个生效，并且是**逐个属性**生效：只设置了 `hidden` 的 `StatusBar` 会保留下层那个的 `foreground`。某个 `StatusBar` 卸载时（例如它所在的页面被弹出），之前的设置会重新生效。
-
-```tsx
 function PhotoViewer() {
   return (
-    <NavPage headerShown={false}>
-      <StatusBar hidden animated />
+    <NavPage headerShown={false} statusBar={{ foreground: "light", hidden: true, animated: true }}>
       …
     </NavPage>
   );
 }
 ```
 
-<a id="statusbar-props"></a>
+`statusBar` 接受以下字段，每个都可省略：
 
-#### StatusBar 属性
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `foreground` | `"auto" \| "light" \| "dark"` | 内容（时间、电量、信号）的颜色：`"light"` 用于深色背景，`"dark"` 用于浅色背景，`"auto"` 为平台针对当前外观的颜色。 |
+| `hidden` | `boolean` | 隐藏状态栏。 |
+| `animated` | `boolean` | 页面或对话框出现和离开时，以动画呈现变化。 |
 
-| 属性 | 类型 | 默认值 | 说明 |
-|---|---|---|---|
-| `foreground` | `"auto" \| "light" \| "dark" \| null` | 不设置 | 内容的颜色（见 [Foreground](#foreground)）。 |
-| `hidden` | `boolean \| null` | 不设置 | 隐藏状态栏。 |
-| `animated` | `boolean \| null` | 不设置 | 以动画呈现 `foreground` 和 `hidden` 的变化。 |
-| `web` | `{ themeColor?: string \| null }` | 不设置 | 仅浏览器：页面的主题色（`<meta name="theme-color">`）。 |
+这个值是响应式的：`statusBar={{ foreground: dark() ? "light" : "dark" }}` 会跟随信号变化。
 
-未设置的属性，会把状态栏的这一部分交给下层的 `StatusBar` 或平台决定。
+<a id="which-one-applies"></a>
 
-#### Foreground
+### 哪个生效
 
-| `foreground` | 内容 |
-|---|---|
-| `"auto"` | 平台针对当前外观（浅色或深色模式）的颜色。 |
-| `"light"` | 浅色内容，用于深色背景。 |
-| `"dark"` | 深色内容，用于浅色背景。 |
-
-<a id="in-a-browser"></a>
-
-#### 在浏览器中
-
-浏览器会给页面周围的栏着色（手机上的地址栏、已安装 Web 应用的标题栏）。`web={{ themeColor }}` 以页面的 `<meta name="theme-color">` 设置它，同样是最近挂载的优先。
+**最近显示**的页面或对话框决定状态栏，并且**逐个字段**生效：推入栈的页面位于它下面的页面之上，打开的对话框位于页面之上。它省略的字段取自下面那个，最终取自应用的默认值。页面被弹出或对话框关闭时，下面那个重新生效。
 
 ```tsx
-<StatusBar foreground="light" web={{ themeColor: "#0b0b0f" }} />
+<NavPage title="Inbox" statusBar={{ foreground: "dark" }}>…</NavPage>
+
+// 推入在它之上：隐藏状态栏；再次显示时沿用收件箱的深色内容。
+<NavPage title="Photo" statusBar={{ hidden: true }}>…</NavPage>
 ```
+
+<a id="the-apps-default"></a>
+
+### 应用的默认值
+
+`nsh.json` 的 `"statusBar"` 是所有页面和对话框之下的设置，就像 UIKit 应用中 Info.plist 的 `UIStatusBarStyle` 和 `UIStatusBarHidden`：
+
+```json
+{
+  "statusBar": { "foreground": "light", "hidden": false }
+}
+```
+
+两个字段都可省略。不设置时，内容为 `"auto"`，状态栏显示。打包的 iOS 应用在启动屏上也会使用它。
 
 <a id="the-status-bar-on-each-platform"></a>
 
@@ -726,7 +714,7 @@ function PhotoViewer() {
 
 - **iOS**：隐藏和显示以淡入淡出呈现。在[嵌入](../docs/embedding-ios.md)原生应用的场景下，状态栏的外观由宿主应用的视图控制器决定。宿主可以在其视图控制器中返回 `NshAppView.preferredStatusBarStyle`、`NshAppView.prefersStatusBarHidden` 和 `NshAppView.preferredStatusBarUpdateAnimation`，以应用 NSH 的设置。
 - **Android**：应用以 edge-to-edge 方式绘制到状态栏之下（Android 15，即 API 35）：应用自己的背景就是状态栏的背景，`foreground` 让状态栏的内容在其上保持清晰。
-- **桌面平台、Mac Catalyst 与 Web**：`foreground` 和 `hidden` 作用于平台的状态栏；Web 使用 `web={{ themeColor }}`。
+- **桌面平台与 Web**：窗口标题栏和浏览器的栏属于系统和浏览器；`statusBar` 和 `nsh.json` 的 `"statusBar"` 用于手机。
 
 > [!IMPORTANT]
 > 如果你的 `nsh.json` 声明了 `"capabilities"`，只有其中包含 `"statusBar": true` 时状态栏才会改变，其他更改会被拒绝并记录日志。参见[沙箱与权限](../docs/sandbox-and-capabilities.md)。

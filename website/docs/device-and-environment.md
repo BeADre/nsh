@@ -89,7 +89,7 @@ const palette = computed(() =>
 </View>
 ```
 
-Rust components from your app's own crate take their colors from the theme, which has light and dark values (`nsh.json` `"theme"`, see [Building with Rust](./rust.md)), so they switch with the system as well. To match the status bar to your background, see [`StatusBar`](../modules/nsh-base.md#status-bar).
+Rust components from your app's own crate take their colors from the theme, which has light and dark values (`nsh.json` `"theme"`, see [Building with Rust](./rust.md)), so they switch with the system as well. To match the status bar to your background, give your pages and dialogs a [`statusBar`](../modules/nsh-base.md#status-bar), or the app one in `nsh.json`.
 
 ### An app with its own appearance
 
@@ -245,5 +245,5 @@ Horizontal scroll views and lists start at the right end in right-to-left layout
 - [`nsh/device`](../modules/nsh-device.md): the reference.
 - [Platform-specific code](./platform-specific.md): `Platform.select`, platform props and modules.
 - [Accessibility](./accessibility.md): screen readers and reduced motion.
-- [`SafeAreaView`](../modules/nsh-base.md#safeareaview) and [`StatusBar`](../modules/nsh-base.md#status-bar).
+- [`SafeAreaView`](../modules/nsh-base.md#safeareaview) and [the status bar](../modules/nsh-base.md#status-bar).
 - [Tailwind](./tailwind.md): `dark:`, breakpoint and orientation variants.

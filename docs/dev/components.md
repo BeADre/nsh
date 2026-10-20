@@ -10,7 +10,7 @@ the styled layer, GPUI Kit's `gpui-component`, is never part of NSH. The look of
 come from two places:
 
 - **`nsh/base`**: unstyled base components of `gpui-base`'s scope, the crate `nsh-base` (`crates/nsh-base`,
-  `nsh_base::registry()`): `SafeAreaView`, `KeyboardAvoidingView`, `StatusBar`, `Button` and the modules `AlertDialog`,
+  `nsh_base::registry()`): `SafeAreaView`, `KeyboardAvoidingView`, `Button` and the modules `AlertDialog`,
   `Keyboard`, beside the navigation `nsh-js` makes for it (`NavStack`, `NavPage`, `Dialog`, `createNavStack`); controls
   (toggles, sliders, selects, popovers, sheets, ...) join as their behavior is written. It is a UI set
   (`Registry::ui_set("nsh/base")`) every host serves by default (`set_ui_sets`' default; embedders with a list of their
@@ -33,7 +33,7 @@ come from two places:
 | `crates/nsh-core/src/ui/` | The API (`nsh_core::ui`, `prelude`): `Component`, `Module`, `Class` (`class.rs`, `callback.rs`; direct JS values: `js.rs`), elements, `Styled`, `Theme`, `Registry`, the status bar's layers (`status_bar.rs`), the declarations generator `typescript` |
 | `crates/nsh-macros` | `#[component]`, `#[derive(Props)]`, `#[derive(PropEnum)]`, `#[derive(Event)]`, `#[derive(JsObject)]`; `#[methods]`, `#[module]`, `#[class]`; `#[native_module("…")]` (an app crate's set: `docs/dev/tooling.md`); `style_helpers!` (the spacing methods of `Styled`) |
 | `crates/nsh-core/src/core/components.rs` | The core side: instances, children and slots, events; `core/views.rs`: views, their bindings' patches and regions |
-| `crates/nsh-base/` | `nsh/base`'s components and modules, one file each (`safe_area.rs`, `keyboard.rs`, `status_bar.rs`, `alert.rs`, `action_sheet.rs`), one `Registry` (`lib.rs`) |
+| `crates/nsh-base/` | `nsh/base`'s components and modules, one file each (`safe_area.rs`, `keyboard.rs`, `alert_dialog.rs`, `button.rs`), one `Registry` (`lib.rs`) |
 | `crates/nsh-core/src/runtime/` | The runtime's Rust modules (`nsh/android`, `nsh/accessibility`, `nsh/image`, `nsh/clipboard`, `nsh/desktop`), one `Registry` per JS module (`mod.rs`) |
 | `crates/nsh-js/src/components.rs` | The JS face of components and modules, made from their specs when a bundle imports the module; `classes.rs`: classes' (on the web classes' machinery), synchronous functions', callbacks |
 | `crates/nsh-js/src/declarations.rs` | `nsh/base.d.ts`, `app/native.d.ts`, ...: the declarations generated from each registry (`nsh_core::ui::declarations`) with the re-exports and the navigation |
@@ -73,9 +73,9 @@ come from two places:
 - **Modules are functions without a component**: `#[module] impl AlertDialog { pub async fn show(options:
   AlertDialogOptions) -> Result<Option<SharedString>, String> }` is `await AlertDialog.show({ … })` in JS (`nsh-base`
   `alert_dialog.rs`). A module named like a component adds static functions to it.
-- **System UI**: `dialog(..)` (await the index chosen, -1 when closed without one), `dismiss_keyboard()`, `add_status_bar(..)` /
-  `update_status_bar(..)` for a component's setting (removed with it), `ModuleCx::set_status_bar(patch)` for a
-  function's; `.inset_padding(..)` / `.inset_margin(..)` on an element (`SafeAreaView`, `KeyboardAvoidingView`).
+- **System UI**: `dialog(..)` (await the index chosen, -1 when closed without one), `dismiss_keyboard()`, a screen's
+  or modal's `.status_bar(..)` (as a view controller's `preferredStatusBarStyle`), `ModuleCx::set_status_bar(patch)`
+  for the default under them; `.inset_padding(..)` / `.inset_margin(..)` on an element (`SafeAreaView`, `KeyboardAvoidingView`).
 - **Platform-only props** are an `android` / `ios` / `web` prop of a `JsObject` struct (an app's `ChartWeb { … }`).
 - Changing an app's component rebuilds the app's hosts and runners (`rust_app.rs`; `nsh run` does it on save), a
   component of `nsh/base` the dev hosts, `nsh-ios-app` and the Android runtime; TSX using it reloads as usual.
@@ -121,13 +121,13 @@ nothing is diffed. Releasing the host disposes the owner: its bindings, effects,
 child components go with it. The design and its reasons: `reactive-components.md`.
 
 - **Names come from the type**: `Registry::register::<Chip>()` registers it under `std::any::type_name`
-  (`app_native::chip::Chip`: the key the JS face sets as the host's `component` prop and the core finds it
-  by, only compared within one binary) and exports it as the type's own name (`Chip`; a generic type's without
-  its arguments). A second registration of a type, two types of the same name (two versions of a crate) or two
-  components of one set with the same export panic at registration (`Registry::merged` likewise for the sets a
-  host serves, the runtime's included, also for modules of the same name); components of different sets may share
-  an export. A test pins the runtime's exports (`runtime` `the_exports_are_pinned`). A module's JS name is its type's
-  too (`#[module] impl AlertDialog`: `AlertDialog`).
+  (`my_app::chip::Chip` in the crate `nsh init my-app --template rust` makes: the key the JS face sets as the host's
+  `component` prop and the core finds it by, only compared within one binary) and exports it as the type's own name
+  (`Chip`; a generic type's without its arguments). A second registration of a type, two types of the same name (two
+  versions of a crate) or two components of one set with the same export panic at registration (`Registry::merged`
+  likewise for the sets a host serves, the runtime's included, also for modules of the same name); components of
+  different sets may share an export. A test pins the runtime's exports (`runtime` `the_exports_are_pinned`). A
+  module's JS name is its type's too (`#[module] impl AlertDialog`: `AlertDialog`).
 - **Props** are a struct, **events** an enum; the derives produce a decoder per prop (`PropSpec::decode`: the JS
   value into the field's Rust type, when JS sets it), the conversion of an event's data to JS (`Event::data_js`),
   defaults, and the TypeScript types (doc comments included). Field and variant names become camel case in JS. Value types
@@ -143,7 +143,7 @@ child components go with it. The design and its reasons: `reactive-components.md
   restores its default. Only a decoder's panic or a getter's exception throws, as a render effect's error: by the
   assignment that ran it, or by `mount` in the first render. A Rust parent passes a value
   (`3.into()`), a signal (`n.into()`) or a closure (`Prop::bind(move || ..)`). Platform-only props are an `android` /
-  `ios` prop of a `JsObject` struct (`StatusBar`'s `android={{ backgroundColor }}`), as for host elements.
+  `ios` prop of a `JsObject` struct (an app's `ChartWeb { … }`), as for host elements.
 - **`Scope<E>`** (`Copy`) is what the component has of its own: `cx.emit(event)` (to the app's `on<Event>`, or to the
   parent's `.on_event(..)`), `cx.insets()` (its screen's or modal's insets, reading subscribes) and
   `cx.methods(api)` (below). Everything else is a free function of `ui::prelude`.
@@ -371,12 +371,17 @@ statics, and `async fn`s (`this: Instance<Self>` first, for a method) members re
 
 ## The status bar
 
-`ui/status_bar.rs` layers the surface's settings (`StatusBarSetting`: style, hidden, animated, background, each
-optional), one `StatusBars` per surface shared by its components, modules and tasks. At the bottom is what functions
-set: `ModuleCx::set_status_bar(patch)` becomes `Command::SetStatusBar(patch)`. Over it, the settings views add
-(`add_status_bar(setting)` → `StatusBarEntry`, removed when the current owner goes; `update_status_bar(entry, ..)`
-from an effect on the props); the most recently added wins, field by field. Each change only marks the layers;
-`commit` sends one `Command::StatusBar` with the merged result when it differs from the last one sent.
+The status bar follows UIKit: the topmost view controller decides (`preferredStatusBarStyle`), Info.plist holds the
+default. `ui/status_bar.rs` layers the surface's settings (`StatusBarSetting`: style, hidden, animated, each optional),
+one `StatusBars` per surface, owned by the core. At the bottom is the app's default: `nsh.json` `"statusBar"` (the
+entry's `setup` sends `Command::SetStatusBar`; a Rust app's `Root::status_bar`) and `ModuleCx::set_status_bar(patch)`,
+which patch it. Over it, each screen and modal with a `statusBar` (`ScreenProp::StatusBar`, pages and dialogs share
+it) holds one entry while it is in the tree: the core keeps the few nodes that have one (`status_bar_nodes`, in the
+order they got it); an insert or a removal with any of them in the tree only flags them, and the commit adds the
+entries of the ones now in the tree and removes the others' (so a pushed page or a presented dialog is over the
+pages below it, and popping or closing removes it). A changed value is set in place and keeps its place. The most
+recently added wins, field by field. Each change only marks the layers; `commit` sends one `Command::StatusBar` with
+the merged result when it differs from the last one sent.
 
 ## Tasks
 
@@ -474,7 +479,7 @@ looks like its host (`embedding.md`, "GPUI and GPUI Kit apps").
 ## The host node and ids
 
 In JS a component is a view (the host element `view`) with a `component` prop naming it (its registered name,
-`app_native::chip::Chip`): its **host**. `Core::apply` sees the prop, creates an instance and from then on
+`my_app::chip::Chip`): its **host**. `Core::apply` sees the prop, creates an instance and from then on
 intercepts the ops on the host (`intercept`): the host is the root of the component's view, the elements below the
 root become nodes the core creates itself. Apps without components pay one check per op. The root can be any
 element: at the view's first mount, before the host's native view is sent, the core gives the host the root's kind
