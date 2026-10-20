@@ -1,0 +1,16 @@
+# What a user does and sees (compat/apps.rs). What the status bar shows
+# reaches only the platform; the app runs on with each change.
+platform web
+frame id:first 0 0 390 20
+frame id:second 0 20 390 20
+tap text:Dark: false
+expect Dark: true
+tap text:Second: true
+expect Second: false
+frame id:second 0 20 390 20
+tap text:Second: false
+expect Second: true
+frame id:second 0 20 390 20
+tap text:Dark: true
+expect Dark: false
+covers [nsh/base] StatusBar
