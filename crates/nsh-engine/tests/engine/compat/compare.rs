@@ -324,48 +324,6 @@ fn balanced(text: &str) -> bool {
     depth == 0
 }
 
-/// `text` with every parameter named `_` (`(a?: T, ...b: U)` →
-/// `(_?: T, ..._: U)`): the names are not part of a type.
-fn erase_names(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut at = 0;
-    while let Some(open) = text[at..].find('(').map(|i| at + i) {
-        out.push_str(&text[at..=open]);
-        let Some(close) = matching(text, open) else {
-            out.push_str(&text[open + 1..]);
-            return out;
-        };
-        let params: Vec<String> = split_top(&text[open + 1..close], ',')
-            .into_iter()
-            .map(|p| {
-                let (rest, spread) = match p.strip_prefix("...") {
-                    Some(r) => (r, "..."),
-                    None => (p, ""),
-                };
-                let name: String = rest.chars().take_while(|c| is_ident(*c)).collect();
-                let after = &rest[name.len()..];
-                let after = after.strip_prefix('?').map_or(after, |a| a);
-                let optional = if rest[name.len()..].starts_with('?') {
-                    "?"
-                } else {
-                    ""
-                };
-                match after.strip_prefix(": ") {
-                    Some(ty) if !name.is_empty() => {
-                        format!("{spread}_{optional}: {}", erase_names(ty))
-                    }
-                    _ => erase_names(p),
-                }
-            })
-            .collect();
-        out.push_str(&params.join(", "));
-        out.push(')');
-        at = close + 1;
-    }
-    out.push_str(&text[at..]);
-    out
-}
-
 fn optional(param: &str) -> bool {
     top_level(param, ':').is_some_and(|c| param[..c].ends_with('?'))
 }
@@ -799,6 +757,7 @@ mod tests {
             "onSelect?: (index: number) => void"
         ));
         assert!(compatible("dismiss(): void", "dismiss(): Promise<void>"));
+        assert!(compatible("m(a: X): void", "m(b: X): Promise<void>"));
         assert!(compatible(
             "export declare const S: ((p: P) => E) & { a(x: string): void; b(): void }",
             "export declare const S: ((props: P) => E) & { a(text: string): Promise<void>; b(): void }"
@@ -873,7 +832,6 @@ mod tests {
             "onSelect?: (data: number) => void",
             "onSelect?: (index: number) => boolean"
         ));
-        assert!(!compatible("m(a: X): void", "m(b: X): Promise<void>"));
         assert!(!compatible("m(a?: X): void", "m(b: X): void"));
         assert!(!compatible("m(a: X): void", "m(b: X, c: Y): void"));
         assert!(!compatible(
