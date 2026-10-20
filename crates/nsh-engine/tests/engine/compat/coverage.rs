@@ -10,7 +10,11 @@
 //! The parts, as the list names them:
 //!
 //! - `[<module>] <name>`: an export of a module of `runtime.txt`, the
-//!   functions of `nsh:rt` included, and `[globals] <name>`, a global;
+//!   functions of `nsh:rt` included, and `[globals] <name>`, a global NSH
+//!   declares (`nsh/globals.d.ts`): the others are the language's
+//!   (ECMAScript's library as QuickJS implements it, and `Intl`, which
+//!   TypeScript's library declares), not NSH's API, and stay in
+//!   `runtime.txt` only;
 //! - `[props] <name>`, `[events] <name>`: the members of the host elements'
 //!   props interfaces (`nsh/types.d.ts`, `*Props`), handlers (`on…`) being
 //!   events; a platform's props are `ios.<name>`, `android.<name>`,
@@ -21,8 +25,9 @@
 //! A script claims the parts it checks with `covers <item>` steps, and the
 //! claims are verified ([`verify`]): the bundle uses the part, and a prop,
 //! event or style key renamed in the bundle makes a check of the script
-//! fail (an `expect`, `absent`, `tap` or `frame`), so the script sees what
-//! it does. Exports and globals cannot be taken out of an app that still
+//! fail (any step that checks: `expect`, `absent`, `tap`, `frame`,
+//! `prop`, `noprop`, `style`, `nostyle`, `listens`, `log`), so the script
+//! sees what it does. Exports and globals cannot be taken out of an app that still
 //! runs, so only their use is verified; their claim is the script
 //! author's word that a step checks their result.
 //!
@@ -84,10 +89,23 @@ const PLATFORMS: &[(&str, &str)] = &[
     ("Web", "web"),
 ];
 
-/// The parts of the API: `runtime.txt`'s exports and globals, the host
-/// elements' props and events and the style keys of `types`.
+/// The parts of the API: `runtime.txt`'s exports and the globals NSH
+/// declares, the host elements' props and events and the style keys of
+/// `types`.
 fn items(runtime: &str, types: &[(String, String)]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
+    // Every global the runtime adds to QuickJS' is declared there (nsh-js'
+    // `declarations` tests hold it), so what is not declared is the
+    // language's.
+    let declared: HashSet<String> = types
+        .iter()
+        .find(|(p, _)| p == "nsh/globals.d.ts")
+        .map(|(_, d)| compare::declarations(d))
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(_, d)| d.kind != "interface" && d.kind != "type")
+        .map(|(name, _)| name.split(' ').next().unwrap().to_owned())
+        .collect();
     let mut section = "";
     for line in runtime.lines().map(str::trim) {
         if line.is_empty() || line.starts_with('#') {
@@ -98,7 +116,7 @@ fn items(runtime: &str, types: &[(String, String)]) -> BTreeSet<String> {
             continue;
         }
         let path = line.split_once(' ').map_or(line, |(p, _)| p);
-        if !path.contains(['.', '#']) {
+        if !path.contains(['.', '#']) && (section != "globals" || declared.contains(path)) {
             out.insert(format!("[{section}] {path}"));
         }
     }
@@ -702,16 +720,22 @@ fn usage_is_read() {
     assert!(!usage.covers("[globals] Each"));
     assert!(!usage.covers("[props] ios.testID"));
 
-    let runtime =
-        "# x\n[nsh]\nView function\nView.x number\nA#.m function\n\n[globals]\nfetch function\n";
-    let types = [(
-        "nsh/types.d.ts".to_owned(),
-        "export interface HostProps {\n  testID?: string;\n  onPress?: () => void;\n}\n\
+    let runtime = "# x\n[nsh]\nView function\nView.x number\nA#.m function\n\n[globals]\nArray function\nfetch function\n";
+    let types = [
+        (
+            "nsh/globals.d.ts".to_owned(),
+            "declare function fetch(input: string): Promise<unknown>;\ninterface Array<T> {}\n"
+                .to_owned(),
+        ),
+        (
+            "nsh/types.d.ts".to_owned(),
+            "export interface HostProps {\n  testID?: string;\n  onPress?: () => void;\n}\n\
          export interface IOSInputHostProps {\n  /** d */\n  clearButtonMode?: string;\n}\n\
          export interface TextStyle extends ViewStyle {\n  color?: string;\n}\n\
          export interface Insets {\n  top: number;\n}\n"
-            .to_owned(),
-    )];
+                .to_owned(),
+        ),
+    ];
     assert_eq!(
         items(runtime, &types).into_iter().collect::<Vec<_>>(),
         [

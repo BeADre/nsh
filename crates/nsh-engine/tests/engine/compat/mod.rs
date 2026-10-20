@@ -17,6 +17,7 @@ mod compare;
 mod coverage;
 mod surface;
 mod tailwind;
+mod values;
 
 use std::{
     collections::BTreeMap,

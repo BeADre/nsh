@@ -139,10 +139,15 @@ the change. Existing steps stay.
 
 `script.txt` is one step per line (`compat/apps.rs` has the full list): `expect <text>` waits for a text on screen,
 `absent <text>` checks one is gone, `tap id:<testID>` / `label:<label>` / `text:<text>` presses a view (or its nearest
-pressable ancestor), `wait <ms>` runs timers, `viewport <w> <h>` (first) sizes the screen, `frame <selector> <x> <y>
-<width> <height>` checks a view's layout frame (points, relative to its parent; it waits for it), and `covers <item>`
-is a claim, not a step. A script should open every screen of its app and check what its app offers.
-`NSH_API_DUMP=1` prints the texts each step adds and removes:
+pressable ancestor), `wait <ms>` runs timers, and `viewport <w> <h>` and `platform <os>` (first) size the screen and
+pick the platform whose `ios={{…}}` / `android={{…}}` / `desktop={{…}}` / `web={{…}}` props apply. What a view looks
+like is checked as the platform receives it: `frame <selector> <x> <y> <width> <height>` (its layout, in points
+relative to its parent), `prop` / `noprop` (a host prop), `style` / `nostyle` (a paint or text style key), `listens`
+(an event the platform reports); `log <text>` checks a `console` line, and `covers <item>` is a claim, not a step.
+Props and style keys are named and written as apps write them (`style id:card backgroundColor #3366ffff`,
+`prop id:field ios.keyboardAppearance dark`), in the stable text forms `compat/values.rs` defines, never from the
+core's types, so the scripts stay valid while those change. A script should open every screen of its app and check
+what its app offers. `NSH_API_DUMP=1` prints the texts each step adds and removes:
 
 ```sh
 NSH_API_DUMP=1 cargo test -p nsh-engine --test engine compat::apps_still_run -- --nocapture
