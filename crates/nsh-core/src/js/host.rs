@@ -613,7 +613,7 @@ pub const INTERNAL_EVENTS: &[EventKind] = &[
     EventKind::KeyCommand,
     EventKind::Menu,
     EventKind::ViewableItemsChanged,
-    // `NavPage`'s `onPop` / `onBackPress` and `Dialog`'s `onClose` /
+    // `NavPage`'s `onDismiss` / `onBackPress` and `Dialog`'s `onClose` /
     // `onCancel` / `onOpenChange` / `onOpen`: the navigation's handlers
     // (`nsh-js` `navigation.rs`), declared with its components.
     EventKind::BackRequest,

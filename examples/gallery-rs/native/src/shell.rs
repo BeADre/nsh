@@ -48,7 +48,7 @@ fn pushed() -> AnyElement {
             let route = route.get_untracked();
             (route.screen)()
                 // The user popped it natively: it and what is above it go.
-                .on_pop(move |_: &()| nav::truncate(depth.get_untracked()))
+                .on_dismiss(move |_: &()| nav::truncate(depth.get_untracked()))
         },
     )
     .into_element()

@@ -227,7 +227,7 @@ const depth = () => nav.routes().length;
 | `style`、`class` | | 无 | 页面样式。 |
 | `children` | `JSX.Element` | 无 | 内容。 |
 | `onBackPress` | `() => void` | 无 | 用户在该页面按了返回（标题栏的返回按钮、Android 返回键、桌面平台上的 Escape、Alt+左方向键或鼠标后退键、浏览器的后退），无论 `popOnBack` 是否让它弹出。 |
-| `onPop` | `() => void` | 无 | 用户弹出了该页面（返回按钮、侧滑），其路由已被移除。 |
+| `onDismiss` | `() => void` | 无 | 用户弹出了该页面（返回按钮、侧滑），其路由已被移除。 |
 
 标题栏项（`header`、`headerLeft`、`headerRight`、`headerTitle`）就是普通的 JSX：它们可以读取 signal、处理按压，并在页面显示期间更新。
 
