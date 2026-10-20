@@ -46,9 +46,9 @@
 //!   handler's payload keys; a value is a number, `true`, `false` or a
 //!   string, quoted when it has spaces or looks like a number), none
 //!   without keys. A key given more than once makes a list (`onFileDrop`'s
-//!   `uris`). `onHoverMove`'s `pageX` / `pageY` default to the view's
-//!   position on screen plus `locationX` / `locationY`, its modifier keys
-//!   to false;
+//!   `uris`). `onHoverMove` and `onContextMenu` get their typed payload:
+//!   `pageX` / `pageY` default to the listening view's position on screen
+//!   plus `locationX` / `locationY`, the modifier keys to false;
 //! - `touch start <selector> <x> <y>`, `touch move <x> <y>`,
 //!   `touch end [<x> <y>]`, `touch cancel [<x> <y>]`: one finger goes
 //!   down on the first view on screen the selector names at `<x> <y>` in
@@ -86,8 +86,8 @@ use std::{
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use nsh_core::{
-    ApproxTextEngine, EventKind, EventPayload, HoverEvent, MountBatch, MountItem, NodeId,
-    PayloadValue, Rect, Size, TouchEvent, TouchPhase, TouchPoint,
+    ApproxTextEngine, ContextMenuEvent, EventKind, EventPayload, HoverEvent, MountBatch, MountItem,
+    NodeId, PayloadValue, Rect, Size, TouchEvent, TouchPhase, TouchPoint,
     keymap::Modifiers,
     platform::{Environment, Idiom, Os},
 };
@@ -880,25 +880,41 @@ fn event_payload(
     let keys: Vec<&str> = fields.iter().map(|(k, _)| k.as_str()).collect();
     let only = |want: &[&str]| keys.len() == want.len() && want.iter().all(|k| keys.contains(k));
     Ok(match kind {
-        EventKind::HoverMove => {
+        // Both payloads are a position and the modifiers.
+        EventKind::HoverMove | EventKind::ContextMenu => {
             let (left, top) = page_origin(views, id);
-            let (x, y) = (
+            let (location_x, location_y) = (
                 num("locationX").unwrap_or(0.0),
                 num("locationY").unwrap_or(0.0),
             );
             let flag = |key: &str| matches!(get(key), Some(Field::Bool(true)));
-            EventPayload::Hover(HoverEvent {
-                location_x: x,
-                location_y: y,
-                page_x: num("pageX").unwrap_or(left + x),
-                page_y: num("pageY").unwrap_or(top + y),
-                modifiers: Modifiers {
-                    ctrl: flag("ctrlKey"),
-                    alt: flag("altKey"),
-                    shift: flag("shiftKey"),
-                    cmd: flag("metaKey"),
-                },
-            })
+            let (page_x, page_y) = (
+                num("pageX").unwrap_or(left + location_x),
+                num("pageY").unwrap_or(top + location_y),
+            );
+            let modifiers = Modifiers {
+                ctrl: flag("ctrlKey"),
+                alt: flag("altKey"),
+                shift: flag("shiftKey"),
+                cmd: flag("metaKey"),
+            };
+            if kind == EventKind::HoverMove {
+                EventPayload::Hover(HoverEvent {
+                    location_x,
+                    location_y,
+                    page_x,
+                    page_y,
+                    modifiers,
+                })
+            } else {
+                EventPayload::ContextMenu(ContextMenuEvent {
+                    location_x,
+                    location_y,
+                    page_x,
+                    page_y,
+                    modifiers,
+                })
+            }
         }
         _ if fields.is_empty() => EventPayload::None,
         EventKind::ChangeText => {
