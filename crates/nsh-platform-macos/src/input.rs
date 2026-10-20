@@ -175,7 +175,7 @@ struct Press {
     events: EventMask,
     /// Milliseconds before a long press.
     long_delay: f32,
-    /// `onPressIn` was reported.
+    /// `onPressDown` was reported.
     pressed: bool,
     /// `onLongPress` was reported: the release is no press.
     long: bool,
@@ -461,8 +461,8 @@ fn has_press(events: EventMask) -> bool {
     [
         EventKind::Press,
         EventKind::LongPress,
-        EventKind::PressIn,
-        EventKind::PressOut,
+        EventKind::PressDown,
+        EventKind::PressUp,
     ]
     .into_iter()
     .any(|k| events.contains(k))
@@ -647,7 +647,7 @@ pub(crate) fn key(surface: &Rc<Surface>, event: &NSEvent, down: bool) -> bool {
     if let Some(view) = control_activation_target(surface, event) {
         if down && !event.isARepeat() {
             let events = view.state().events;
-            for kind in [EventKind::PressIn, EventKind::PressOut, EventKind::Press] {
+            for kind in [EventKind::PressDown, EventKind::PressUp, EventKind::Press] {
                 if events.contains(kind) {
                     press_event(surface, view.id(), kind);
                 }
@@ -1477,20 +1477,20 @@ fn press_in(surface: &Rc<Surface>, press: &mut Press) {
         return;
     }
     press.pressed = true;
-    if press.events.contains(EventKind::PressIn) {
-        press_event(surface, press.node, EventKind::PressIn);
+    if press.events.contains(EventKind::PressDown) {
+        press_event(surface, press.node, EventKind::PressDown);
     }
 }
 
-/// Ends a press: `onPressOut`, then `onPress` if `fire` (released inside)
+/// Ends a press: `onPressUp`, then `onPress` if `fire` (released inside)
 /// and it was no long press.
 fn press_out(surface: &Rc<Surface>, press: &mut Press, fire: bool) {
     if !press.pressed {
         return;
     }
     press.pressed = false;
-    if press.events.contains(EventKind::PressOut) {
-        press_event(surface, press.node, EventKind::PressOut);
+    if press.events.contains(EventKind::PressUp) {
+        press_event(surface, press.node, EventKind::PressUp);
     }
     if fire && !press.long && press.events.contains(EventKind::Press) {
         press_event(surface, press.node, EventKind::Press);

@@ -30,7 +30,7 @@
 //! listening to press events gets them (or the pressable text span under
 //! the pointer; how it looks while pressed is the app's `activeStyle`,
 //! applied by the core from the reported states); inside scroll views a
-//! touch reports `onPressIn` only after ~130 ms, as it may start a
+//! touch reports `onPressDown` only after ~130 ms, as it may start a
 //! scroll. A move beyond 6 pt starts the innermost pan or scroll view that
 //! takes that direction (only touches and pens drag scroll views: the
 //! mouse scrolls with the wheel, the touchpad, the keyboard and the
@@ -90,7 +90,7 @@ const ZOOM_STEP: f32 = 1.1;
 const ZOOM_NOTCH: f32 = 48.0;
 /// A Ctrl + wheel pinch ends once the notches stop for this long (ms).
 const ZOOM_IDLE: u64 = 300;
-/// Delay before `onPressIn` for touches inside scroll views.
+/// Delay before `onPressDown` for touches inside scroll views.
 const SCROLL_PRESS_DELAY: u64 = 130;
 /// Default `delayLongPress`.
 const LONG_PRESS: f32 = 500.0;
@@ -385,7 +385,7 @@ struct Press {
     events: EventMask,
     /// Milliseconds before a long press.
     long_delay: f32,
-    /// `onPressIn` was reported.
+    /// `onPressDown` was reported.
     pressed: bool,
     /// `onLongPress` was reported: the release is no press.
     long: bool,
@@ -718,8 +718,8 @@ fn has_press(events: EventMask) -> bool {
     [
         EventKind::Press,
         EventKind::LongPress,
-        EventKind::PressIn,
-        EventKind::PressOut,
+        EventKind::PressDown,
+        EventKind::PressUp,
     ]
     .into_iter()
     .any(|k| events.contains(k))
@@ -1769,20 +1769,20 @@ fn press_in(surface: &Rc<Surface>, press: &mut Press) {
         return;
     }
     press.pressed = true;
-    if press.events.contains(EventKind::PressIn) {
-        press_event(surface, press.node, EventKind::PressIn);
+    if press.events.contains(EventKind::PressDown) {
+        press_event(surface, press.node, EventKind::PressDown);
     }
 }
 
-/// Ends a press: `onPressOut`, then `onPress` if `fire` (released inside)
+/// Ends a press: `onPressUp`, then `onPress` if `fire` (released inside)
 /// and it was no long press.
 fn press_out(surface: &Rc<Surface>, press: &mut Press, fire: bool) {
     if !press.pressed {
         return;
     }
     press.pressed = false;
-    if press.events.contains(EventKind::PressOut) {
-        press_event(surface, press.node, EventKind::PressOut);
+    if press.events.contains(EventKind::PressUp) {
+        press_event(surface, press.node, EventKind::PressUp);
     }
     if fire && !press.long && press.events.contains(EventKind::Press) {
         press_event(surface, press.node, EventKind::Press);

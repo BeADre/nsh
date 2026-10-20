@@ -157,16 +157,16 @@ fn a_stateful_component_steps_while_held_on((engine, rx): (Engine, Receiver<Moun
         .items
         .iter()
         .filter_map(|i| match i {
-            MountItem::Events { id, events } if events.contains(EventKind::PressIn) => Some(*id),
+            MountItem::Events { id, events } if events.contains(EventKind::PressDown) => Some(*id),
             _ => None,
         })
         .nth(1)
         .expect("the + button");
     let control = engine.control();
-    control.dispatch_event(plus, EventKind::PressIn, EventPayload::None);
+    control.dispatch_event(plus, EventKind::PressDown, EventPayload::None);
     // One step at once, more after the hold (400ms, then every 80ms).
     std::thread::sleep(Duration::from_millis(700));
-    control.dispatch_event(plus, EventKind::PressOut, EventPayload::None);
+    control.dispatch_event(plus, EventKind::PressUp, EventPayload::None);
     std::thread::sleep(Duration::from_millis(200));
     let mut shown = Vec::new();
     while let Ok(batch) = rx.recv_timeout(Duration::from_millis(100)) {

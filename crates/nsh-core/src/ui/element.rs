@@ -872,17 +872,17 @@ pub trait Interactive: Element {
     }
 
     /// A finger went down on the element.
-    fn on_press_in(self, listener: impl Into<Listener<()>>) -> Self {
+    fn on_press_down(self, listener: impl Into<Listener<()>>) -> Self {
         self.on(
-            EventKind::PressIn,
+            EventKind::PressDown,
             events::typed(listener.into(), events::unit),
         )
     }
 
     /// The press ended, inside or outside the element.
-    fn on_press_out(self, listener: impl Into<Listener<()>>) -> Self {
+    fn on_press_up(self, listener: impl Into<Listener<()>>) -> Self {
         self.on(
-            EventKind::PressOut,
+            EventKind::PressUp,
             events::typed(listener.into(), events::unit),
         )
     }

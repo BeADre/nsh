@@ -43,8 +43,8 @@ mount(App);
 |---|---|---|---|
 | `onPress` | `() => void` | | The finger lifted inside the view (after a press, not a long press). |
 | `onLongPress` | `() => void` | | The finger stayed down for `delayLongPress`. `onPress` does not follow. |
-| `onPressIn` | `() => void` | | The press started. |
-| `onPressOut` | `() => void` | | The press ended: lifted, slid off, or taken over by a scroll view. |
+| `onPressDown` | `() => void` | | The press started. |
+| `onPressUp` | `() => void` | | The press ended: lifted, slid off, or taken over by a scroll view. |
 | `delayLongPress` | `number` | `500` | Milliseconds before a press becomes a long press. |
 | `disabled` | `boolean` | `false` | Takes no presses and shows no feedback; applies `disabled:` classes. |
 
@@ -52,7 +52,7 @@ How presses behave:
 
 - **Only the innermost pressable view responds.** A pressable row containing a pressable button gets no press when the button is pressed.
 - **Inside a scroll view, the press waits about 130 ms** before it starts (and shows feedback), so a drag that begins on a button scrolls instead of pressing it.
-- **Sliding off cancels.** Moving the finger out of the view ends the press with `onPressOut` and no `onPress`.
+- **Sliding off cancels.** Moving the finger out of the view ends the press with `onPressUp` and no `onPress`.
 - **`disabled` removes the press listeners** from what is mounted, so the view shows no feedback at all, and `disabled:` classes apply (`class="disabled:opacity-40"`).
 - **Nested `<Text>` spans with `onPress` are links.** The paragraph is one native view; the press goes to the span under the finger. See [Text](./text.md).
 

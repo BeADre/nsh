@@ -351,7 +351,7 @@ export function Counter(props: {
         stop();
         repeat = setInterval(() => nudge(d), 90);
       }}
-      onPressOut={stop}
+      onPressUp={stop}
       disabled={d < 0 ? props.value <= props.min : props.value >= props.max}
       activeStyle={{ opacity: 0.5 }}
       hitSlop={6}

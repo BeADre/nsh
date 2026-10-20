@@ -1952,8 +1952,8 @@ impl Mounter {
         let own_press = any(&[
             EventKind::Press,
             EventKind::LongPress,
-            EventKind::PressIn,
-            EventKind::PressOut,
+            EventKind::PressDown,
+            EventKind::PressUp,
         ]) || slot.tracked & nsh_core::tailwind::state::PRESSED != 0;
         let (links, links_long_press) = match &slot.native {
             Native::Text(t) => (t.has_links(), t.links_long_press()),
@@ -2439,9 +2439,9 @@ impl Mounter {
         self.report_state(id, nsh_core::tailwind::state::PRESSED, pressed);
         let Some(s) = self.slot(id) else { return };
         let event = if pressed {
-            EventKind::PressIn
+            EventKind::PressDown
         } else {
-            EventKind::PressOut
+            EventKind::PressUp
         };
         if s.events.contains(event) {
             self.control.dispatch_event(id, event, EventPayload::None);

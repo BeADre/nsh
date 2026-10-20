@@ -240,8 +240,8 @@ function PressEvents() {
   return (
     <Card icon="components" title="Press events" subtitle="In, press, long press and out; native feedback" right={<Badge label={`${count()}`} />}>
       <View
-        onPressIn={() => fire("pressIn")}
-        onPressOut={() => fire("pressOut")}
+        onPressDown={() => fire("pressIn")}
+        onPressUp={() => fire("pressOut")}
         onPress={() => fire("press")}
         onLongPress={() => fire("longPress")}
         activeStyle={{ opacity: 0.55 }}

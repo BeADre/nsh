@@ -4720,8 +4720,8 @@ fn directed_align(align: TextAlign, rtl: bool) -> TextAlign {
 const PRESSES: [EventKind; 4] = [
     EventKind::Press,
     EventKind::LongPress,
-    EventKind::PressIn,
-    EventKind::PressOut,
+    EventKind::PressDown,
+    EventKind::PressUp,
 ];
 
 /// Whether a span with `events` takes presses (a link in its text block).

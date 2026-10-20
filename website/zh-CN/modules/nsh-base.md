@@ -61,7 +61,7 @@ mount(App);
 | `accessibilityLabel` | `string` | 内容不足以说明时（比如只有图标），屏幕阅读器读出的文字。 |
 | `role` | `AccessibilityRole` | 它对屏幕阅读器而言是什么（默认 `"button"`）：`"link"`、`"tab"`、`"menuitem"` 等。 |
 | `onPress` | `() => void` | 被按下。 |
-| `onPressIn`、`onPressOut` | `() => void` | 触摸在它上面按下，以及结束或移开：用来做你自己的按压反馈（弹簧缩放、高亮）。 |
+| `onPressDown`、`onPressUp` | `() => void` | 触摸在它上面按下，以及结束或移开：用来做你自己的按压反馈（弹簧缩放、高亮）。 |
 | `class`、`style` | | 它的全部外观。 |
 | `activeStyle`、`hoverStyle`、`focusStyle`、`disabledStyle` | `StyleProp<ViewStyle>` | 按下、悬停、获得焦点或禁用时的样式，与对应的 `<state>:` 类相同。后面的状态优先，`disabled` 优先于所有状态。 |
 

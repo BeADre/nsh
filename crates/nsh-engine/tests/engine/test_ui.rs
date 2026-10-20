@@ -317,8 +317,10 @@ pub(crate) fn Stepper(props: StepperProps, cx: Scope<StepperEvent>) -> impl Into
             .items_center()
             .justify_center()
             .role(AccessibilityRole::Button)
-            .on(EventKind::PressIn, move |_: &EventPayload| press(direction))
-            .on(EventKind::PressOut, move |_: &EventPayload| stop())
+            .on(EventKind::PressDown, move |_: &EventPayload| {
+                press(direction)
+            })
+            .on(EventKind::PressUp, move |_: &EventPayload| stop())
             .child(text(label))
     };
     view()

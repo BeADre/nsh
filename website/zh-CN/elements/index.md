@@ -71,8 +71,8 @@ mount(App);
 |---|---|---|---|
 | `onPress` | `() => void` | | 在视图内完成一次点击。 |
 | `onLongPress` | `() => void` | | 手指按住达到 `delayLongPress`。 |
-| `onPressIn` | `() => void` | | 手指在视图上按下。 |
-| `onPressOut` | `() => void` | | 手指抬起或移出。 |
+| `onPressDown` | `() => void` | | 手指在视图上按下。 |
+| `onPressUp` | `() => void` | | 手指抬起或移出。 |
 | `delayLongPress` | `number` | `500` | 按压变为长按前的毫秒数。 |
 | `hitSlop` | `number \| { top?, right?, bottom?, left? }` | | 把触摸区域扩展到边界之外，单位为点。 |
 | `pointerEvents` | `"auto" \| "none" \| "box-none" \| "box-only"` | `"auto"` | 视图及其子元素接收哪些触摸：`"none"` 都不接收，`"box-none"` 只有子元素接收，`"box-only"` 只有视图本身接收。 |
