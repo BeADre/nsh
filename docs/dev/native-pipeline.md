@@ -153,9 +153,9 @@ One Oxc pass removes TypeScript and lowers JSX (`plugin.rs` `compile_native`):
 `createNavStack`, `NavStack`, `NavPage` and `Dialog` are natives (`navigation.rs`), which `nsh/base` exports
 (`Registry::native_values`). A stack renders each route (each push its own entry, the same route pushed twice
 included) with the app's function into a page, the app's `<NavPage>` or one around what it rendered (also when a hot
-component returns an accessor); a page the user pops natively removes its route and calls `onPop`; pages and dialogs
+component returns an accessor); a page the user pops natively removes its route and calls `onDismiss`; pages and dialogs
 provide the insets they report to what they render (`safeAreaInsets`). The handlers of a page's and a dialog's native
-events are the runtime's: they keep the stack in step and call the app's props (`onPop`, `onBackPress`, `onOpen`,
+events are the runtime's: they keep the stack in step and call the app's props (`onDismiss`, `onBackPress`, `onOpen`,
 `onClose`, `onCancel`, `onOpenChange`), so the app's names are not the core's events' (`onDismiss`,
 `onRequestClose`, ...). A dialog renders the app's popup (`class` / `style`) and, while the app styles one
 (`backdropClass` / `backdropStyle`), a backdrop part behind it whose presses are close attempts.

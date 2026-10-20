@@ -70,7 +70,7 @@ the old names.
 
 `gpui-base` is the reference, not a rule above judgment: a name is not taken when it reads worse for TSX apps on
 every platform, as the user decided (2026-10-20) for `onSubmit` (a phone's return key is not Enter), `animation`
-(`transition` is a style key) and `multiline` (one word). Each such row says "not followed" and why.
+(`transition` is a style key), `multiline` (one word) and a page's `onDismiss`. Each such row says "not followed" and why.
 
 ## Renames
 
@@ -99,7 +99,7 @@ and `Input`'s React Native names follow the rules as well.
 | `headerTintColor`, `headerBackgroundColor`, `headerTitleColor` | `headerStyle={{ backgroundColor, color, tintColor }}`, `headerClass` | `gpui-component` `Settings::header_style` | `color` is the title's, `tintColor` the buttons'; only these keys |
 | `ios` / `desktop` `headerLargeTitle` | `headerLargeTitle` | none | Top-level |
 | `ios` / `desktop` `headerBackTitle` | `headerBackTitle` | none | Top-level |
-| `onDismiss` | `onPop` | `NavStackEvent::Popped` (`on_<event>`) | The user popped it (back button, swipe) |
+| `onDismiss` | unchanged | `NavStackEvent::Popped` (not followed) | The user popped it (back button, swipe). Decided by the user: a page leaving the stack is dismissed, as UIKit says |
 | `preventBack` | `popOnBack` (default `true`; `false` = `preventBack`) | `Dialog::close_on_escape` | By analogy: `popOn<Trigger>` as `closeOn<Trigger>`; covers every back (header, Android back, swipe) |
 | `onBackRequest` | `onBackPress` | `DialogChangeReason::*Press`; `nsh/android` `"hardwareBackPress"` | Fires on every back press, before the pop when `popOnBack` allows it |
 | `gestureEnabled` | `popOnSwipe` (default `true`) | `Dialog::close_on_backdrop_press` | By analogy; the interactive gesture only, the buttons still pop |

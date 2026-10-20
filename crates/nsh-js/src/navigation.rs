@@ -14,7 +14,7 @@
 //!
 //! The handlers of a page's and a dialog's native events are the
 //! runtime's: they keep the stack in step and call the app's props
-//! (`onPop`, `onBackPress`, `onOpen`, `onClose`, `onCancel`,
+//! (`onDismiss`, `onBackPress`, `onOpen`, `onClose`, `onCancel`,
 //! `onOpenChange`), so the app's names are not the core's events'.
 
 use std::{
@@ -166,7 +166,7 @@ export interface NavPageProps extends NavPageHostProps {
    * over them. */
   headerClass?: string;
   /** The user popped the page (back button, swipe); its route is gone. */
-  onPop?: () => void;
+  onDismiss?: () => void;
   /** The user pressed back on the page (the header's back button, Android
    * back, Escape / Alt+Left / the mouse's back button on the desktops, the
    * browser's back), whether or not `popOnBack` let it pop. */
@@ -719,7 +719,7 @@ unsafe extern "C" fn screen(
                 "headerLeft",
                 "headerRight",
                 "headerTitle",
-                "onPop",
+                "onDismiss",
                 "onBackPress",
                 "onInsets",
             ],
@@ -830,7 +830,7 @@ unsafe extern "C" fn header_item(
 }
 
 /// A page's dismissal: a native pop tells the stack, then the app
-/// (`onPop`).
+/// (`onDismiss`).
 unsafe extern "C" fn on_dismiss(
     ctx: *mut JsContext,
     _this: JsValue,
@@ -854,7 +854,7 @@ unsafe extern "C" fn on_dismiss(
         } else {
             qjs::JS_FreeValue(ctx, popped);
         }
-        let own = get(ctx, props, c"onPop");
+        let own = get(ctx, props, c"onDismiss");
         let r = if qjs::JS_IsFunction(ctx, own) {
             qjs::JS_Call(ctx, own, UNDEFINED, 0, ptr::null_mut())
         } else {

@@ -171,7 +171,7 @@ events! {
     RotationStart = "onRotationStart": "A two-finger rotation started (payload: `rotation`, `velocity`).",
     RotationEnd = "onRotationEnd": "A two-finger rotation ended (payload: `rotation`, `velocity`).",
     AccessibilityAction = "onAccessibilityAction": "An assistive technology performed an action (payload: `actionName`).",
-    Dismiss = "onDismiss" as "": "A screen was popped or a modal dismissed by the user or the system (`NavPage`'s `onPop`, `Dialog`'s `onClose`).",
+    Dismiss = "onDismiss" as "": "A screen was popped or a modal dismissed by the user or the system (`NavPage`'s `onDismiss`, `Dialog`'s `onClose`).",
     RequestClose = "onRequestClose" as "": "The user tried to close a modal natively (Escape or the back button, a sheet swiped down; payload: `reason`: `\"cancel\"` or `\"swipe\"`, `\"cancel\"` when none); `Dialog`'s `onCancel` and `onOpenChange` (a press on its backdrop part is handled in JS).",
     Show = "onShow" as "": "A modal finished appearing (`Dialog`'s `onOpen`).",
     Insets = "onInsets": "The insets of a screen or modal changed (payload: `top`, `right`, `bottom`, `left`).",

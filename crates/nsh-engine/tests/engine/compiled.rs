@@ -998,7 +998,7 @@ mount(() => (
           headerClass="bg-white tint-blue-500"
           header={<Text>bar</Text>}
           onBackPress={() => log.update((l) => [...l, `back ${route}`])}
-          onPop={() => log.update((l) => [...l, `pop ${route}`])}
+          onDismiss={() => log.update((l) => [...l, `pop ${route}`])}
         >
           <Text>{`depth ${nav.routes().length}`}</Text>
         </NavPage>
@@ -1009,7 +1009,7 @@ mount(() => (
 "##;
 
 /// A page whose `popOnBack` is false stays: its back presses call
-/// `onBackPress`; a native pop calls `onPop` after its route went.
+/// `onBackPress`; a native pop calls `onDismiss` after its route went.
 #[test]
 fn pages_keep_or_pop_by_their_flags() {
     let (engine, rx) = start_app(PAGE_EVENTS);

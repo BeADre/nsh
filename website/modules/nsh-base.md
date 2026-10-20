@@ -246,7 +246,7 @@ options of the system header on iOS and Android:
 | `style`, `class` | | none | The page's style. |
 | `children` | `JSX.Element` | none | The content. |
 | `onBackPress` | `() => void` | none | The user pressed back on the page (the header's back button, Android back, Escape, Alt+Left or a mouse's back button on the desktops, the browser's back), whether or not `popOnBack` let it pop. |
-| `onPop` | `() => void` | none | The user popped the page (back button, swipe); its route is gone. |
+| `onDismiss` | `() => void` | none | The user popped the page (back button, swipe); its route is gone. |
 
 The header items (`header`, `headerLeft`, `headerRight`, `headerTitle`) are ordinary JSX: they can read signals,
 handle presses and update while the page is shown.

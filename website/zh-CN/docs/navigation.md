@@ -143,7 +143,7 @@ export const nav = createNavStack<Route>([{ name: "home" }]);
 | `popOnSwipe` | `boolean` | `true` | 交互式返回手势（iOS 侧滑返回、Android 预测性返回）会返回。返回按钮无论如何都会返回。 |
 | `popOnBack` | `boolean` | `true` | 每一种返回方式都会弹出页面：返回按钮、Android 返回键、桌面的返回键、浏览器的返回按钮和侧滑。 |
 | `onBackPress` | `() => void` | | 用户在页面上按了返回，无论 `popOnBack` 是否让它弹出。 |
-| `onPop` | `() => void` | | 用户弹出了页面；路由已被移除。 |
+| `onDismiss` | `() => void` | | 用户弹出了页面；路由已被移除。 |
 | `style`、`class` | | | 页面的内容视图。 |
 
 标题栏中的项目就是普通视图，所以可以按压，也是响应式的：

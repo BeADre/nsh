@@ -624,7 +624,7 @@ impl Screen {
 
     /// The user popped the screen natively (back button, swipe): leave it
     /// out of the view (its region).
-    pub fn on_pop<M>(self, listener: impl IntoListener<(), M>) -> Self {
+    pub fn on_dismiss<M>(self, listener: impl IntoListener<(), M>) -> Self {
         self.listen(EventKind::Dismiss, listener.into_listener(), events::unit)
     }
 

@@ -139,7 +139,7 @@ Pages stay mounted while their route is in the stack: going back shows the previ
 | `popOnSwipe` | `boolean` | `true` | The interactive back gesture (iOS swipe back, Android predictive back) pops. The back buttons pop either way. |
 | `popOnBack` | `boolean` | `true` | Every way back pops the page: the back buttons, Android's back, the desktops' back keys, the browser's back button and the swipe. |
 | `onBackPress` | `() => void` | | The user pressed back on the page, whether or not `popOnBack` let it pop. |
-| `onPop` | `() => void` | | The user popped the page; its route is already removed. |
+| `onDismiss` | `() => void` | | The user popped the page; its route is already removed. |
 | `style`, `class` | | | The page's content view. |
 
 Header items are ordinary views, so they can be pressable and reactive:
