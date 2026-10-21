@@ -13143,3 +13143,159 @@ mod asset_variants {
         assert_eq!(src.size, Some((17.0, 12.0)));
     }
 }
+
+mod rust_popup_menus {
+    use super::*;
+    use crate::ui::Root;
+    fn texts(batch: &MountBatch) -> Vec<String> {
+        batch
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                MountItem::Text { text, .. } => Some(text.text.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+    use crate::{
+        desktop::{DesktopCommand, MenuAction, MenuItem},
+        ui::prelude::*,
+    };
+
+    #[component]
+    fn Menus() -> impl IntoElement {
+        let choice = signal("pending".to_string());
+        let items = vec![MenuItem::Submenu {
+            label: "Languages".into(),
+            enabled: true,
+            items: vec![
+                MenuItem::Action(MenuAction {
+                    id: 7,
+                    label: "English".into(),
+                    enabled: true,
+                    checked: Some(true),
+                    role: None,
+                    shortcut: None,
+                }),
+                MenuItem::Action(MenuAction {
+                    id: 8,
+                    label: "Disabled".into(),
+                    enabled: false,
+                    checked: None,
+                    role: None,
+                    shortcut: None,
+                }),
+            ],
+        }];
+        let answer = crate::ui::desktop::popup_menu(items, Some(point(px(10.0), px(20.0))));
+        spawn(async move {
+            choice.set(format!("{:?}", answer.await));
+        });
+        view().child(text(move || choice.get()))
+    }
+
+    fn event(c: &mut Core<FakeEngine>, id: Option<u32>) {
+        let payload = match id {
+            Some(id) => EventPayload::Map(vec![("id", crate::PayloadValue::Number(id as f64))]),
+            None => EventPayload::Map(vec![("closed", crate::PayloadValue::Bool(true))]),
+        };
+        c.component_event(ROOT_ID, EventKind::Menu, &payload);
+        c.run_component_tasks();
+    }
+
+    fn open() -> (Core<FakeEngine>, u32, u32) {
+        let mut c = core();
+        c.set_environment(crate::ui::Environment {
+            os: crate::platform::Os::MacOs,
+            ..Default::default()
+        });
+        c.mount_root(&Root::of::<Menus>());
+        let batch = c.commit().unwrap();
+        let (enabled, disabled) = batch
+            .items
+            .iter()
+            .find_map(|item| match item {
+                MountItem::Command {
+                    command: Command::Desktop(command),
+                    ..
+                } => match &**command {
+                    DesktopCommand::PopupMenu { items, at } => {
+                        assert_eq!(*at, Some(point(px(10.0), px(20.0))));
+                        let MenuItem::Submenu { items, .. } = &items[0] else {
+                            panic!("submenu")
+                        };
+                        let MenuItem::Action(a) = &items[0] else {
+                            panic!("action")
+                        };
+                        let MenuItem::Action(b) = &items[1] else {
+                            panic!("disabled action")
+                        };
+                        assert_eq!(a.checked, Some(true));
+                        assert!(!b.enabled);
+                        assert_ne!(a.id, 7);
+                        Some((a.id, b.id))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            })
+            .expect("native popup command");
+        (c, enabled, disabled)
+    }
+
+    #[test]
+    fn rust_popup_returns_original_id_only_after_native_close() {
+        let (mut c, enabled, disabled) = open();
+        event(&mut c, Some(disabled));
+        event(&mut c, Some(enabled));
+        assert!(c.commit().is_none());
+        event(&mut c, None);
+        assert_eq!(texts(&c.commit().unwrap()), ["Some(7)"]);
+        // A repeated close has no Rust popup to settle.
+        event(&mut c, None);
+    }
+
+    #[test]
+    fn rust_popup_dismissal_and_disabled_selection_return_none() {
+        let (mut c, _, disabled) = open();
+        event(&mut c, Some(disabled));
+        event(&mut c, None);
+        assert_eq!(texts(&c.commit().unwrap()), ["None"]);
+    }
+
+    #[test]
+    fn rust_popup_rejects_overlap_without_replacing_the_first_answer() {
+        let (mut c, selected, _) = open();
+        let (_answer, slot) = crate::ui::Answer::new();
+        c.components.executor.act(crate::ui::Action::PopupMenu {
+            items: Vec::new(),
+            at: None,
+            answer: slot.clone(),
+        });
+        c.run_component_tasks();
+        assert_eq!(slot.borrow().value, Some(None));
+        event(&mut c, Some(selected));
+        event(&mut c, None);
+        assert_eq!(texts(&c.commit().unwrap()), ["Some(7)"]);
+    }
+
+    #[test]
+    fn rust_popup_on_mobile_resolves_without_a_desktop_command() {
+        let mut c = core();
+        c.set_environment(crate::ui::Environment {
+            os: crate::platform::Os::Ios,
+            ..Default::default()
+        });
+        c.mount_root(&Root::of::<Menus>());
+        let batch = c.commit().unwrap();
+        c.run_component_tasks();
+        assert_eq!(texts(&c.commit().unwrap()), ["None"]);
+        assert!(!batch.items.iter().any(|item| matches!(
+            item,
+            MountItem::Command {
+                command: Command::Desktop(_),
+                ..
+            }
+        )));
+    }
+}

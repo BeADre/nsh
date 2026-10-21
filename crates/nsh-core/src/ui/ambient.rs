@@ -779,3 +779,11 @@ pub(crate) fn desktop_command(command: crate::desktop::DesktopCommand) {
         Command::Desktop(Box::new(command)),
     ));
 }
+
+pub(crate) fn popup_menu(
+    items: Vec<crate::desktop::MenuItem>,
+    at: Option<crate::geometry::Point<Points>>,
+    answer: super::AnswerSlot<Option<u32>>,
+) {
+    act(Action::PopupMenu { items, at, answer });
+}

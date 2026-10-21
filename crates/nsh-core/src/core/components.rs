@@ -33,6 +33,13 @@ use crate::{
     },
 };
 
+/// A Rust popup keeps its choice until the native tracking loop closes.
+struct PopupMenu {
+    actions: FxHashMap<u32, u32>,
+    selected: Option<u32>,
+    answer: AnswerSlot<Option<u32>>,
+}
+
 /// Lowered styles kept for reuse (many elements have the same styles);
 /// cleared when full.
 const STYLE_CACHE: usize = 4096;
@@ -465,6 +472,8 @@ pub(super) struct Components {
     /// Dialogs components show, by id: their answers.
     dialogs: FxHashMap<u32, AnswerSlot<i32>>,
     next_dialog: u32,
+    popup_menu: Option<PopupMenu>,
+    next_menu_action: u32,
     /// Image sizes asked for (`Image.getSize`), by request id: their answers.
     image_infos: FxHashMap<u32, AnswerSlot<Result<ImageSize, String>>>,
     next_image_info: u32,
@@ -551,6 +560,8 @@ impl Default for Components {
             status_bars: Default::default(),
             dialogs: FxHashMap::default(),
             next_dialog: 1,
+            popup_menu: None,
+            next_menu_action: 0x8000_0000,
             image_infos: FxHashMap::default(),
             next_image_info: 1,
             clipboard_reads: FxHashMap::default(),
@@ -4315,6 +4326,63 @@ impl<M: TextEngine> Core<M> {
             Action::Command(id, command) => {
                 let _ = self.apply_op(Op::Command { id, command });
             }
+            Action::PopupMenu {
+                mut items,
+                at,
+                answer,
+            } => {
+                if self.components.popup_menu.is_some() {
+                    answer.borrow_mut().deliver(None);
+                    return;
+                }
+                let mut popup = PopupMenu {
+                    actions: FxHashMap::default(),
+                    selected: None,
+                    answer,
+                };
+                fn assign(
+                    items: &mut [crate::desktop::MenuItem],
+                    enabled: bool,
+                    next: &mut u32,
+                    actions: &mut FxHashMap<u32, u32>,
+                ) {
+                    use crate::desktop::MenuItem;
+                    for item in items {
+                        match item {
+                            MenuItem::Action(action) if action.id != 0 => {
+                                let original = action.id;
+                                action.id = *next;
+                                *next = next
+                                    .checked_add(1)
+                                    .expect("native menu action ids exhausted");
+                                if enabled && action.enabled && action.role.is_none() {
+                                    actions.insert(action.id, original);
+                                }
+                            }
+                            MenuItem::Submenu {
+                                enabled: on, items, ..
+                            } => assign(items, enabled && *on, next, actions),
+                            _ => {}
+                        }
+                    }
+                }
+                assign(
+                    &mut items,
+                    true,
+                    &mut self.components.next_menu_action,
+                    &mut popup.actions,
+                );
+                self.components.popup_menu = Some(popup);
+                let _ = self.apply_op(Op::Command {
+                    id: crate::ROOT_ID,
+                    command: Command::Desktop(Box::new(
+                        crate::desktop::DesktopCommand::PopupMenu {
+                            items: items.into(),
+                            at,
+                        },
+                    )),
+                });
+            }
             Action::Dialog(mut dialog, answer) => {
                 dialog.id = self.components.next_dialog;
                 self.components.next_dialog += 1;
@@ -4512,6 +4580,22 @@ impl<M: TextEngine> Core<M> {
             _ => None,
         };
         match kind {
+            EventKind::Menu if id == crate::ROOT_ID => {
+                let closed = matches!(payload, EventPayload::Map(entries) if entries.iter().any(|(key, value)| *key == "closed" && matches!(value, crate::PayloadValue::Bool(true))));
+                if closed {
+                    if let Some(popup) = self.components.popup_menu.take() {
+                        popup.answer.borrow_mut().deliver(popup.selected);
+                        return true;
+                    }
+                } else if let Some(popup) = self.components.popup_menu.as_mut()
+                    && let Some(selected) =
+                        number("id").and_then(|id| popup.actions.get(&(id as u32)))
+                {
+                    popup.selected = Some(*selected);
+                    return true;
+                }
+                false
+            }
             EventKind::Dialog => {
                 let Some(dialog) = number("id") else {
                     return false;

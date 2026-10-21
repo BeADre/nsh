@@ -847,3 +847,14 @@ the requests) decides, as `hint_open`. The tooltip itself is the bubble (the app
 what it says; it never takes the pointer (`pointer_events(None)`). An element's `tooltip` prop (`Interactive::tooltip`,
 `Prop::Tooltip`) takes a text too, in a minimal bubble of the theme's tokens, or any other element as it is, in a
 hint overlay the core makes itself (`Core::set_tooltip`).
+
+### Native popup menus in Rust
+
+`nsh_core::ui::desktop::popup_menu(items, at)` takes `Vec<nsh_core::desktop::MenuItem>`
+and an optional `Point<Points>` in surface coordinates (the pointer when omitted).
+Await its `Answer<Option<u32>>` in a component task: after native tracking ends it
+returns the chosen `MenuAction::id`, or `None` on dismissal. Nested submenus,
+shortcuts, disabled items and checked states use the desktop backends' menu model.
+Ids are local to that call and remapped internally. Disabled items, disabled
+submenus and role-only items cannot produce a choice. One Rust popup is tracked
+per surface; an overlapping request returns `None`. Mobile and web return `None`.

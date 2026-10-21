@@ -64,6 +64,12 @@ impl Wake for TaskWaker {
 /// What a component or a task asks of the platform, applied by the core.
 pub(crate) enum Action {
     Command(NodeId, Command),
+    /// A native popup; its answer is delivered after the menu closes.
+    PopupMenu {
+        items: Vec<crate::desktop::MenuItem>,
+        at: Option<crate::geometry::Point<crate::Points>>,
+        answer: AnswerSlot<Option<u32>>,
+    },
     /// A dialog; its answer resolves the slot.
     Dialog(Dialog, Rc<RefCell<Output<i32>>>),
     /// The result of a module function JS waits for.

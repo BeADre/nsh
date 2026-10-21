@@ -519,3 +519,11 @@ crate，都会重新构建并重启应用。
 - [Web](./web.md#带-rust-组件的应用)：浏览器中的 Rust 应用。
 - [网络](./networking.md#在-rust-组件中)：在 Rust 中使用 `fetch`。
 - [CLI](./cli.md#nsh-init)：`nsh init --template rust` 和 `--template mixed`。
+
+### 原生弹出菜单
+
+调用 `nsh_core::ui::desktop::popup_menu(items, at)`，传入
+`nsh_core::desktop::MenuItem` 列表。桌面原生菜单支持嵌套子菜单、快捷键、
+勾选和禁用状态。`at` 是表面坐标中的可选 `Point<Points>`；`None` 使用鼠标位置。
+在任务中等待结果：菜单关闭后返回 `Some(action_id)`，取消时返回 `None`。
+菜单项 ID 仅在本次调用中使用。

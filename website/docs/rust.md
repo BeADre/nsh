@@ -566,3 +566,12 @@ On the web, a crate can call the browser's APIs (a WebSocket, `IndexedDB`, …) 
 - [Web](./web.md#apps-with-rust-components): Rust apps in the browser.
 - [Networking](./networking.md#from-rust-components): `fetch` from Rust.
 - [CLI](./cli.md#nsh-init): `nsh init --template rust` and `--template mixed`.
+
+### Native popup menus
+
+Call `nsh_core::ui::desktop::popup_menu(items, at)` with a vector of
+`nsh_core::desktop::MenuItem` values. The native desktop menu supports nested
+submenus, shortcuts, checked states and disabled items. `at` is an optional
+`Point<Points>` in surface coordinates; `None` uses the pointer. Await the result
+in a task: it returns `Some(action_id)` after the menu closes, or `None` on
+dismissal. Action ids are local to each call.

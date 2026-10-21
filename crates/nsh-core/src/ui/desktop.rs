@@ -41,3 +41,24 @@ pub fn title_bar() -> Edges<Points> {
 pub fn close_window() {
     super::ambient::desktop_command(DesktopCommand::Close);
 }
+
+/// Shows the platform's native popup menu at `at` (surface coordinates), or
+/// at the pointer. Await it in a task: it returns the chosen action's id after
+/// the menu closes, or `None` on dismissal. Disabled actions and role-only
+/// actions (id zero) cannot return an id. A second Rust popup while one is open
+/// returns `None`. On platforms without desktop menus it returns `None`.
+///
+/// Item ids belong to this invocation; they are remapped before reaching the
+/// platform so a late event from an older menu cannot select a new action.
+pub fn popup_menu(
+    items: Vec<crate::desktop::MenuItem>,
+    at: Option<crate::geometry::Point<Points>>,
+) -> super::Answer<Option<u32>> {
+    let (answer, slot) = super::Answer::new();
+    if !super::ambient::os().is_desktop() {
+        slot.borrow_mut().deliver(None);
+        return answer;
+    }
+    super::ambient::popup_menu(items, at, slot);
+    answer
+}
