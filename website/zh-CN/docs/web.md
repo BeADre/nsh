@@ -83,7 +83,7 @@ nsh package App.tsx --target web --run     # 并在本机提供服务（打开�
 
 ### 用 iframe 嵌入
 
-Web 上没有嵌入 API：用 `<iframe>` 嵌入已发布的应用，它的尺寸就是应用的窗口：
+用 `<iframe>` 嵌入已发布的应用，也可以[用 `createPlayer` 直接嵌入到页面](#嵌入到页面)。iframe 的尺寸就是应用的窗口：
 
 ```html
 <iframe src="https://apps.example.com/counter/" title="Counter"

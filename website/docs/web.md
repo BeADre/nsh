@@ -93,7 +93,7 @@ later errors go to the browser's console.
 
 ### Embed it with an iframe
 
-There is no embedding API on the web: embed the published app with an `<iframe>`. Its size is the app's window:
+Embed the published app with an `<iframe>`, or [embed it directly in a page with `createPlayer`](#embed-it-in-a-page). The iframe's size is the app's window:
 
 ```html
 <iframe src="https://apps.example.com/counter/" title="Counter"
