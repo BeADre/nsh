@@ -27,6 +27,7 @@ import BaseRichEditorKit from "./base-rich-editor-kit";
 import BaseRichEditorSession from "./base-rich-editor-session";
 import BaseRichEditorView from "./base-rich-editor-view";
 import BaseSafeAreaKeyboard from "./base-safe-area-keyboard";
+import BaseSelect from "./base-select";
 import BaseSelectableView from "./base-selectable-view";
 import BaseSlider from "./base-slider";
 import BaseSwitch from "./base-switch";
@@ -63,6 +64,7 @@ const cases: Record<string, () => JSX.Element> = {
   "base-collapsible": BaseCollapsible,
   "base-plot": BasePlot,
   "base-progress": BaseProgress,
+  "base-select": BaseSelect,
   "base-slider": BaseSlider,
   "base-table": BaseTable,
   "base-toast": BaseToast,
