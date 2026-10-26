@@ -16,6 +16,7 @@ import BaseDock from "./base-dock";
 import BaseEditor from "./base-editor";
 import BaseNavPage from "./base-nav-page";
 import BaseNavStack from "./base-nav-stack";
+import BaseOtpInput from "./base-otp-input";
 import BasePopups from "./base-popups";
 import BasePlot from "./base-plot";
 import BaseProgress from "./base-progress";
@@ -47,6 +48,7 @@ const cases: Record<string, () => JSX.Element> = {
   "base-editor": BaseEditor,
   "base-nav-page": BaseNavPage,
   "base-nav-stack": BaseNavStack,
+  "base-otp-input": BaseOtpInput,
   "base-popups": BasePopups,
   "base-safe-area-keyboard": BaseSafeAreaKeyboard,
   "base-text-view": BaseTextView,

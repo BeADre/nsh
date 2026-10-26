@@ -3,7 +3,8 @@
 // selection, a plan picker of radios with a disabled plan, tabs that switch
 // a section, collapsible sections whose content is kept while collapsed,
 // progress bars of a transfer the app drives and of one of unknown size,
-// sliders of a level and of a price range.
+// sliders of a level and of a price range, a one-time code typed or pasted
+// into its cells.
 // Every row is the control, its label included. Also the
 // gallery's own `Toggle` (a `Switch`) and `Segmented` (`Tabs`).
 import { beforeEach, expect, open, test } from "nsh/test";
@@ -155,6 +156,28 @@ test("a slider reports the value the app owns, a range's thumbs never cross, and
   await app.press("Unmute");
   await app.waitFor("Volume: unmuted");
   expect(app.texts()).toContain("100%");
+});
+
+test("a one-time code takes digits up to its length, and a pasted code fills it", async () => {
+  const code = "label:Verification code, 6 digits";
+  expect(app.texts()).toContain("The code is 246810");
+  expect(app.enabled("Clear")).toBe(false);
+  // Digits only, one cell each.
+  await app.type(code, "13a5");
+  await app.waitFor("Code: 135");
+  expect(app.texts()).toContain("5");
+  expect(app.texts()).not.toContain("a");
+  await app.press("Clear");
+  await app.waitFor("Code: cleared");
+  // A pasted code replaces the code; the app checks it once it is full.
+  await app.paste(code, { text: "246 810" });
+  await app.waitFor("Code complete: 246810");
+  expect(app.texts()).toContain("Verified");
+  // Full: another digit changes nothing.
+  await app.type(code, "9");
+  await app.wait(50);
+  expect(app.texts()).toContain("Code complete: 246810");
+  expect(app.texts()).not.toContain("9");
 });
 
 test("the gallery's segmented control is a tab list", async () => {

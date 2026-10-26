@@ -1,7 +1,7 @@
 //! `nsh/base`: the behavior and infrastructure foundation of NSH apps' UI,
 //! written in Rust, with no look of its own (as `gpui-base` is GPUI Kit's):
 //! controls (`Button`, `Checkbox`, `Radio` in a `RadioGroup`, `Slider`,
-//! `Switch`, `Tab` in `Tabs`), a progress bar (`Progress`), disclosure (`Collapsible`),
+//! `Switch`, `Tab` in `Tabs`, a one-time code: `OtpInput`), a progress bar (`Progress`), disclosure (`Collapsible`),
 //! the parts of charts (`plot`: `nsh/base/plot`), navigation (stacks and pages), dialogs, popups on the core's overlays
 //! (`Popover`, `Menu`, `ContextMenu`, `Tooltip`, `Sheet`), a code editor
 //! (`Editor`), the changes between two texts (`DiffView`), tables over any number of rows and columns (`DataTable`) and static tables
@@ -28,6 +28,7 @@ mod keys;
 mod menu;
 mod navigation;
 mod numeric;
+mod otp_input;
 pub mod plot;
 mod popover;
 mod popup;
@@ -92,6 +93,10 @@ pub use crate::{
         context_menu, menu, menu_item, menu_separator, submenu,
     },
     navigation::{dialog, nav_page, nav_stack},
+    otp_input::{
+        OtpInput, OtpInputApi, OtpInputCompleteEvent, OtpInputElement, OtpInputEvent,
+        OtpInputProps, otp_input,
+    },
     popover::{Popover, PopoverElement, PopoverEvent, PopoverProps, popover},
     popup::OpenChangeReason,
     progress::{Progress, ProgressElement, ProgressProps, progress},
@@ -145,6 +150,7 @@ pub fn registry() -> Registry {
         .register::<Menu>()
         .register::<MenuItem>()
         .register::<MenuSeparator>()
+        .register::<OtpInput>()
         .register::<Submenu>()
         .register::<Popover>()
         .register::<Sheet>()
@@ -219,6 +225,7 @@ mod tests {
                 "Menu",
                 "MenuItem",
                 "MenuSeparator",
+                "OtpInput",
                 "Popover",
                 "Progress",
                 "Radio",

@@ -8,6 +8,7 @@ mod editor_completion;
 mod editor_definition;
 mod editor_diagnostics;
 mod editor_languages;
+mod otp_input;
 mod plot;
 mod resizable;
 mod rich_editor;
