@@ -289,8 +289,18 @@ impl Geometry {
     /// The place at `p` (content box): an atom it is on, else the nearest
     /// textblock's nearest position.
     pub(crate) fn hit(&self, p: Point<Points>) -> Option<Hit> {
+        self.hit_in(p, None)
+    }
+
+    /// The place at `p` among the atoms and textblocks in `range` (all
+    /// without one): a table cell's, which its neighbors beside it must
+    /// not take a press from.
+    pub(crate) fn hit_in(&self, p: Point<Points>, range: Option<(usize, usize)>) -> Option<Hit> {
+        let within = |pos: usize| range.is_none_or(|(from, to)| pos >= from && pos < to);
         for (id, pos) in &self.atoms {
-            if let (Some(origin), Some((_, frame))) = (self.origin(*id), self.frames.get(id)) {
+            if within(*pos)
+                && let (Some(origin), Some((_, frame))) = (self.origin(*id), self.frames.get(id))
+            {
                 let b = Bounds::new(origin, frame.size);
                 if p.x >= b.origin.x
                     && p.x < b.origin.x + b.size.width
@@ -303,7 +313,10 @@ impl Geometry {
         }
         // The textblock nearest vertically (then horizontally).
         let mut best: Option<(f32, f32, u64)> = None;
-        for id in self.texts.keys() {
+        for (id, text) in &self.texts {
+            if !within(text.start) {
+                continue;
+            }
             let Some((origin, geo)) = self.text_box(*id) else {
                 continue;
             };

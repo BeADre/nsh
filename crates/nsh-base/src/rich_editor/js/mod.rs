@@ -3,7 +3,8 @@
 //! class over an [`EditorSession`]), commands as data (`toggleMark`,
 //! `setBlockType`, `chain`, ...), plugins as data (`history`, `keymap`,
 //! `inputRules`, `markdown`, `starterKit`) and `RichEditorPlugin`, whose
-//! hooks are the app's.
+//! hooks are the app's; tables' commands are `tables.rs`'s (`insertTable`,
+//! `mergeCells`, ...).
 //!
 //! Everything runs in Rust: a command resolves against the schema once
 //! and runs in the kernel, plugins are the kernel's, and states cross to
@@ -16,6 +17,7 @@ mod extension_api;
 mod extensions;
 mod json;
 mod plugins;
+mod tables;
 
 use std::sync::Arc;
 
@@ -122,7 +124,8 @@ pub(crate) fn register(registry: &mut Registry) {
         .class::<RichSchema>()
         .class::<RichEditorSession>()
         .class::<RichEditorPlugin>()
-        .module::<RichEditorApi>();
+        .module::<RichEditorApi>()
+        .module::<tables::RichTableApi>();
     extension_api::register(registry);
 }
 

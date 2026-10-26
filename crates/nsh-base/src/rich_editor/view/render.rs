@@ -24,12 +24,14 @@ use super::{
     geometry::{DOC, InlineMap, Run},
     node_view::{MarkView, NodeView, NodeViewCx},
     parts::{self, Part},
+    table,
 };
 use crate::{
     input,
     rich_editor::{
         model::{Mark, Node, utf16_len},
         state::{Decoration, DecorationKind},
+        tables::{CellSelection, TableRole, table_role},
     },
     theme,
 };
@@ -41,7 +43,7 @@ const CARET_WIDTH: f32 = 2.0;
 const GAP_WIDTH: f32 = 20.0;
 
 /// `el` with part `part`'s classes and style.
-fn part<E: Element>(el: E, rv: &Rv, part: Part) -> E {
+pub(crate) fn part<E: Element>(el: E, rv: &Rv, part: Part) -> E {
     let props = rv.props;
     el.app_class(move || props.classes.with(|c| c.part(part).cloned()))
         .inline_style(move || {
@@ -126,6 +128,7 @@ fn content(rv: Rv) -> impl IntoElement {
     .on_responder_terminate(move |_: &ResponderEvent| end.release())
     .child(selection_rects(rv.clone()))
     .child(blocks(rv.clone(), DOC))
+    .child(table::controls(rv.clone()))
     .child(gap_cursor(rv.clone()))
     .child(drop_cursor(rv.clone()))
     .child(caret(rv.clone()))
@@ -258,6 +261,13 @@ fn block(rv: Rv, item: ReadSignal<BlockItem>) -> AnyElement {
     let wrapper = match list_marker(&rv, &first) {
         Some(_) => wrapper.relative().child(marker(rv.clone(), item)),
         None => wrapper,
+    };
+    // Tables are grids of their cells (`table.rs`).
+    let wrapper = match (table_role(first.node.ty()), &kind) {
+        (_, Kind::View(_)) => wrapper,
+        (Some(TableRole::Table), _) => table::grid(wrapper, &rv, item),
+        (Some(TableRole::Cell | TableRole::HeaderCell), _) => table::cell(wrapper, &rv, item),
+        _ => wrapper,
     };
     let task = render_kind(&first.node) == Some("task");
     let content = match kind {
@@ -981,7 +991,9 @@ fn selection_rects(rv: Rv) -> impl IntoElement {
         let (from, to, text) = {
             let state = rv.st.borrow();
             let s = state.selection();
-            (s.from(), s.to(), s.as_node().is_none())
+            // Selected cells are painted in the cells (`selectedCell`).
+            let cells = s.as_custom::<CellSelection>().is_some();
+            (s.from(), s.to(), s.as_node().is_none() && !cells)
         };
         if from == to || !text {
             return Vec::new();

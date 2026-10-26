@@ -72,6 +72,22 @@ pub struct RichEditorClasses {
     /// indents `ul`).
     #[prop(skip_none)]
     pub list_marker: Option<SharedString>,
+    /// Over each cell a cell selection holds (the theme's selection
+    /// color by default).
+    #[prop(skip_none)]
+    pub selected_cell: Option<SharedString>,
+    /// The bar of a grip on the top border of a column and the left border
+    /// of a row of the table the selection is in: pressing it selects the
+    /// column or row, dragging it moves it.
+    #[prop(skip_none)]
+    pub table_grip: Option<SharedString>,
+    /// The line a column's right border or a row's bottom border shows
+    /// while the pointer is on it (it resizes them) or drags it.
+    #[prop(skip_none)]
+    pub table_resize_handle: Option<SharedString>,
+    /// Where a dragged row or column drops.
+    #[prop(skip_none)]
+    pub table_drop_indicator: Option<SharedString>,
     /// The nodes' boxes, by type name (`paragraph`) or by type and
     /// attribute (`heading[level=2]`).
     #[prop(skip_none)]
@@ -123,6 +139,18 @@ pub struct RichEditorStyles {
     /// The marker of a list's item.
     #[prop(skip_none)]
     pub list_marker: Option<PartStyle>,
+    /// Over a selected cell.
+    #[prop(skip_none)]
+    pub selected_cell: Option<PartStyle>,
+    /// A table's grip bar.
+    #[prop(skip_none)]
+    pub table_grip: Option<PartStyle>,
+    /// A column's or row's resize line.
+    #[prop(skip_none)]
+    pub table_resize_handle: Option<PartStyle>,
+    /// Where a dragged row or column drops.
+    #[prop(skip_none)]
+    pub table_drop_indicator: Option<PartStyle>,
     /// The nodes' boxes, by type name or type and attribute.
     #[prop(skip_none)]
     pub nodes: Option<PartStyles>,
@@ -177,6 +205,10 @@ pub(crate) enum Part {
     DropCursor,
     TaskCheckbox,
     FocusedNode,
+    SelectedCell,
+    TableGrip,
+    TableResizeHandle,
+    TableDropIndicator,
 }
 
 impl RichEditorClasses {
@@ -194,6 +226,10 @@ impl RichEditorClasses {
             Part::DropCursor => self.drop_cursor.as_ref(),
             Part::TaskCheckbox => self.task_checkbox.as_ref(),
             Part::FocusedNode => self.focused_node.as_ref(),
+            Part::SelectedCell => self.selected_cell.as_ref(),
+            Part::TableGrip => self.table_grip.as_ref(),
+            Part::TableResizeHandle => self.table_resize_handle.as_ref(),
+            Part::TableDropIndicator => self.table_drop_indicator.as_ref(),
         }
     }
 }
@@ -213,6 +249,10 @@ impl RichEditorStyles {
             Part::DropCursor => &self.drop_cursor,
             Part::TaskCheckbox => &self.task_checkbox,
             Part::FocusedNode => &self.focused_node,
+            Part::SelectedCell => &self.selected_cell,
+            Part::TableGrip => &self.table_grip,
+            Part::TableResizeHandle => &self.table_resize_handle,
+            Part::TableDropIndicator => &self.table_drop_indicator,
         };
         style.as_ref().map(|s| &s.0)
     }

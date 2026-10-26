@@ -247,6 +247,7 @@ mod tests {
                 "AlertDialog",
                 "RichEditorApi",
                 "RichExtensionApi",
+                "RichTableApi",
                 "TextView"
             ]
         );

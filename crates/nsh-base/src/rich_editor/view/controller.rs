@@ -26,6 +26,7 @@ use super::{
     keys::{self, Move, Unit},
     node_view::{NodeView, NodeViewEvent},
     session::{EditorSession, NodeViews, ViewGeometry, ViewRequest},
+    table::{TableGesture, TablePreview},
 };
 use crate::{
     editor::layout::{self, AutoScroll},
@@ -38,6 +39,7 @@ use crate::{
             Affinity, ClickEvent, Decoration, EditorState, EditorStateConfig, GapCursor, KeyEvent,
             NodeSelection, Plugin, Selection, TextSelection, Transaction, TransactionOrigin,
         },
+        tables::{CellSelection, is_table, table_role},
         transform::drop_point,
     },
 };
@@ -165,6 +167,10 @@ pub(crate) struct Rv {
     scroll_pending: Rc<Cell<bool>>,
     blink_task: Rc<RefCell<Option<Spawned<()>>>>,
     base_keymap: Rc<Keymap>,
+    /// A press on a table's handle or grip being dragged.
+    pub(crate) table_gesture: Rc<RefCell<Option<TableGesture>>>,
+    /// What that drag shows: a column's or row's new size, a drop line.
+    pub(crate) table_preview: Signal<Option<TablePreview>>,
 }
 
 impl Rv {
@@ -214,6 +220,8 @@ impl Rv {
             scroll_pending: Rc::default(),
             blink_task: Rc::default(),
             base_keymap: Rc::new(base_keymap),
+            table_gesture: Rc::default(),
+            table_preview: signal(None),
         };
         rv.sync_tree(&state);
         rv.sync_decorations(&state);
@@ -459,7 +467,7 @@ impl Rv {
 
     // Committing.
 
-    fn dispatch(&self, tr: Transaction) {
+    pub(crate) fn dispatch(&self, tr: Transaction) {
         if let Err(e) = self.session.dispatch(tr) {
             log::warn!("RichEditor: a transaction was refused: {e}");
         }
@@ -637,6 +645,21 @@ impl Rv {
             // Tiptap's exitable marks: ArrowRight at the end of one at its
             // textblock's end leaves the mark, not the place.
             if event.key == "ArrowRight" && self.exit_mark(&state) {
+                self.after_key(event);
+                return;
+            }
+            // Up and Down from a cell's first or last line: the cell above
+            // or below, at the x the caret keeps (the table keys only know
+            // positions, not lines).
+            let dir = match event.key.as_str() {
+                "ArrowUp" => -1,
+                "ArrowDown" => 1,
+                _ => 0,
+            };
+            if dir != 0
+                && let Some(next) = self.cell_vertical(state.selection(), dir)
+            {
+                self.set_selection(next, true);
                 self.after_key(event);
                 return;
             }
@@ -923,6 +946,27 @@ impl Rv {
         }
     }
 
+    /// Up or Down (`dir`) from a caret on its cell's first or last line:
+    /// the cell above or below ([`Rv::table_vertical`]).
+    fn cell_vertical(&self, sel: &Selection, dir: i32) -> Option<Selection> {
+        if sel.as_text().is_none() || !sel.empty() {
+            return None;
+        }
+        let m = Move {
+            unit: Unit::Line,
+            dir,
+            extend: false,
+        };
+        if !self.end_of_textblock(sel, m) {
+            return None;
+        }
+        let caret = self.geo.borrow().caret_rect(sel.head(), sel.affinity())?;
+        let x = self.goal_x.get().unwrap_or(caret.origin.x);
+        let next = self.table_vertical(sel.resolved_head(), x, dir)?;
+        self.goal_x.set(Some(x));
+        Some(next)
+    }
+
     /// One grapheme toward `dir` from the head, out of the textblock at
     /// its ends (to the next cursor or selectable node).
     fn char_step(&self, doc: &Node, sel: &Selection, dir: i32) -> Option<Selection> {
@@ -1030,7 +1074,7 @@ impl Rv {
     }
 
     /// Selects `selection` (a move: it scrolls into view).
-    fn set_selection(&self, selection: Selection, scroll: bool) {
+    pub(crate) fn set_selection(&self, selection: Selection, scroll: bool) {
         let state = self.session.state();
         let mut tr = state.tr();
         tr.set_selection(selection);
@@ -1158,8 +1202,16 @@ impl Rv {
     ) {
         self.focus();
         self.goal_x.set(None);
-        let hit = self.geo.borrow().hit(at);
-        let Some(hit) = hit else { return };
+        // A table's handle or grip: resizing, or selecting and moving a
+        // row or column.
+        if self.editable()
+            && clicks == 1
+            && let Some(target) = self.table_target(at)
+        {
+            self.start_table_drag(target, at, page);
+            return;
+        }
+        let Some(hit) = self.hit(at) else { return };
         let state = self.session.state();
         let doc = state.doc().clone();
         let mod_key = if matches!(os(), Os::MacOs | Os::Ios) {
@@ -1232,6 +1284,7 @@ impl Rv {
             && let Some(p) = self.container_at(at)
             && let Some(node) = doc.node_at(p)
             && NodeSelection::is_selectable(&node)
+            && table_role(node.ty()).is_none()
         {
             self.set_selection(NodeSelection::create(&doc, p), false);
             return;
@@ -1296,6 +1349,7 @@ impl Rv {
                 if sel.empty()
                     || sel.is_all()
                     || sel.is_gap_cursor()
+                    || sel.as_custom::<CellSelection>().is_some()
                     || p <= sel.from()
                     || p >= sel.to()
                 {
@@ -1420,6 +1474,9 @@ impl Rv {
 
     /// The pointer dragged to `page` (root): the selection extends there.
     pub(crate) fn drag_to(&self, page: Point<Points>) {
+        if self.table_dragging() {
+            return self.table_drag_to(page);
+        }
         self.follow_drag_edge(page);
         self.drag_at(page);
     }
@@ -1431,7 +1488,7 @@ impl Rv {
         };
         let scrolled = self.scroll_y.get_untracked() - drag.scroll;
         let at = Point::new(page.x + drag.shift.x, page.y + drag.shift.y + scrolled);
-        let hit = self.geo.borrow().hit(at);
+        let hit = self.hit(at);
         let pos = match hit {
             Some(Hit::Text(p, _) | Hit::Node(p)) => p,
             None => return,
@@ -1462,6 +1519,9 @@ impl Rv {
     /// The press ended: a drag that moves the selection drops it where
     /// the drop cursor is, or selects as a press when it never moved.
     pub(crate) fn release(&self) {
+        if self.table_dragging() {
+            return self.table_release();
+        }
         self.autoscroll.borrow_mut().stop();
         let drag = self.drag.borrow_mut().take();
         let target = self.drop_at.get_untracked();
@@ -1637,9 +1697,12 @@ impl Rv {
         self.geo.borrow().caret_rect(sel.head(), sel.affinity())
     }
 
-    /// The box around the selection in the content box: its text's lines,
-    /// else the caret's box.
+    /// The box around the selection in the content box: its cells' (a
+    /// cell selection), its text's lines, else the caret's box.
     pub(crate) fn selection_box(&self) -> Option<Bounds<Points>> {
+        if let Some(cells) = self.cells_box() {
+            return Some(cells);
+        }
         let state = self.st.borrow();
         let sel = state.selection();
         let geo = self.geo.borrow();
@@ -1697,11 +1760,34 @@ fn walk(
 ) {
     let old = tree.children.remove(&id).unwrap_or_default();
     let mut used = vec![false; old.len()];
-    let by_ptr: Vec<usize> = Vec::new();
-    let _ = by_ptr;
-    let mut items = Vec::with_capacity(node.child_count());
-    let mut pos = start;
-    for (index, child) in node.content().iter().enumerate() {
+    // A table's children are its cells, row after row: rows have no view,
+    // the table is the grid its cells are placed in.
+    let children: Vec<(Node, usize)> = if is_table(node) {
+        let mut cells = Vec::new();
+        let mut row_pos = start;
+        for row in node.content().iter() {
+            let mut cell_pos = row_pos + 1;
+            for cell in row.content().iter() {
+                cells.push((cell.clone(), cell_pos));
+                cell_pos += cell.node_size();
+            }
+            row_pos += row.node_size();
+        }
+        cells
+    } else {
+        let mut pos = start;
+        node.content()
+            .iter()
+            .map(|child| {
+                let at = pos;
+                pos += child.node_size();
+                (child.clone(), at)
+            })
+            .collect()
+    };
+    let mut items = Vec::with_capacity(children.len());
+    for (index, (child, pos)) in children.iter().enumerate() {
+        let (child, pos) = (child, *pos);
         // The same node first, then the node at its index with its type.
         let matched = old
             .iter()
@@ -1757,7 +1843,6 @@ fn walk(
                 atoms,
             );
         }
-        pos += child.node_size();
     }
     tree.children.insert(id, items);
 }
@@ -2047,6 +2132,29 @@ mod tests {
     #[test]
     fn words_skip_punctuation() {
         assert_eq!(word_bounds("hi, you"), [(0, 2), (4, 7)]);
+    }
+
+    #[test]
+    fn a_tables_cells_are_its_children() {
+        use crate::rich_editor::tables::test_util::{cell_pos, doc, grid, p};
+        let d = doc(vec![p("x"), grid(&[&["a", "b"], &["c", "d"]])]);
+        let mut tree = Tree::default();
+        let (mut alive, mut texts, mut atoms) = (HashSet::new(), HashMap::new(), HashMap::new());
+        let views = NodeViews::default();
+        walk(
+            &mut tree, &views, DOC, DOC, &d, 0, &mut alive, &mut texts, &mut atoms,
+        );
+        let table = tree.children[&DOC][1].clone();
+        let cells = &tree.children[&table.id];
+        // Rows have no blocks: the cells, row after row, at their positions.
+        assert_eq!(
+            cells.iter().map(|c| c.pos).collect::<Vec<_>>(),
+            ["a", "b", "c", "d"].map(|t| cell_pos(&d, t))
+        );
+        assert!(cells.iter().all(|c| c.parent == table.id));
+        // Each cell's paragraph is a textblock of the cell.
+        let first = &tree.children[&cells[0].id][0];
+        assert_eq!(texts[&first.id], cell_pos(&d, "a") + 2);
     }
 }
 

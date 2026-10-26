@@ -24,6 +24,7 @@ mod node_view;
 mod parts;
 mod render;
 mod session;
+mod table;
 
 use std::collections::BTreeMap;
 
