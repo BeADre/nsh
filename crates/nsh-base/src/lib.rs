@@ -1,7 +1,7 @@
 //! `nsh/base`: the behavior and infrastructure foundation of NSH apps' UI,
 //! written in Rust, with no look of its own (as `gpui-base` is GPUI Kit's):
 //! controls (`Button`, `Checkbox`, `Radio` in a `RadioGroup`, `Slider`,
-//! `Switch`, `Tab` in `Tabs`), a progress bar (`Progress`), disclosure (`Collapsible`),
+//! `Switch`, `Tab` in `Tabs`, `Select`), a progress bar (`Progress`), disclosure (`Collapsible`),
 //! the parts of charts (`plot`: `nsh/base/plot`), navigation (stacks and pages), dialogs, popups on the core's overlays
 //! (`Popover`, `Menu`, `ContextMenu`, `Tooltip`, `Sheet`), a code editor
 //! (`Editor`), the changes between two texts (`DiffView`), tables over any number of rows and columns (`DataTable`) and static tables
@@ -25,6 +25,7 @@ mod diff;
 pub mod dock;
 pub mod editor;
 mod keys;
+mod listbox;
 mod menu;
 mod navigation;
 mod numeric;
@@ -35,6 +36,7 @@ mod progress;
 mod radio;
 mod resizable;
 pub mod rich_editor;
+mod select;
 mod sheet;
 mod slider;
 mod switch;
@@ -107,6 +109,10 @@ pub use crate::{
         ResizeHandleProps, ResizeHandleState, h_resizable, resizable_panel, resizable_panel_group,
         resize_handle, v_resizable,
     },
+    select::{
+        Select, SelectElement, SelectEvent, SelectGroup, SelectItem, SelectItemState, SelectProps,
+        SelectValue, select,
+    },
     sheet::{Sheet, SheetElement, SheetEvent, SheetProps, sheet},
     slider::{Slider, SliderElement, SliderEvent, SliderProps, SliderScale, SliderValue, slider},
     switch::{Switch, SwitchElement, SwitchEvent, SwitchProps, switch},
@@ -149,6 +155,7 @@ pub fn registry() -> Registry {
         .register::<Popover>()
         .register::<Sheet>()
         .register::<Tooltip>()
+        .register::<Select>()
         .register::<Checkbox>()
         .register::<Collapsible>()
         .register::<DataTable>()
@@ -226,6 +233,7 @@ mod tests {
                 "ResizablePanel",
                 "ResizablePanelGroup",
                 "RichEditor",
+                "Select",
                 "Sheet",
                 "Slider",
                 "Submenu",
