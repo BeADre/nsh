@@ -33,7 +33,6 @@ pub(super) enum Type {
     Undefined,
     Null,
     Bool,
-    Int,
     Float,
     String,
     Array,
@@ -182,9 +181,6 @@ impl<'a> Object<'a> {
 impl<'a> Array<'a> {
     pub(super) fn len(&self) -> usize {
         self.0.0.len()
-    }
-    pub(super) fn is_empty(&self) -> bool {
-        self.len() == 0
     }
     pub(super) fn get<T: FromValue<'a>>(&self, index: usize) -> Result<T> {
         T::from_value(Value::new(self.0.0.index(index)?))

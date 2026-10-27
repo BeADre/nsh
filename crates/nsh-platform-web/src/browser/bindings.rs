@@ -8,8 +8,8 @@ use std::{
 use nsh_core::{
     Op,
     element::{
-        CallbackHandle, ClassDef, ClassInstance, Exception, JsCall, JsHost, JsIn, JsKind, JsOwned,
-        JsRaw, Posts, PropError, RustCall, RustOp, System, TaskStart,
+        CallbackHandle, ClassDef, ClassInstance, Exception, JsCall, JsHost, JsIn, JsKind, JsRaw,
+        Posts, PropError, RustCall, RustOp, System, TaskStart,
     },
     js::host::HostInput,
 };

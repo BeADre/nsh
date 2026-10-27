@@ -238,10 +238,6 @@ pub(crate) struct WebRuntime {
 pub(crate) enum WebKind {
     /// Trusted standalone apps, executed by browser JavaScript.
     Browser,
-    /// Published apps' (`nsh package --target web`): without QuickJS'
-    /// parser (feature `bytecode-only`), it runs the bytecode the CLI
-    /// compiled. `nsh.wasm`.
-    Release,
     /// The development host's (`nsh dev`, `nsh run --target web`): it runs
     /// JS source and hot updates. `nsh-dev.wasm`.
     Dev,
@@ -252,7 +248,6 @@ impl WebKind {
     /// next to the build's output.
     pub(crate) fn file(self) -> &'static str {
         match self {
-            WebKind::Release => "nsh.wasm",
             WebKind::Browser => "nsh-browser.wasm",
             WebKind::Dev => "nsh-dev.wasm",
         }
@@ -313,7 +308,6 @@ pub(crate) fn web(kind: WebKind, build: bool) -> anyhow::Result<Option<WebRuntim
         .join(WASM)
         .join("web");
     let features: &[&str] = match kind {
-        WebKind::Release => &["--features", "bytecode-only"],
         WebKind::Browser => &["--no-default-features", "--features", "browser"],
         WebKind::Dev => &["--features", "dev"],
     };

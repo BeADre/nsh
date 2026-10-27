@@ -328,13 +328,16 @@ mod imp {
 
 #[cfg(not(feature = "js"))]
 mod stub {
+    #[cfg(not(all(feature = "browser", target_arch = "wasm32")))]
     use std::{
         rc::Rc,
         sync::{Arc, atomic::AtomicBool},
     };
 
+    #[cfg(not(all(feature = "browser", target_arch = "wasm32")))]
     use nsh_core::{EventKind, EventPayload, NodeId, Op, TextEngine, time::Instant};
 
+    #[cfg(not(all(feature = "browser", target_arch = "wasm32")))]
     use crate::{AppError, AppErrorKind, Bundle, Chunk, Environment, HotUpdate, Limits, MountSink};
 
     /// No JS in this build: never made.

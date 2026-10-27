@@ -5,13 +5,24 @@ export function createReactive(invoke, live, values) {
     if (!live()) throw new Error("the app was disposed");
     return invoke(op, args);
   };
-  const boundaryKey = {};
+  const boundaryKey = {}, caught = new Map();
+  let delivering = false;
+  if (values) values.after = () => {
+    if (delivering) return;
+    delivering = true;
+    try {
+      while (caught.size) {
+        const pending = [...caught]; caught.clear();
+        for (const [boundary, error] of pending) if (untracked(boundary) === undefined) boundary.set([error]);
+      }
+    } finally { delivering = false; }
+  };
   const protect = fn => {
     try { return fn(); }
     catch (error) {
       const boundary = call(112, boundaryKey, undefined);
       if (!boundary) throw error;
-      boundary.set([error]);
+      if (!caught.has(boundary)) caught.set(boundary, error);
     }
   };
   const guarded = fn => (...args) => protect(() => fn(...args));
@@ -38,7 +49,13 @@ export function createReactive(invoke, live, values) {
   const computed = (fn, options) => { const read = accessor(call(103, guarded(fn), undefined, options?.equals)); values?.memos.add(read); return read; };
   const renderEffect = (fn, initial) => call(104, guarded(fn), initial, false);
   const effect = fn => call(104, guarded(() => { const dispose = fn(); if (typeof dispose === "function") cleanup(dispose); }), undefined, true);
-  const cleanup = fn => call(109, guarded(fn));
+  const cleanup = fn => {
+    const boundary = call(112, boundaryKey, undefined);
+    return call(109, () => {
+      try { return fn(); }
+      catch (error) { if (!boundary) throw error; if (!caught.has(boundary)) caught.set(boundary, error); }
+    });
+  };
   const batch = fn => call(107, fn);
   const untracked = fn => call(108, fn);
   const root = fn => call(105, handle => fn(() => { if (handle && live()) call(106, handle); }));

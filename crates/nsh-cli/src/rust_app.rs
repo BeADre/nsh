@@ -1425,7 +1425,6 @@ opt-level = 3
         // nor hot updates.
         let features: &[&str] = match kind {
             _ if rust => &[],
-            crate::runtime::WebKind::Release => &["--features", "bytecode-only"],
             crate::runtime::WebKind::Browser => &["--features", "browser"],
             crate::runtime::WebKind::Dev => &["--features", "dev"],
         };

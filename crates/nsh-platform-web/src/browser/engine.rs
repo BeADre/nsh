@@ -1,5 +1,5 @@
 //! Local-engine callbacks into the app's browser realm.
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 
 use nsh_core::{
     EventKind, EventPayload, NodeId, Op,

@@ -499,3 +499,59 @@ test("error boundaries catch component, binding and listener failures and reset"
   dom.event(values.nodeIds.get(node), "onPress", {});
   assert.equal(read(output), "caught event"); dispose(); close();
 });
+
+test("detached DOM parent-child callback cycles collect without stopping the app", { skip: !path || !global.gc }, async () => {
+  const { api, dom, values, close } = await fixture();
+  let parentRef, childRef;
+  api.root(dispose => {
+    const parent = dom.rt.element("view"), child = dom.rt.element("view");
+    dom.rt.append(parent, child);
+    dom.rt.prop(child, "onPress", () => parent.focus());
+    parentRef = new WeakRef(parent); childRef = new WeakRef(child);
+    dispose();
+  });
+  for (let i = 0; i < 30; i++) { await new Promise(resolve => setTimeout(resolve, 5)); global.gc(); }
+  assert.equal(parentRef.deref(), undefined);
+  assert.equal(childRef.deref(), undefined);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(values.nodes.size, 1);
+  close();
+});
+
+test("error boundaries deliver the first failure after a batch unwinds", { skip: !path }, async () => {
+  const { api, close } = await fixture();
+  const trigger = api.signal(false), order = [];
+  let output, dispose;
+  const read = v => typeof v === "function" ? read(v()) : v;
+  api.root(stop => {
+    dispose = stop;
+    output = api.ErrorBoundary({ fallback(error) { order.push("fallback"); return error; }, get children() {
+      api.renderEffect(() => { if (trigger()) { order.push("first"); throw "first error"; } });
+      api.renderEffect(() => { if (trigger()) { order.push("second"); throw "second error"; } });
+      api.cleanup(() => { throw "cleanup error"; });
+      return "ok";
+    } });
+  });
+  assert.equal(read(output), "ok");
+  api.batch(() => { trigger.set(true); order.push("batch end"); });
+  assert.equal(read(output), "first error");
+  assert.deepEqual(order, ["batch end", "first", "second", "fallback"]);
+  dispose(); close();
+});
+
+test("host events preserve order, owner cleanup and platform calls", { skip: !path }, async () => {
+  const { createHost } = await import("./host.js");
+  const { api, invoke, dom, close } = await fixture();
+  const calls = [], heard = [];
+  const channel = createHost(invoke, api, dom, { host: () => true }, () => true, { call: async (...args) => { calls.push(args); return 42; } });
+  assert.equal(channel.host.available(), true);
+  channel.event("ready", 1);
+  let dispose;
+  api.root(stop => { dispose = stop; channel.host.on("ready", value => heard.push(value)); });
+  await Promise.resolve(); assert.deepEqual(heard, [1]);
+  channel.event("ready", 2); assert.deepEqual(heard, [1, 2]);
+  assert.equal(await channel.host.call("example", { a: 1 }), 42);
+  assert.deepEqual(calls, [["example", { a: 1 }]]);
+  dispose(); channel.event("ready", 3); assert.deepEqual(heard, [1, 2]);
+  channel.dispose(); close();
+});

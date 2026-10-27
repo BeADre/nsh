@@ -21,7 +21,7 @@ mod values;
 
 use std::{cell::RefCell, rc::Rc};
 
-use nsh_core::js::host::HostInput;
+use nsh_core::{js::host::HostInput, element::JsHost};
 use values::{EXCEPTION, Value};
 
 struct Runtime {
@@ -82,6 +82,25 @@ impl Runtime {
             310..=312 => self.rows.call(op, args),
             300..=309 => self.dom.call(op, args),
             100..=114 => self.reactive.call(op, args),
+            430 => {
+                let host = self.host.borrow().clone();
+                let available = host.as_ref().is_some_and(|host| host.available());
+                let params = host.map(|host| host.params()).unwrap_or_else(|| serde_json::json!({}));
+                let params = self.bindings.json(&params)?;
+                Value::array([Value(if available { 3 } else { 2 }), Value(params.0[0] as u32)])
+            }
+            431 | 432 => {
+                let name = args.index(0)?.as_string().ok_or_else(|| nsh_core::element::PropError("host: a message name".into()))?;
+                nsh_core::host_channel::check_name(&name).map_err(nsh_core::element::PropError)?;
+                if !nsh_core::access::valid_host_name(&name) || !self.bindings.system.borrow().access.allows_host(&name) {
+                    return Err(nsh_core::element::PropError(format!("nsh/host: `{name}` is not granted")));
+                }
+                let data = protocol::to_json(&compat::Value::new(args.index(1)?))?;
+                let id = args.index(2)?.as_number().unwrap_or(0.0) as u64;
+                let host = self.host.borrow().clone().ok_or_else(|| nsh_core::element::PropError("this platform has no host".into()))?;
+                if op == 431 { host.call(id, &name, data).map_err(nsh_core::element::PropError)?; } else { host.post(&name, data); }
+                Ok(Value(0))
+            }
             200 => {
                 let registries = self.registries.borrow().clone();
                 self.modules.describe(if registries.is_empty() {
@@ -287,6 +306,7 @@ pub(crate) extern "C" fn nsh_browser_trace() {
         let mut edges = Vec::new();
         runtime.bindings.trace_edges(&mut edges);
         runtime.reactive.trace_edges(&mut edges);
+        runtime.dom.trace_edges(&mut edges);
         for (kind, owner, generation, value) in edges {
             values::invoke(46, kind, owner, generation, value.into());
         }

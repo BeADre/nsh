@@ -215,6 +215,11 @@ impl Dom {
         }
         Ok(())
     }
+    pub(super) fn trace_edges(&self, edges: &mut Vec<(u32, u32, u32, u32)>) {
+        for (id, node) in self.nodes.borrow().iter().enumerate().skip(2) {
+            if let Some(node) = node { for child in &node.children { edges.push((2, id as u32, 0, child.0)); } }
+        }
+    }
     pub(super) fn call(&self, op: u32, args: &Value) -> Result<Value, PropError> {
         match op {
             315 => {

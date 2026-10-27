@@ -1,18 +1,3 @@
-import { createStandard } from "./standard.js";
-import { createResource } from "./resource.js";
-import { createLists } from "./list.js";
-import { Values } from "./values.js";
-import { createReactive } from "./reactive.js";
-import { createModules } from "./modules.js";
-import { createDom } from "./dom.js";
-import { createComponents } from "./components.js";
-import { createGestures } from "./gesture.js";
-import { createCanvas } from "./canvas.js";
-import { createAnimation } from "./animation.js";
-import { createNavigation } from "./navigation.js";
-import { createKeymap } from "./keymap.js";
-import { createEnvironment } from "./environment.js";
-
 export function createBrowserHost(player) {
   let current;
   return {
@@ -21,7 +6,7 @@ export function createBrowserHost(player) {
         typeof value === "function" && name !== "nsh_browser_trace"
           ? (...args) => {
             const app = current;
-            return app ? app.values.boundary(() => value(...args), () => wasm.nsh_browser_trace()) : value(...args);
+            return app?.values ? app.values.boundary(() => value(...args), () => wasm.nsh_browser_trace()) : value(...args);
           } : value,
       ]));
     },
@@ -31,9 +16,8 @@ export function createBrowserHost(player) {
     } },
     async run(entry, { appId = "", capabilities = "", imports: moduleMap = {}, chunks = {} } = {}) {
       const [width, height] = player.reset();
-      const values = new Values();
-      values.trace = () => player.wasm.nsh_browser_trace();
-      let running = true, modules, components, animation, lists, frame, rejectLoad;
+      let values;
+      let running = true, modules, components, animation, lists, host, frame, rejectLoad;
       const urls = [];
       const active = () => running;
       const call = (op, args) => {
@@ -42,11 +26,10 @@ export function createBrowserHost(player) {
       };
       const requestPump = () => { if (active()) player.requestPump(); };
       const report = error => { try { player.showError(error?.stack ?? String(error)); } catch { console.error(error); } };
-      values.report = report;
       const stopped = [];
       current = {
-        values,
-        imports: values.imports(() => player.wasm.memory),
+        values: null,
+        imports: null,
         stop() {
           if (!running) return;
           rejectLoad?.(new Error("the app was disposed")); rejectLoad = null;
@@ -54,11 +37,42 @@ export function createBrowserHost(player) {
           // prevent the engine and the realm from being released.
           for (const stage of stopped) { try { stage(); } catch (error) { report(error); } }
           running = false;
-          values.dispose();
+          values?.dispose();
           frame?.remove();
           for (const url of urls) URL.revokeObjectURL(url);
         },
       };
+      frame = document.createElement("iframe");
+      frame.hidden = true;
+      frame.setAttribute("aria-hidden", "true");
+      player.container.append(frame);
+      const realm = frame.contentWindow;
+      const doc = realm.document;
+      const baseElement = doc.createElement("base");
+      baseElement.href = document.baseURI;
+      doc.head.append(baseElement);
+      // Construct the facade in the app realm, so Error, Promise, Buffer,
+      // typed arrays and class identities use the same intrinsics as its code.
+      const scope = await new Promise((resolve, reject) => {
+        rejectLoad = reject;
+        Object.defineProperty(realm, "__nsh_browser_bootstrap", { value: resolve, configurable: true });
+        const bootstrap = doc.createElement("script");
+        bootstrap.type = "module";
+        bootstrap.src = new URL("./bootstrap.js", import.meta.url).href;
+        bootstrap.onerror = () => reject(new Error("could not load the browser facade"));
+        doc.head.append(bootstrap);
+      });
+      if (!active()) throw new Error("the app was disposed");
+      rejectLoad = null;
+      delete realm.__nsh_browser_bootstrap;
+      const { Values, createReactive, createModules, createDom, createComponents, createGestures,
+        createCanvas, createAnimation, createNavigation, createKeymap, createEnvironment,
+        createHost, createStandard, createResource, createLists } = scope;
+      values = new Values();
+      values.trace = () => player.wasm.nsh_browser_trace();
+      values.report = report;
+      current.values = values;
+      current.imports = values.imports(() => player.wasm.memory);
       player.wasm.nsh_browser_initialize();
       const reactive = createReactive(call, active, values);
       const dom = createDom(call, values, reactive, active, requestPump);
@@ -67,10 +81,12 @@ export function createBrowserHost(player) {
       dom.setTouches(gestures);
       dom.rt.setup = env.setup;
       dom.rt.font = (uri, family) => call(404, [uri, family]);
-      stopped.push(() => dom.dispose(), () => modules?.dispose(), () => animation?.dispose(), () => player.wasm.nsh_stop(), () => player.wasm.nsh_browser_dispose());
+      stopped.push(() => dom.dispose(), () => modules?.dispose(), () => host?.dispose(), () => animation?.dispose(), () => player.wasm.nsh_stop(), () => player.wasm.nsh_browser_dispose());
       const event = (name, args) => {
         if (!active()) return;
         switch (name) {
+          case "hostEvent": host?.event(...args); break;
+          case "hostReply": host?.reply(...args); break;
           case "bindList": lists?.bind(...args); break;
           case "event": dom.event(...args); break;
           case "reply": modules?.reply(...args); break;
@@ -102,9 +118,13 @@ export function createBrowserHost(player) {
       const canvas = createCanvas(call, reactive, dom, active, requestPump);
       Object.assign(nsh, animation.api, canvas, { PanResponder: gestures.PanResponder });
       Object.assign(nsh, reactive, env.api, { List: lists.render, nextTick: (callback, ...args) => { if (typeof callback !== "function") throw new TypeError("nextTick: callback must be a function"); queueMicrotask(() => { if (active()) callback(...args); }); }, mount: dom.mount, resource: createResource(call, reactive, active, requestPump), keymap: createKeymap(call, reactive, dom, env.api.platform, requestPump) });
+      const process = modules.exports.get("process");
+      if (process) { process.nextTick = nsh.nextTick; if (process.default) process.default.nextTick = nsh.nextTick; }
+      host = createHost(call, reactive, dom, env, active, nsh.host);
+      nsh.host = host.host;
       const desktop = modules.exports.get("nsh/desktop");
       if (desktop) Object.assign(desktop, { isAvailable: false, titleBar: env.titleBar, Menu: { setApplicationMenu() {}, popup: () => Promise.resolve() } });
-      for (const [name, tag] of Object.entries({View:"view",Text:"text",Scroll:"scroll",Overlay:"overlay",Image:"image",WebView:"webview",Video:"video"})) {
+      for (const [name, tag] of Object.entries({View:"view",Text:"text",Scroll:"scroll",Overlay:"overlay",Image:"image",WebView:"webview",Video:"video",Shader:"shader"})) {
         const Component = props => {const node = dom.rt.element(tag);dom.rt.spread(node,props);if ("children" in props) dom.rt.insert(node,()=>props.children);return node;};
         nsh[name] = Object.assign(Component, nsh[name]);
       }
@@ -130,6 +150,11 @@ export function createBrowserHost(player) {
         if (namespace) namespace.InputAccessoryView = () => null; // Matches the native host off iOS.
       }
       const namespaces = new Map([...modules.exports, ...createStandard(call, active)]);
+      const mobile = namespaces.get("nsh/mobile") ?? {};
+      mobile.isAvailable = false; mobile.InputAccessoryView = () => null;
+      namespaces.set("nsh/mobile", mobile);
+      namespaces.set("nsh/android", { ...mobile, isAvailable: false });
+      namespaces.set("nsh/ios", { ...mobile, isAvailable: false });
       namespaces.set("nsh", nsh);
       namespaces.set("nsh:rt", dom.rt);
       namespaces.set("nsh/list", { List: lists.render });
@@ -155,15 +180,6 @@ export function createBrowserHost(player) {
         urls.push(url);
         map[specifier] = url;
       }
-      frame = document.createElement("iframe");
-      frame.hidden = true;
-      frame.setAttribute("aria-hidden", "true");
-      player.container.append(frame);
-      const realm = frame.contentWindow;
-      const doc = realm.document;
-      const baseElement = doc.createElement("base");
-      baseElement.href = document.baseURI;
-      doc.head.append(baseElement);
       const importMap = doc.createElement("script");
       importMap.type = "importmap";
       importMap.textContent = JSON.stringify({ imports: map });

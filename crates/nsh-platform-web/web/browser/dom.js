@@ -1,7 +1,7 @@
 // The JSX facade delegates node ownership, value reconciliation, prop
 // decoding and layout operations to Rust.
 export function createDom(invoke, values, reactive, live, wake) {
-  const handlers = new WeakMap(), owners = new WeakMap();
+  const handlers = new WeakMap(), owners = new WeakMap(), heldProps = new WeakMap();
   let touches, measure;
   const prototype = Object.create(null);
   for (const name of ["focus", "blur", "scrollTo", "zoomTo", "scrollToIndex", "scrollToEnd", "reload", "goBack", "goForward", "stopLoading", "injectJavaScript", "postMessage", "seek"]) {
@@ -52,6 +52,9 @@ export function createDom(invoke, values, reactive, live, wake) {
       return;
     }
     call(303, [node, name, value]);
+    let held = heldProps.get(node);
+    if (!held) heldProps.set(node, held = new Map());
+    if (value === undefined || value === null) held.delete(name); else held.set(name, value);
   };
   const insert = (parent, value, before = null) => {
     let previous = [];

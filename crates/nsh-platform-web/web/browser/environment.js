@@ -1,7 +1,7 @@
 export function createEnvironment(reactive, invoke, dom) {
   const initial = { window: { width: 0, height: 0 }, safeArea: { top: 0, right: 0, bottom: 0, left: 0 },
     titleBar: { height: 0, left: 0, right: 0 }, keyboard: { height: 0, duration: 0.25 },
-    colorScheme: "light", fontScale: 1, pixelRatio: 1, locale: "en-US", reduceMotion: false, screenReader: false };
+    colorScheme: "light", fontScale: 1, pixelRatio: 1, locale: "en-US", reduceMotion: false, screenReader: false, host: false };
   const fields = Object.fromEntries(Object.entries(initial).map(([name, value]) => [name, reactive.signal(value)]));
   const tokens = reactive.signal(0);
   const insets = reactive.context(() => fields.safeArea());
@@ -22,7 +22,7 @@ export function createEnvironment(reactive, invoke, dom) {
     token(name) { tokens(); return invoke(402, [name, fields.colorScheme() === "dark"]); },
   };
   return {
-    api, insets, titleBar: () => fields.titleBar(),
+    api, insets, host: () => fields.host(), titleBar: () => fields.titleBar(),
     update(next) {
       systemScheme = next.colorScheme;
       Object.assign(platform, { ...next.platform, version: "0.0", catalyst: false });

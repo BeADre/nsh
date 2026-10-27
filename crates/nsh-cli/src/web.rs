@@ -63,10 +63,6 @@ fn ui_sets() -> Vec<String> {
         .collect()
 }
 
-/// The app's code: its bundle compiled to bytecode (`nsh_start_bytecode`),
-/// the only form the runtime of published apps runs.
-const CODE: (&str, &str) = ("app", "nshc");
-
 /// Hex digits of the SHA-256 in content-addressed names.
 const DIGEST_LEN: usize = 10;
 

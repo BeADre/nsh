@@ -3,10 +3,7 @@ use nsh_core::{
     Op, Points,
     canvas::{CanvasOp, FillRule, PathOp, point_in_path, point_in_stroke},
     element::{JsHost, PropError, TsTypes},
-    js::{
-        host::{HostInput, HostList},
-        ops::JsOps,
-    },
+    js::{host::HostInput, ops::JsOps},
 };
 
 use super::{bindings::Bindings, values::Value};

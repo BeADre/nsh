@@ -71,11 +71,12 @@ export class Values {
     finally {
       try {
         if (outer && !this.closed) {
+          this.after?.();
           this.edges = [];
           trace();
           const mirrors = new WeakMap(), counts = new Map();
           for (const [kind, owner, generation, id] of this.edges) {
-            const peer = (kind === 0 ? this.classPeers.get(owner) : this.accessors.get(`${owner}:${generation}`))?.deref();
+            const peer = (kind === 0 ? this.classPeers.get(owner) : kind === 2 ? this.nodes.get(owner) : this.accessors.get(`${owner}:${generation}`))?.deref();
             if (!peer) continue;
             const slot = this.slot(id);
             if (slot.refs === Infinity || (slot.weak && slot.value === undefined)) continue;
@@ -158,6 +159,7 @@ export class Values {
     this.instances = new WeakMap();
     this.wrap = null;
     this.settle = null;
+    this.after = null;
     this.identities = new WeakMap();
     this.symbols = new Map();
     this.error = null;

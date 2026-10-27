@@ -522,9 +522,7 @@ fn decode_style<'js>(
         }
         let string;
         let v = match value.type_of() {
-            Type::Int | Type::Float => {
-                StyleValue::Number(value.as_number().unwrap_or_default() as f32)
-            }
+            Type::Float => StyleValue::Number(value.as_number().unwrap_or_default() as f32),
             Type::String => {
                 string = value.as_string().expect("string").to_string()?;
                 StyleValue::Str(&string)
@@ -1073,7 +1071,6 @@ fn json<'js>(
     }
     Ok(match value.type_of() {
         Type::Bool => J::Bool(value.as_bool().unwrap_or(false)),
-        Type::Int => J::from(value.as_int().unwrap_or(0)),
         Type::Float => {
             let f = value.as_float().unwrap_or(0.0);
             if f.fract() == 0.0 && f.abs() < 9.0e15 {
