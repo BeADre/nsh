@@ -29,11 +29,11 @@ pub(crate) trait Driver: Send {
     /// Drags without lifting, until [`Driver::drop_held`].
     fn drag_and_hold(&mut self, selector: &str, by: Point<Points>) -> Result<(), String> {
         let _ = (selector, by);
-        Err("`dragAndHold` runs headless only for now: run the test without `--target`".into())
+        Err("`dragAndHold` runs headless and on Linux for now".into())
     }
     /// Lifts the finger `drag_and_hold` left down.
     fn drop_held(&mut self) -> Result<(), String> {
-        Err("`drop` runs headless only for now: run the test without `--target`".into())
+        Err("`drop` runs headless and on Linux for now".into())
     }
     fn press_key(&mut self, keys: &str) -> Result<(), String>;
     /// Holds (`down`) or lets go of modifier keys for the pointer's steps.
@@ -434,6 +434,16 @@ impl Driver for Remote {
     }
     fn press_key(&mut self, keys: &str) -> Result<(), String> {
         self.action(TestStep::PressKey { keys: keys.into() })
+    }
+    fn drag_and_hold(&mut self, selector: &str, by: Point<Points>) -> Result<(), String> {
+        self.action(TestStep::DragAndHold {
+            selector: selector.into(),
+            x: by.x.0,
+            y: by.y.0,
+        })
+    }
+    fn drop_held(&mut self) -> Result<(), String> {
+        self.action(TestStep::Drop)
     }
     fn hold_keys(&mut self, keys: &str, down: bool) -> Result<(), String> {
         self.action(TestStep::HoldKeys {

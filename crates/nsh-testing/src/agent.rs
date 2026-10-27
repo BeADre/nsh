@@ -970,6 +970,17 @@ pub trait Native: Send + Sync {
         let _ = keys;
         Err("this platform's test agent presses no hardware keys: run the test headless".into())
     }
+    /// Drags from `from` to `to` as [`Native::drag`] does, keeping the
+    /// button down until [`Native::drop_at`].
+    fn drag_and_hold(&self, from: Point<Points>, to: Point<Points>) -> Result<(), String> {
+        let _ = (from, to);
+        Err("`dragAndHold` runs headless and on Linux for now".into())
+    }
+    /// Lets go of the button [`Native::drag_and_hold`] holds, at `at`.
+    fn drop_at(&self, at: Point<Points>) -> Result<(), String> {
+        let _ = at;
+        Err("`drop` runs headless and on Linux for now".into())
+    }
     /// Holds modifier keys down (`down`) or lets go of them: the presses,
     /// drags and hovers until then carry them. One that cannot refuses it.
     fn hold_keys(&self, keys: &str, down: bool) -> Result<(), String> {
@@ -1182,6 +1193,8 @@ pub struct Agent {
     native: Box<dyn Native>,
     /// The window's size the scene was told last.
     viewport: Mutex<Option<Size<Points>>>,
+    /// Where a `dragAndHold` left the pointer down.
+    held: Mutex<Option<Point<Points>>>,
 }
 
 impl Agent {
@@ -1191,6 +1204,7 @@ impl Agent {
             scene,
             native,
             viewport: Mutex::new(None),
+            held: Mutex::new(None),
         }
     }
 
@@ -1251,6 +1265,8 @@ impl Agent {
                     .and_then(|()| self.settled()),
             ),
             TestStep::OpenedUrls => self.scene.opened_urls().map(Value::from),
+            TestStep::DragAndHold { selector, x, y } => done(self.drag_and_hold(&selector, x, y)),
+            TestStep::Drop => done(self.drop_held()),
             TestStep::HoldKeys { keys, down } => done(
                 self.native
                     .hold_keys(&keys, down)
@@ -1734,6 +1750,26 @@ impl Agent {
         }
         let (_, at) = self.find(selector, "view", PickTarget::View)?;
         self.native.hover(at)?;
+        self.settled()
+    }
+
+    fn drag_and_hold(&self, selector: &str, x: f32, y: f32) -> Result<(), String> {
+        self.drop_held().ok();
+        let (_, at) = self.find(selector, "view", PickTarget::View)?;
+        let to = Point::new(at.x + Points(x), at.y + Points(y));
+        self.native.drag_and_hold(at, to)?;
+        *self.held.lock().unwrap() = Some(to);
+        self.settled()
+    }
+
+    fn drop_held(&self) -> Result<(), String> {
+        let at = self
+            .held
+            .lock()
+            .unwrap()
+            .take()
+            .ok_or("`drop()` comes after `dragAndHold`: no pointer is down")?;
+        self.native.drop_at(at)?;
         self.settled()
     }
 

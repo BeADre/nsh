@@ -442,6 +442,18 @@ pub enum TestStep {
         /// Whether they go down (else up).
         down: bool,
     },
+    /// Drags as `Drag` does and keeps the pointer down
+    /// (`app.dragAndHold`), until `Drop`.
+    DragAndHold {
+        /// What to drag.
+        selector: String,
+        /// Rightwards.
+        x: f32,
+        /// Downwards.
+        y: f32,
+    },
+    /// Lets go of the pointer `DragAndHold` left down (`app.drop`).
+    Drop,
     /// Goes back as the user does (`app.back`).
     Back,
     /// Lets the app run (`app.wait`).

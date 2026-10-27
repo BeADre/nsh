@@ -171,6 +171,28 @@ impl Native for LinuxNative {
         self.on_main(move |s| crate::input::simulate(s, Simulated::Up(x, y)));
     }
 
+    fn drag_and_hold(&self, from: Point<Points>, to: Point<Points>) -> Result<(), String> {
+        let (x, y) = (from.x.0, from.y.0);
+        self.on_main(move |s| {
+            crate::input::simulate(s, Simulated::Hover(x, y));
+            crate::input::simulate(s, Simulated::Down(x, y));
+        })
+        .ok_or("the window is gone")?;
+        std::thread::sleep(nsh_testing::agent::LANDING);
+        for at in nsh_testing::agent::drag_path(from, to) {
+            std::thread::sleep(FRAME);
+            let (x, y) = (at.x.0, at.y.0);
+            self.on_main(move |s| crate::input::simulate(s, Simulated::Move(x, y)));
+        }
+        Ok(())
+    }
+
+    fn drop_at(&self, at: Point<Points>) -> Result<(), String> {
+        let (x, y) = (at.x.0, at.y.0);
+        self.on_main(move |s| crate::input::simulate(s, Simulated::Up(x, y)))
+            .ok_or_else(|| "the window is gone".to_owned())
+    }
+
     fn type_text(&self, text: &str) {
         // Key by key, as a keyboard's characters come.
         for ch in text.chars() {
