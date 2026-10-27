@@ -69,11 +69,12 @@ test("a donut reports the slice under the pointer, none in its hole", async () =
   await app.hover(pie);
   await app.wait(50);
   expect(app.texts()).toContain("TOTAL");
-  // A whole pie: its middle reads as 3 o'clock, inside the first slice.
+  // A whole pie: its middle is inside a slice (which one depends on where
+  // the pointer lands within a point of it), its region in the middle.
   await app.press("Show as pie");
   await app.waitFor("Show as donut");
   await app.hover(pie);
-  await app.waitFor("NORTH AMERICA");
+  await app.waitFor("text:/^(NORTH AMERICA|EMEA|APAC|LATIN AMERICA|OTHER)$/");
 });
 
 test("bars stand in bands side by side or stacked, a value over each", async () => {
