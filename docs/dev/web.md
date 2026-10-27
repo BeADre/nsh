@@ -95,7 +95,8 @@ build to the same file) and takes `nsh.js` from the crate.
   hello says `tests` (`player.takesTests`), so the server sends it steps; each `step` is answered at once with
   `player.testStep`: `nsh_test_answer` answers what the model knows (selectors, texts, dialogs, activity) and whether
   an animation runs, `testPage` what only the DOM knows (`getBoundingClientRect` in CSS pixels, the viewport, an
-  input's value, where a dialog's button is). The input itself is the browser's trusted input, sent by the CLI.
+  input's value, where a dialog's button is, where a text's characters are: each run knows its first character's
+  offset). The input itself is the browser's trusted input, sent by the CLI.
 
 `nsh_bundle_options` sets how the next `nsh_start` / `nsh_start_bytecode` runs: development settings by default (the
 player, the playground, the dev host), hardened (`Policy::default()`) for published apps, the declared capabilities,
@@ -166,10 +167,15 @@ The prebuilt runtime serves the runtime's modules and `nsh/base`; an app with a 
 `nsh-platform-web` and the app's crate whose code is `nsh_platform_web::ui_sets!(vec![nsh_base::registry(), app_set()])`. The macro exports `nsh_app_init`, which `nsh.js` calls right after instantiating the module (there is
 no `main` to call `set_ui_sets` in a wasm module, nor a `dlsym` as Android's `ui_sets!` uses); a module without it
 (the prebuilt runtime) serves `nsh/base`. The `nsh_*` exports come from `nsh-platform-web`'s rlib: a `cdylib`
-exports its dependencies' `#[no_mangle]` functions. The workspace has the same `web` profile as nsh's `Cargo.toml`, and
-the crate's `build.rs` passes the 8 MiB stack as a link argument of its own (nsh's `.cargo/config.toml` may not apply
-where the app builds, and target-wide `rustflags` would rebuild every dependency instead of sharing nsh's builds).
-Both kinds build to `target/wasm32-unknown-unknown/web/nsh_app_<package>_web.wasm` and are copied to
+exports its dependencies' `#[no_mangle]` functions. The release runtime builds with the same `web` profile as nsh's
+`Cargo.toml`; the development one (`nsh run --target web`, built again on every change to the app's Rust code) with a
+generated `web-dev` profile (`RustApp::web_dev_profile`): `dev`'s incremental builds without LTO, the app's crates at
+`opt-level = 1`, the other crates at `"s"`, QuickJS at 3, `panic = "abort"` and no debug assertions, so the page
+behaves as a published one. A change to the app's crate then rebuilds that crate and links incrementally, where
+`web`'s fat LTO over one codegen unit re-optimizes the whole module. The crate's `build.rs` passes the 8 MiB stack as
+a link argument of its own (nsh's `.cargo/config.toml` may not apply where the app builds, and target-wide `rustflags`
+would rebuild every dependency instead of sharing nsh's builds). The kinds build to
+`target/wasm32-unknown-unknown/{web,web-dev}/nsh_app_<package>_web.wasm` and are copied to
 `.nsh/rust/web-runtime/nsh.wasm` / `nsh-dev.wasm`; `nsh.js` is nsh's. Everything else (bundling, bytecode, the
 crate's assets, the dev server) already knows the set, from its description (`docs/dev/tooling.md`).
 
