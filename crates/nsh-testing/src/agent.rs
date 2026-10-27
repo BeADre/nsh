@@ -937,6 +937,11 @@ pub trait Native: Send + Sync {
         let _ = at;
         Err("this platform has no mouse".into())
     }
+    /// The input that has the keyboard focus, where the platform can tell:
+    /// a paste into it needs no press (one would move its caret).
+    fn focused(&self) -> Option<NodeId> {
+        None
+    }
     /// Pastes `content` into the focused input, as the user's paste does
     /// with it on the clipboard (the system's clipboard stays as it was).
     fn paste(&self, content: &nsh_core::PasteEvent) -> Result<(), String> {
@@ -1665,7 +1670,12 @@ impl Agent {
     }
 
     fn paste(&self, selector: &str, content: &nsh_core::PasteEvent) -> Result<(), String> {
-        self.focus(selector)?;
+        // As the user pastes into the field they are in: a press first
+        // would move its caret, collapsing a selection the paste replaces.
+        let (id, _) = self.find(selector, "input", PickTarget::Input)?;
+        if self.native.focused() != Some(id) {
+            self.focus(selector)?;
+        }
         self.native.paste(content)?;
         self.settled()
     }

@@ -250,7 +250,7 @@ impl Native for LinuxNative {
                 self.with_window(|_, w| synth::select_all(w));
             }
             K::Char(c) if plain => {
-                let c = if m.shift { c.to_ascii_uppercase() } else { c };
+                let c = if m.shift { shifted(c) } else { c };
                 self.with_window(move |_, w| synth::type_text(w, &c.to_string()));
             }
             // The root's keys: going back.
@@ -267,6 +267,17 @@ impl Native for LinuxNative {
             _ => {}
         }
         Ok(())
+    }
+
+    fn focused(&self) -> Option<NodeId> {
+        self.with_window(|_, w| {
+            let field = synth::focused_text(w)?;
+            let view = field
+                .ancestor(crate::view::NshView::static_type())
+                .and_then(|v| v.downcast::<crate::view::NshView>().ok())?;
+            Some(view.id())
+        })
+        .flatten()
     }
 
     fn paste(&self, content: &nsh_core::PasteEvent) -> Result<(), String> {
@@ -355,4 +366,36 @@ impl Native for LinuxNative {
     fn quit(&self) {
         self.with_window(|_, w| w.close());
     }
+}
+
+/// The character Shift and `c` type on a US layout, as a keyboard's keys
+/// name them: a letter's capital, a digit's or a symbol's upper sign.
+fn shifted(c: char) -> char {
+    const PAIRS: [(char, char); 21] = [
+        ('1', '!'),
+        ('2', '@'),
+        ('3', '#'),
+        ('4', '$'),
+        ('5', '%'),
+        ('6', '^'),
+        ('7', '&'),
+        ('8', '*'),
+        ('9', '('),
+        ('0', ')'),
+        ('-', '_'),
+        ('=', '+'),
+        ('[', '{'),
+        (']', '}'),
+        ('\\', '|'),
+        (';', ':'),
+        ('\'', '"'),
+        (',', '<'),
+        ('.', '>'),
+        ('/', '?'),
+        ('`', '~'),
+    ];
+    PAIRS
+        .iter()
+        .find(|(plain, _)| *plain == c)
+        .map_or(c.to_ascii_uppercase(), |(_, up)| *up)
 }
