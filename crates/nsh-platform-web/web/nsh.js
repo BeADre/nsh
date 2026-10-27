@@ -690,7 +690,7 @@ function frameViewport(frame) {
   frame.setAttribute("popover", "manual");
   for (const [name, value] of Object.entries({ position: "fixed", inset: "0", width: "100%", height: "100%",
     "min-width": "0", "min-height": "0", "max-width": "none", "max-height": "none",
-    "border-radius": "0", "clip-path": "none", margin: "0", border: "0", padding: "0", transform: "none", "box-sizing": "border-box" })) {
+    "border-radius": "0", "clip-path": "none", background: "transparent", margin: "0", border: "0", padding: "0", transform: "none", "box-sizing": "border-box" })) {
     frame.style.setProperty(name, value, "important");
   }
   try { frame.showPopover(); } catch (error) {

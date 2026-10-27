@@ -94,6 +94,7 @@ for (const crossOrigin of [false, true]) {
               }
               if(phase==='open'||phase==='nested-closed'){
                 check(frame.matches(':popover-open'),'iframe not in parent top layer');
+                check(getComputedStyle(frame).backgroundColor==='rgba(0, 0, 0, 0)','iframe background hides the host page');
                 check(document.elementFromPoint(700,400)===frame,'mask does not cover the parent');
                 check(document.documentElement.style.overflow==='hidden','parent still scrolls');
                 check(outside.inert,'keyboard can reach the parent');
