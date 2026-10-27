@@ -13,6 +13,8 @@ workspace = true
 
 [features]
 default = ["js"]
+# Published TSX evaluated by the browser, without QuickJS in WebAssembly.
+browser = ["nsh-engine/browser"]
 # JS apps (`nsh_start`, bundles, hot updates, chunks) on QuickJS. Without
 # it the module runs a Rust app only (`nsh_start_rust`, `rust_app!`) and
 # links no QuickJS.

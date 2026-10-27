@@ -804,6 +804,11 @@ class Player {
         throw new Error(`nsh.wasm called ${name}.${field}, which the web runtime does not provide`);
       };
     }
+    if (WebAssembly.Module.imports(module).some(entry => entry.module === "nsh_browser")) {
+      const { createBrowserHost } = await import("./browser/runtime.js");
+      this.browserHost = createBrowserHost(this);
+      imports.nsh_browser = this.browserHost.imports;
+    }
     imports.__wbindgen_placeholder__ && (imports.__wbindgen_placeholder__.__wbindgen_describe = () => {});
     const instance = await WebAssembly.instantiate(module, imports);
     this.wasm = instance.exports;
@@ -1087,6 +1092,12 @@ class Player {
    * `nsh.json` `"root"`): its root component, with no bundle and no JS of
    * the app's, replacing what ran.
    */
+  /** Runs a trusted standalone app with the browser ES module loader. */
+  runModule(entry, options) {
+    if (!this.browserHost) throw new Error("this runtime has no browser JavaScript host");
+    return this.browserHost.run(entry, options);
+  }
+
   runRust() {
     if (!this.wasm.nsh_start_rust) throw new Error("this runtime has no Rust app");
     const [width, height] = this.reset();
@@ -1212,6 +1223,7 @@ class Player {
     clearTimeout(this.timer);
     cancelAnimationFrame(this.frame);
     this.frame = 0;
+    this.browserHost?.stop();
     this.wasm?.nsh_stop();
   }
 
