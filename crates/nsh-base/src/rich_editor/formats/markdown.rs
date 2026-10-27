@@ -1,4 +1,4 @@
-//! Markdown (CommonMark with GFM's strikethrough and tables), read with
+//! Markdown (CommonMark with GFM's strikethrough, tables and task lists), read with
 //! the `markdown` crate's syntax tree and written as prosemirror-markdown
 //! writes: escaped text, marks opened and closed around runs, whitespace
 //! moved outside delimiters, fences longer than the code's backtick runs.
@@ -63,6 +63,12 @@ pub struct MarkdownNames {
     pub link: String,
     /// Strikethrough (`strike`).
     pub strike: String,
+    /// GFM task lists (`taskList`).
+    pub task_list: String,
+    /// Their items (`taskItem`).
+    pub task_item: String,
+    /// A task item's checked attribute (`checked`).
+    pub task_checked: String,
 }
 
 impl Default for MarkdownNames {
@@ -86,12 +92,15 @@ impl Default for MarkdownNames {
             code: "code".into(),
             link: "link".into(),
             strike: "strike".into(),
+            task_list: "taskList".into(),
+            task_item: "taskItem".into(),
+            task_checked: "checked".into(),
         }
     }
 }
 
 impl MarkdownNames {
-    fn node_names(&self) -> [&str; 10] {
+    fn node_names(&self) -> [&str; 12] {
         [
             &self.paragraph,
             &self.heading,
@@ -103,6 +112,8 @@ impl MarkdownNames {
             &self.bullet_list,
             &self.ordered_list,
             &self.list_item,
+            &self.task_list,
+            &self.task_item,
         ]
     }
 
@@ -292,17 +303,47 @@ impl Reader<'_> {
                 } else {
                     (&n.bullet_list, Attrs::new())
                 };
+                let tasks =
+                    !l.ordered && self.has_node(&n.task_list) && self.has_node(&n.task_item);
                 if self.has_node(name) && self.has_node(&n.list_item) {
+                    // GFM task items (`- [x]`) make a task list; a run of
+                    // them inside a bullet list splits it there.
+                    let mut run: Option<bool> = None;
                     let mut items = Vec::new();
                     for item in &l.children {
+                        let checked = match item {
+                            mdast::Node::ListItem(i) if tasks => i.checked,
+                            _ => None,
+                        };
+                        if run.is_some_and(|task| task != checked.is_some()) {
+                            let list = if run == Some(true) {
+                                &n.task_list
+                            } else {
+                                name
+                            };
+                            out.push(self.node(list, attrs.clone(), std::mem::take(&mut items))?);
+                        }
+                        run = Some(checked.is_some());
                         let children = item.children().map(Vec::as_slice).unwrap_or(&[]);
                         let mut inner = self.blocks(children)?;
                         if inner.is_empty() {
                             inner.push(self.paragraph(Vec::new())?);
                         }
-                        items.push(self.node(&n.list_item, Attrs::new(), inner)?);
+                        items.push(match checked {
+                            Some(done) => {
+                                let mut a = Attrs::new();
+                                a.insert(n.task_checked.clone(), Value::Bool(done));
+                                self.node(&n.task_item, a, inner)?
+                            }
+                            None => self.node(&n.list_item, Attrs::new(), inner)?,
+                        });
                     }
-                    out.push(self.node(name, attrs, items)?);
+                    let list = if run == Some(true) {
+                        &n.task_list
+                    } else {
+                        name
+                    };
+                    out.push(self.node(list, attrs, items)?);
                 } else {
                     for item in &l.children {
                         out.extend(self.blocks(item.children().map(Vec::as_slice).unwrap_or(&[]))?);
@@ -546,7 +587,7 @@ impl Writer<'_> {
             format!("{fence}{lang}\n{text}\n{fence}")
         } else if name == n.horizontal_rule {
             "---".into()
-        } else if name == n.bullet_list || name == n.ordered_list {
+        } else if name == n.bullet_list || name == n.ordered_list || name == n.task_list {
             self.list(node, name == n.ordered_list)
         } else if table_role(node.ty()) == Some(TableRole::Table) {
             self.table(node)
@@ -619,12 +660,23 @@ impl Writer<'_> {
         let tight = (0..node.child_count()).all(|i| node.child(i).child_count() <= 1);
         let mut items = Vec::new();
         for i in 0..node.child_count() {
+            let child = node.child(i);
             let marker = if ordered {
                 format!("{}. ", start + i as u64)
             } else {
                 "- ".to_string()
             };
             let indent = " ".repeat(marker.len());
+            let marker = if child.ty().name() == self.names.task_item {
+                let done = child
+                    .attrs()
+                    .get(&self.names.task_checked)
+                    .and_then(Value::as_bool)
+                    == Some(true);
+                format!("{marker}[{}] ", if done { 'x' } else { ' ' })
+            } else {
+                marker
+            };
             let body = self.blocks(node.child(i));
             let mut item = String::new();
             for (j, line) in body.split('\n').enumerate() {
@@ -911,6 +963,23 @@ mod tests {
         assert_eq!(out, "- a\n\n- b\n\n  - nested\n\n3. three\n4. four\n");
         assert_eq!(doc.child(0).ty().name(), "bulletList");
         assert_eq!(doc.child(1).attrs().get("start"), Some(&Value::from(3)));
+    }
+
+    #[test]
+    fn task_lists_round_trip() {
+        let (doc, out) = round_trip("- a\n\n- [x] done\n- [ ] todo\n");
+        assert_eq!(doc.child(0).ty().name(), "bulletList");
+        let tasks = doc.child(1);
+        assert_eq!(tasks.ty().name(), "taskList");
+        assert_eq!(
+            tasks.child(0).attrs().get("checked"),
+            Some(&Value::Bool(true))
+        );
+        assert_eq!(
+            tasks.child(1).attrs().get("checked"),
+            Some(&Value::Bool(false))
+        );
+        assert!(out.ends_with("- [x] done\n- [ ] todo\n"), "{out:?}");
     }
 
     #[test]
