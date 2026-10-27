@@ -90,6 +90,7 @@ fn install(key: u64) -> Option<Retained<AnyObject>> {
 /// window that is not the key window (`nsh test`'s, whose events the
 /// monitor never sees): whether it fired a binding (then it is reported to
 /// JS, and the window must not get it).
+#[cfg(feature = "dev")]
 pub(crate) fn fires(surface: &Rc<Surface>, event: &NSEvent) -> bool {
     pressed(surface, event)
 }
