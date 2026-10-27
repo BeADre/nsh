@@ -115,10 +115,12 @@ const WRAP_COMMANDS: Record<Wrap, string> = {
 
 /** The table buttons shown while the selection is in a table: Tiptap's table commands. */
 const TABLE_ACTIONS: { icon: LucideIconName; label: string; command: string }[] = [
-  { icon: "between-horizontal-start", label: "Add row before", command: "addRowBefore" },
-  { icon: "between-horizontal-end", label: "Add row after", command: "addRowAfter" },
-  { icon: "between-vertical-start", label: "Add column before", command: "addColumnBefore" },
-  { icon: "between-vertical-end", label: "Add column after", command: "addColumnAfter" },
+  { icon: "row-insert-above", label: "Add row before", command: "addRowBefore" },
+  { icon: "row-insert-below", label: "Add row after", command: "addRowAfter" },
+  { icon: "column-insert-left", label: "Add column before", command: "addColumnBefore" },
+  { icon: "column-insert-right", label: "Add column after", command: "addColumnAfter" },
+  { icon: "row-delete", label: "Delete row", command: "deleteRow" },
+  { icon: "column-delete", label: "Delete column", command: "deleteColumn" },
   { icon: "table-cells-merge", label: "Merge cells", command: "mergeCells" },
   { icon: "table-cells-split", label: "Split cell", command: "splitCell" },
   { icon: "panel-top", label: "Toggle header row", command: "toggleHeaderRow" },
