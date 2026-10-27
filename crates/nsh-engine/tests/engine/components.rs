@@ -3359,7 +3359,7 @@ mount(App);
 #[test]
 fn a_base_plot_draws_its_marks_from_the_rows() {
     use nsh_core::{
-        AccessibilityRole, Color, HoverEvent,
+        AccessibilityRole, Color,
         canvas::{CanvasOp, Num, Paint, PathOp},
     };
     let (engine, rx) = start(BASE_PLOT);
@@ -3468,20 +3468,24 @@ fn a_base_plot_draws_its_marks_from_the_rows() {
     let hover = |x: f32| {
         engine.control().dispatch_event(
             plot.0,
-            EventKind::HoverMove,
-            EventPayload::Hover(HoverEvent {
-                position: nsh_core::geometry::point(px(x), px(10.0)),
-                ..Default::default()
-            }),
+            EventKind::MouseMove,
+            EventPayload::Mouse(nsh_core::MouseEvent::new(
+                nsh_core::geometry::point(px(x), px(10.0)),
+                nsh_core::geometry::point(px(x), px(10.0)),
+                Default::default(),
+                None,
+            )),
         )
     };
     hover(90.0);
     until(&rx, |b| shows(b, "hover 1"));
     hover(160.0);
     until(&rx, |b| shows(b, "hover 2"));
-    engine
-        .control()
-        .dispatch_event(plot.0, EventKind::HoverOut, EventPayload::None);
+    engine.control().dispatch_event(
+        plot.0,
+        EventKind::MouseLeave,
+        EventPayload::Mouse(nsh_core::MouseEvent::default()),
+    );
     until(&rx, |b| shows(b, "hover null"));
 
     // New rows: the marks drawn again, in one batch, nothing for the grid
@@ -3818,11 +3822,13 @@ fn base_plot_moves_natively_with_its_motion() {
     let hover = |x: f32| {
         engine.control().dispatch_event(
             plot,
-            EventKind::HoverMove,
-            EventPayload::Hover(nsh_core::HoverEvent {
-                position: nsh_core::geometry::point(px(x), px(10.0)),
-                ..Default::default()
-            }),
+            EventKind::MouseMove,
+            EventPayload::Mouse(nsh_core::MouseEvent::new(
+                nsh_core::geometry::point(px(x), px(10.0)),
+                nsh_core::geometry::point(px(x), px(10.0)),
+                Default::default(),
+                None,
+            )),
         )
     };
     // Entering: the parts placed at once, then faded in over 120 ms; the
@@ -3843,9 +3849,11 @@ fn base_plot_moves_natively_with_its_motion() {
     assert!(springs(&glided) > 0);
     assert!(plot_drawings(&glided).is_empty());
     // Leaving: faded out over 80 ms.
-    engine
-        .control()
-        .dispatch_event(plot, EventKind::HoverOut, EventPayload::None);
+    engine.control().dispatch_event(
+        plot,
+        EventKind::MouseLeave,
+        EventPayload::Mouse(nsh_core::MouseEvent::default()),
+    );
     let left = until(&rx, |b| shows(b, "hover null"));
     assert!(timings(&left).contains(&(0.0, 80.0)));
 
@@ -3909,7 +3917,7 @@ mount(App);
 #[test]
 fn base_plot_marks_have_parts_of_their_own_and_the_tooltip_stays_inside() {
     use nsh_core::{
-        Color, HoverEvent,
+        Color,
         animation::Animator,
         canvas::{CanvasOp, GradientShape, Paint},
         geometry::point,
@@ -3984,11 +3992,13 @@ fn base_plot_marks_have_parts_of_their_own_and_the_tooltip_stays_inside() {
     let hover = |x: f32, y: f32| {
         engine.control().dispatch_event(
             plot,
-            EventKind::HoverMove,
-            EventPayload::Hover(HoverEvent {
-                position: point(px(x), px(y)),
-                ..Default::default()
-            }),
+            EventKind::MouseMove,
+            EventPayload::Mouse(nsh_core::MouseEvent::new(
+                point(px(x), px(y)),
+                point(px(x), px(y)),
+                Default::default(),
+                None,
+            )),
         )
     };
     // The tooltip: the view around the app's content, and the point it is
@@ -4175,7 +4185,7 @@ fn base_plot_pie_draws_a_slice_per_row_and_follows_the_pointer() {
     use std::f32::consts::{FRAC_PI_2, PI};
 
     use nsh_core::{
-        Color, HoverEvent,
+        Color,
         animation::{AnimationValue, Animator},
         canvas::{CanvasOp, FillRule, Paint},
         geometry::point,
@@ -4280,11 +4290,13 @@ fn base_plot_pie_draws_a_slice_per_row_and_follows_the_pointer() {
     let hover = |x: f32, y: f32| {
         engine.control().dispatch_event(
             plot,
-            EventKind::HoverMove,
-            EventPayload::Hover(HoverEvent {
-                position: point(px(x), px(y)),
-                ..Default::default()
-            }),
+            EventKind::MouseMove,
+            EventPayload::Mouse(nsh_core::MouseEvent::new(
+                point(px(x), px(y)),
+                point(px(x), px(y)),
+                Default::default(),
+                None,
+            )),
         )
     };
     // What the animator shows of a slice: its opacity and its rim.
@@ -4373,7 +4385,6 @@ mount(App);
 #[test]
 fn base_plot_pie_sweeps_in_and_lifts_on_the_pointer_spring() {
     use nsh_core::{
-        HoverEvent,
         animation::{AnimationOp, Driver},
         geometry::point,
     };
@@ -4400,11 +4411,13 @@ fn base_plot_pie_sweeps_in_and_lifts_on_the_pointer_spring() {
     // The second row's slice, past 3 o'clock: it lifts on the spring.
     engine.control().dispatch_event(
         plot,
-        EventKind::HoverMove,
-        EventPayload::Hover(HoverEvent {
-            position: point(px(30.0), px(60.0)),
-            ..Default::default()
-        }),
+        EventKind::MouseMove,
+        EventPayload::Mouse(nsh_core::MouseEvent::new(
+            point(px(30.0), px(60.0)),
+            point(px(30.0), px(60.0)),
+            Default::default(),
+            None,
+        )),
     );
     let mut over = until(&rx, |b| shows(b, "hover 1"));
     over.extend(until(&rx, |_| false));
@@ -4583,7 +4596,7 @@ fn bar_rects(ops: &[nsh_core::canvas::CanvasOp]) -> Vec<[f32; 4]> {
 #[test]
 fn base_plot_bars_stand_in_bands_and_stack() {
     use nsh_core::{
-        Color, HoverEvent,
+        Color,
         canvas::{CanvasOp, Num, Paint, PathOp},
     };
     let (engine, rx) = start(BASE_PLOT_BARS);
@@ -4695,11 +4708,13 @@ fn base_plot_bars_stand_in_bands_and_stack() {
     let plot = test_view(&all, "bars");
     engine.control().dispatch_event(
         plot,
-        EventKind::HoverMove,
-        EventPayload::Hover(HoverEvent {
-            position: nsh_core::geometry::point(px(160.0), px(10.0)),
-            ..Default::default()
-        }),
+        EventKind::MouseMove,
+        EventPayload::Mouse(nsh_core::MouseEvent::new(
+            nsh_core::geometry::point(px(160.0), px(10.0)),
+            nsh_core::geometry::point(px(160.0), px(10.0)),
+            Default::default(),
+            None,
+        )),
     );
     let hovered = until(&rx, |b| shows(b, "hover 1"));
     assert!(plot_drawings(&hovered).is_empty());
@@ -4796,11 +4811,13 @@ fn base_plot_bars_grow_and_fade_natively() {
     let plot = test_view(&batches, "plot");
     engine.control().dispatch_event(
         plot,
-        EventKind::HoverMove,
-        EventPayload::Hover(nsh_core::HoverEvent {
-            position: nsh_core::geometry::point(px(150.0), px(10.0)),
-            ..Default::default()
-        }),
+        EventKind::MouseMove,
+        EventPayload::Mouse(nsh_core::MouseEvent::new(
+            nsh_core::geometry::point(px(150.0), px(10.0)),
+            nsh_core::geometry::point(px(150.0), px(10.0)),
+            Default::default(),
+            None,
+        )),
     );
     let entered = until(&rx, |b| shows(b, "hover 1"));
     assert!(plot_drawings(&entered).is_empty());

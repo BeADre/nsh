@@ -84,6 +84,7 @@ fn cancel_press(surface: &Rc<Surface>, modifiers: &gpui::Modifiers) {
             time: surface.clock(),
             modifiers: crate::keys::modifiers(modifiers),
             clicks: 0,
+            pressed_button: None,
         },
     );
 }
@@ -179,6 +180,7 @@ pub(crate) fn install(
                 time: s.clock(),
                 modifiers: crate::keys::modifiers(&e.modifiers),
                 clicks: e.click_count as u32,
+                pressed_button: None,
             },
         );
         cx.stop_propagation();
@@ -212,6 +214,7 @@ pub(crate) fn install(
                 time: s.clock(),
                 modifiers: crate::keys::modifiers(&e.modifiers),
                 clicks: e.click_count as u32,
+                pressed_button: None,
             },
         );
         crate::rt::flush(cx);
@@ -253,6 +256,7 @@ pub(crate) fn install(
                 time: s.clock(),
                 modifiers: crate::keys::modifiers(&e.modifiers),
                 clicks: 0,
+                pressed_button: e.pressed_button.and_then(button),
             },
         );
         crate::rt::flush(cx);
@@ -282,6 +286,7 @@ pub(crate) fn install(
                 time: s.clock(),
                 modifiers: crate::keys::modifiers(&e.modifiers),
                 clicks: 0,
+                pressed_button: None,
             },
         );
         crate::rt::flush(cx);
@@ -384,8 +389,8 @@ pub(crate) fn install(
         crate::rt::flush(cx);
     });
     // The keymap's held key (see `crate::keymap::forget_held`), Alt alone
-    // showing a menu bar that hides itself, and the hovered views told of
-    // the new modifiers.
+    // showing a menu bar that hides itself, and the views under a resting
+    // mouse told of the new modifiers (`onMouseMove`).
     let s = surface.clone();
     window.on_modifiers_changed(move |e, _, cx| {
         crate::keymap::forget_held(&s);

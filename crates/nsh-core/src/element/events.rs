@@ -5,7 +5,7 @@ use std::{borrow::Cow, sync::Arc};
 
 use super::builder::Listener;
 use crate::{
-    Bounds, ContextMenuEvent, EventPayload, HoverEvent, JsonValue, PayloadValue, Point, Points,
+    Bounds, ContextMenuEvent, EventPayload, JsonValue, MouseEvent, PayloadValue, Point, Points,
     Size, TouchEvent,
     geometry::{DevicePixels, Radians},
 };
@@ -364,14 +364,6 @@ pub(crate) fn offset(p: &EventPayload) -> Option<Cow<'_, Point<Points>>> {
     }))
 }
 
-/// `onMouseMove`'s payload: the mouse in the view, local `x` / `y`.
-pub(crate) fn mouse_position(p: &EventPayload) -> Option<Cow<'_, Point<Points>>> {
-    Some(Cow::Owned(Point {
-        x: Points(number(p, "x")),
-        y: Points(number(p, "y")),
-    }))
-}
-
 pub(crate) fn pan(p: &EventPayload) -> Option<Cow<'_, PanEvent>> {
     match *p {
         EventPayload::Pan {
@@ -472,9 +464,10 @@ pub(crate) fn native(p: &EventPayload) -> Option<Cow<'_, NativeEvent>> {
     }
 }
 
-pub(crate) fn hover(p: &EventPayload) -> Option<Cow<'_, HoverEvent>> {
+/// `onMouseEnter`, `onMouseMove` and `onMouseLeave`'s payload.
+pub(crate) fn mouse(p: &EventPayload) -> Option<Cow<'_, MouseEvent>> {
     match p {
-        EventPayload::Hover(e) => Some(Cow::Borrowed(e)),
+        EventPayload::Mouse(e) => Some(Cow::Borrowed(e)),
         _ => None,
     }
 }
