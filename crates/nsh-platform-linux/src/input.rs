@@ -510,6 +510,9 @@ fn dispatch(surface: &Rc<Surface>, event: &gdk::Event) -> glib::Propagation {
         T::ButtonPress | T::ButtonRelease | T::MotionNotify if event.is_pointer_emulated() => {}
         // On a view that drags the window: the window's, not the app's.
         T::ButtonPress if crate::chrome::press(surface, event, x, y) => {
+            // The compositor moves the window or shows its menu and keeps
+            // the release: the button is not the app's to report as held.
+            release_buttons(surface);
             return glib::Propagation::Stop;
         }
         T::ButtonPress if button() == Some(gdk::BUTTON_PRIMARY) => {

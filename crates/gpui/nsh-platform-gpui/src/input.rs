@@ -289,7 +289,7 @@ pub(crate) struct Input {
     /// of views a batch moved under a still mouse carry them.
     modifiers: Cell<Modifiers>,
     /// The mouse button held.
-    button: Cell<Option<nsh_core::MouseButton>>,
+    pub(crate) button: Cell<Option<nsh_core::MouseButton>>,
     /// A key with Alt was taken: Alt's release must not open the window
     /// menu.
     alt_combo: Cell<bool>,

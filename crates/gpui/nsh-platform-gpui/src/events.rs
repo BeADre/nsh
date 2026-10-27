@@ -195,6 +195,10 @@ pub(crate) fn install(
         let Some(button) = button(e.button) else {
             return;
         };
+        // Whatever this release ends, the button held is no longer known
+        // (one pressed outside the surface, a Control-click released as
+        // the left button): the next move says it again.
+        s.input.button.set(None);
         let pressed = s.input_pressed.get();
         if pressed & 1 << button == 0 {
             return;
@@ -286,7 +290,7 @@ pub(crate) fn install(
                 time: s.clock(),
                 modifiers: crate::keys::modifiers(&e.modifiers),
                 clicks: 0,
-                pressed_button: None,
+                pressed_button: e.pressed_button.and_then(button),
             },
         );
         crate::rt::flush(cx);

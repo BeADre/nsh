@@ -152,7 +152,9 @@ every platform, as the user decided (2026-10-20) for `onSubmit` (a phone's retur
 ## Shapes that can grow
 
 Apps built once run on every later release (`compatibility.md`): types only widen and inputs only gain optional
-members, so a shape decides what can ever be added to it.
+members, so a shape decides what can ever be added to it. These rules are the targets the API is being brought to
+before the first recorded release (item 3 of the API review): where the code still differs (`AlertDialog.show`'s
+bare id, `Image.prefetch`'s `boolean`, the one `YNode` ref type), the rule wins and the code follows.
 
 - Options are one object (`scrollTo({ x, y, animated })`), never a third positional parameter.
 - A mode is a string union, which gains values; never a boolean that later needs a third state.
@@ -197,7 +199,7 @@ them yet (`compatibility.md`). The frozen RN-shaped modules keep their names. A 
 | `onHoverMove(e: HoverEvent)` (no button down) and `onMouseMove(e: Point)` (button down too) | one `onMouseMove(e: MouseEvent)` | Payloads | The DOM's `mousemove`, GPUI's `on_mouse_move`: every move over the view, with or without a button down (`e.pressedButton`), and a modifier key changing while the mouse rests there; one object, as every event. Rust `on_mouse_move` |
 | `HoverEvent` (type) | `MouseEvent` `{ position; pagePosition; modifiers; pressedButton: MouseButton \| null }`, `MouseButton` `"left" \| "right" \| "middle" \| "back" \| "forward"` | Points | GPUI's `MouseMoveEvent` and `MouseButton`; the payload of all three mouse events. `hoverStyle` and `hover:` keep CSS's name |
 | `ContextMenuEvent` (`onContextMenu`), the same fields | the same shape | Points | `Menu.popup(items, e.pagePosition)` |
-| `onLayout(e: LayoutEvent)` `{ x, y, width, height }` | `onLayout(bounds: Bounds)` | Geometry | `LayoutEvent` dropped |
+| `onLayout(e: LayoutEvent)` `{ x, y, width, height }` | `onLayout(bounds: Bounds)` | Geometry | `LayoutEvent` dropped; next `onLayout({ bounds })` (Payloads, 2026-10-27) |
 | `ref.measure()` → `{ x, y, width, height, pageX, pageY }` | `{ bounds: Bounds; pagePosition: Point }` | Geometry | |
 | `ScrollEvent` (`onScroll`) `{ x, y, contentWidth, contentHeight, width, height, zoomScale }` | `{ offset: Point; contentSize: Size; size: Size; zoomScale }` | Geometry | The other scroll events' `{ x, y }` is the offset's `Point` already |
 | `OverlayPosition` `{ placement, x, y, width, height, availableWidth, availableHeight }` | `{ placement; bounds: Bounds; available: Size }` | Geometry | |

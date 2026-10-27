@@ -464,11 +464,13 @@ pub(crate) fn native(p: &EventPayload) -> Option<Cow<'_, NativeEvent>> {
     }
 }
 
-/// `onMouseEnter`, `onMouseMove` and `onMouseLeave`'s payload.
+/// `onMouseEnter`, `onMouseMove` and `onMouseLeave`'s payload; an event
+/// sent without one (an embedder's, a script's) still reaches the
+/// listener, at no known position.
 pub(crate) fn mouse(p: &EventPayload) -> Option<Cow<'_, MouseEvent>> {
     match p {
         EventPayload::Mouse(e) => Some(Cow::Borrowed(e)),
-        _ => None,
+        _ => Some(Cow::Owned(MouseEvent::default())),
     }
 }
 

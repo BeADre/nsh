@@ -14107,12 +14107,12 @@ fn mouse_moves_reach_rust_listeners_with_their_positions_modifiers_and_buttons()
     let delivered = c.commit().unwrap();
     assert!(delivered.items.iter().any(|item| matches!(item,
         MountItem::Text { text, .. } if text.text == "4 5 14 25 true Some(Left)")));
-    // Another payload is not a mouse move.
+    // One sent without a payload (an embedder's, a script's) still reaches
+    // the listener, at no known position.
     assert!(c.component_event(host, EventKind::MouseMove, &EventPayload::None));
-    assert!(
-        c.commit()
-            .is_none_or(|b| !b.items.iter().any(|i| matches!(i, MountItem::Text { .. })))
-    );
+    let delivered = c.commit().unwrap();
+    assert!(delivered.items.iter().any(|item| matches!(item,
+        MountItem::Text { text, .. } if text.text == "0 0 0 0 false None")));
 }
 
 #[test]

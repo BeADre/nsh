@@ -258,6 +258,10 @@ enum Key {
 pub(crate) struct Input {
     /// The pointers that are down.
     pointers: RefCell<Vec<Pointer>>,
+    /// The mouse buttons held as of the last mouse message
+    /// ([`PointerEvent::buttons`]): presses of the right, middle and side
+    /// buttons hold no pointer.
+    mouse_buttons: Cell<u8>,
     /// Two fingers pinching / rotating on the touchscreen.
     two: RefCell<Option<TwoFinger>>,
     /// A pinch by Ctrl + wheel (or a precision touchpad's pinch), with the
@@ -755,6 +759,9 @@ pub(crate) fn pointer(surface: &Rc<Surface>, event: PointerEvent) {
     };
     let mouse_move = key == Key::Mouse && event.kind == PointerKind::Move;
     let button = pressed_button(event.buttons);
+    if key == Key::Mouse {
+        surface.input.mouse_buttons.set(event.buttons);
+    }
     if raw_pointer(surface, key, &event) {
         // A drag in a web view still moves over the views around it.
         if mouse_move {
@@ -2096,7 +2103,8 @@ fn pressed_button(buttons: u8) -> Option<MouseButton> {
 /// they would on the next move.
 fn modifiers_changed(surface: &Surface, modifiers: Modifiers) {
     let input = &surface.input;
-    if input.pointers.borrow().iter().any(|p| p.key == Key::Mouse) {
+    if input.mouse_buttons.get() != 0 || input.pointers.borrow().iter().any(|p| p.key == Key::Mouse)
+    {
         return;
     }
     if let Some((x, y)) = input.last.get() {

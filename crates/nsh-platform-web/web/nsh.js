@@ -5283,6 +5283,9 @@ class Player {
 
   pointerDown(e) {
     this.lastPointer = e.pointerType;
+    // A press without a move still holds a button: a modifier key then
+    // fires no hover move (`modifiersChanged`).
+    if (e.pointerType === "mouse") this.hoverButtons = e.buttons;
     Player.active = this;
     if (e.button > 0) return;
     if (e.pointerType === "mouse" && this.desktopUI && this.grabBar(e)) return;
@@ -5492,6 +5495,7 @@ class Player {
   }
 
   pointerUp(e, cancelled) {
+    if (e.pointerType === "mouse") this.hoverButtons = e.buttons;
     const p = this.pointers.get(e.pointerId);
     if (!p) return;
     if (p.mode === "bar") {
