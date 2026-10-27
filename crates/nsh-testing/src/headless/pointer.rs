@@ -120,8 +120,9 @@ impl Headless {
             self.touch(TouchPhase::Start, &finger, None);
         }
         // Inside a scroll view a touch presses only once it rests: a drag
-        // moves away before.
-        let mut press_due = if in_scroll {
+        // moves away before. A desktop's mouse presses at once (a drag
+        // selects text there rather than scrolling).
+        let mut press_due = if in_scroll && !self.environment.desktop() {
             Some(SCROLL_PRESS_DELAY as f64)
         } else {
             self.press_in(&mut finger);
@@ -267,11 +268,21 @@ impl Headless {
 
     /// The press under the finger goes in (`onPressDown`).
     fn press_in(&mut self, finger: &mut Finger) {
-        if let Some(press) = &mut finger.press
-            && let Some(kind) = press.press_in()
-        {
-            self.send(press.node, kind, EventPayload::None);
-        }
+        let Some(press) = &mut finger.press else {
+            return;
+        };
+        let Some(kind) = press.press_in() else {
+            return;
+        };
+        // Where the drag starts, in the pressed view, with the keys held:
+        // a press that selects or drags from there reads them.
+        let node = press.node;
+        let at = self
+            .screen
+            .bounds_in_root(node)
+            .map(|b| point(finger.start.x - b.origin.x, finger.start.y - b.origin.y));
+        let payload = self.press_payload(node, at);
+        self.send(node, kind, payload);
     }
 
     /// The finger moved away from its press: it ends without a press.
@@ -469,7 +480,7 @@ impl Headless {
             let event = nsh_core::HoverEvent {
                 position: point(at.x - origin.x, at.y - origin.y),
                 page_position: at,
-                modifiers: nsh_core::keymap::Modifiers::default(),
+                modifiers: self.held,
             };
             self.send(id, EventKind::HoverMove, EventPayload::Hover(event));
         }

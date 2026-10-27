@@ -27,6 +27,11 @@ pub(crate) trait Driver: Send {
     fn scroll(&mut self, selector: &str, distance: Points) -> Result<(), String>;
     fn drag(&mut self, selector: &str, by: Point<Points>) -> Result<(), String>;
     fn press_key(&mut self, keys: &str) -> Result<(), String>;
+    /// Holds (`down`) or lets go of modifier keys for the pointer's steps.
+    fn hold_keys(&mut self, keys: &str, down: bool) -> Result<(), String> {
+        let _ = (keys, down);
+        Err("holding keys (`keyboard.down` / `keyboard.up`) runs headless only for now: run the test without `--target`".into())
+    }
     fn hover(&mut self, selector: &str) -> Result<(), String>;
     fn right_click(&mut self, selector: &str) -> Result<(), String>;
     /// Pastes `content` into the input `selector` names, as the user's
@@ -110,6 +115,9 @@ impl Driver for Headless {
     }
     fn drag(&mut self, selector: &str, by: Point<Points>) -> Result<(), String> {
         Headless::drag(self, selector, by)
+    }
+    fn hold_keys(&mut self, keys: &str, down: bool) -> Result<(), String> {
+        Headless::hold_keys(self, keys, down)
     }
     fn press_key(&mut self, keys: &str) -> Result<(), String> {
         Headless::press_key(self, keys)

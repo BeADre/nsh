@@ -1439,6 +1439,20 @@ impl Keyboard {
         let steps = this.with(|k| k.steps.clone());
         steps.run(move |app| app.press_key(&keys)).await
     }
+
+    /// Holds modifier keys down (`"mod"`, `"shift"`, `"alt"`, `"ctrl"`,
+    /// `"meta"`, joined by `+`) until `up`: the presses, drags and hovers
+    /// meanwhile carry them (a Mod-click, a Shift-drag). Headless only.
+    pub async fn down(this: Instance<Self>, keys: String) -> Result<(), String> {
+        let steps = this.with(|k| k.steps.clone());
+        steps.run(move |app| app.hold_keys(&keys, true)).await
+    }
+
+    /// Lets go of modifier keys `down` held.
+    pub async fn up(this: Instance<Self>, keys: String) -> Result<(), String> {
+        let steps = this.with(|k| k.steps.clone());
+        steps.run(move |app| app.hold_keys(&keys, false)).await
+    }
 }
 
 /// `ms` milliseconds, which a test gives as a number.
