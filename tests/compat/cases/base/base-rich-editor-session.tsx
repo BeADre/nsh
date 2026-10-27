@@ -188,7 +188,7 @@ function App() {
     step("Empty", () => `${createRichEditor().isEmpty}`);
     // Page geometry and handle drags need a mounted view: without one they answer nothing and do nothing.
     step("Page", () => {
-      const loose = createRichEditor({ content: "<p>ab</p>" });
+      const loose = createRichEditor({ content: "ab" });
       loose.dragBlock(0, { x: 0, y: 0 });
       loose.dragTo({ x: 0, y: 40 });
       loose.endDrag();
