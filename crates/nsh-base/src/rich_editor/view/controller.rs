@@ -47,6 +47,9 @@ use crate::{
 /// The sink is emptied once it holds this many bytes (and no composition
 /// is in progress).
 const SINK_LIMIT: usize = 256;
+/// How many half-line steps a caret moving up or down probes past a gap
+/// between blocks before it takes the document's edge.
+const GAP_PROBES: usize = 64;
 
 /// A rendered block: its id (kept while the block is the same block across
 /// changes), its node and where it starts.
@@ -1031,6 +1034,7 @@ impl Rv {
     }
 
     /// The position a line (or a page) up or down, at the goal x.
+    #[allow(clippy::cast_precision_loss)]
     fn vertical(
         &self,
         head: usize,
@@ -1045,13 +1049,43 @@ impl Rv {
             Unit::Page => self.viewport.get_untracked().height.max(caret.size.height),
             _ => caret.size.height * 0.5 + px(1.0),
         };
-        let y = if m.dir < 0 {
-            caret.origin.y - distance + caret.size.height * 0.5 - caret.size.height * 0.5 - px(0.0)
-        } else {
-            caret.origin.y + caret.size.height + distance - caret.size.height * 0.5
-        };
-        let hit = geo.hit(Point::new(x, if m.dir < 0 { y - px(1.0) } else { y }))?;
-        let (pos, side) = match hit {
+        // A gap between blocks (margins, a divider) can be taller than a
+        // line: a probe landing in it hits the caret's own block again, so
+        // the probe steps on by half a line until it reaches another
+        // position or runs out of document.
+        let step = caret.size.height * 0.5;
+        let mut hit = None;
+        let mut moved = false;
+        for i in 0..GAP_PROBES {
+            let reach = distance + step * i as f32;
+            let y = if m.dir < 0 {
+                caret.origin.y - reach - px(1.0)
+            } else {
+                caret.origin.y + caret.size.height + reach - caret.size.height * 0.5
+            };
+            let Some(found) = geo.hit(Point::new(x, y)) else {
+                break;
+            };
+            // Only a position past the caret, the way it goes, is a move:
+            // a probe in a block's padding hits its own line again.
+            moved = match found {
+                Hit::Text(pos, _) => {
+                    if m.dir < 0 {
+                        pos < head
+                    } else {
+                        pos > head
+                    }
+                }
+                Hit::Node(_) => true,
+            };
+            hit = Some(found);
+            if moved || m.unit == Unit::Page {
+                break;
+            }
+        }
+        let (pos, side) = match hit? {
+            // Nothing past the caret: the first or last line.
+            Hit::Text(..) if !moved => (head, affinity),
             Hit::Text(pos, side) => (pos, side),
             Hit::Node(pos) => {
                 drop(geo);
