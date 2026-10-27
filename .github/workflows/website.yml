@@ -74,6 +74,9 @@ jobs:
       - name: Test browser scroll indicator behavior
         run: node --test crates/nsh-platform-web/web/scroll.test.mjs
 
+      - name: Test the player's dialogs, input and host channel
+        run: node --test crates/nsh-platform-web/web/nsh.test.mjs
+
       - name: Install website dependencies
         working-directory: website
         run: bun install
