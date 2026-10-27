@@ -432,7 +432,8 @@ function Drawdown() {
           y="value"
           yScale={{ type: "linear", domain: [VALUE_LO, VALUE_HI] }}
           appearGeneration={1}
-          motion={{ appear: { duration: 1000, easing: "easeOut" }, enter: { duration: 120 }, exit: { duration: 160 }, pointer: { stiffness: 420, damping: 40 } }}
+          // No pointer spring: the other plot marks the same day at once, so both move together.
+          motion={{ appear: { duration: 1000, easing: "easeOut" }, enter: { duration: 120 }, exit: { duration: 160 } }}
           accessibilityLabel={`Portfolio value over 120 days, ${signed(total, 1)}%; worst drawdown ${signed(TROUGH.drawdown, 1)}% from day ${PEAK.day + 1} to day ${TROUGH.day + 1}`}
           accessibilityValue={{ text: hover() == null ? undefined : `Day ${shown().day + 1}, $${count(shown().value)}, ${signed(shown().drawdown, 1)}%` }}
           crossLineClass="w-px h-full"
@@ -464,7 +465,7 @@ function Drawdown() {
           y="drawdown"
           yScale={{ type: "linear", domain: [DD_FLOOR, 0] }}
           appearGeneration={1}
-          motion={{ appear: { duration: 1000, easing: "easeOut" }, enter: { duration: 120 }, exit: { duration: 160 }, pointer: { stiffness: 420, damping: 40 } }}
+          motion={{ appear: { duration: 1000, easing: "easeOut" }, enter: { duration: 120 }, exit: { duration: 160 } }}
           accessibilityLabel={`Drawdown from the high, at worst ${signed(TROUGH.drawdown, 1)}% on day ${TROUGH.day + 1}`}
           accessibilityValue={{ text: hover() == null ? undefined : `Day ${shown().day + 1}, ${signed(shown().drawdown, 1)}% from the high` }}
           crossLineClass="w-px h-full"
