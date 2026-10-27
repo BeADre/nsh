@@ -336,7 +336,10 @@ impl Rv {
         let rv = self.clone();
         effect(move || {
             if rv.props.auto_focus.get() {
-                rv.focus();
+                // After this commit: the input it focuses is not mounted yet
+                // when the view connects.
+                let rv = rv.clone();
+                spawn(async move { rv.focus() });
             }
         });
         // Scrolls the selection into view once its place is known.
