@@ -31,8 +31,8 @@
 <noscript><div id="nojs">{{title}} needs JavaScript.</div></noscript>
 <script type="module">
   // Written by `nsh package --target web`: loads the runtime, the app's
-  // code (bytecode, with the hardening it runs first) and its fonts in
-  // parallel, then runs the app as a release; a chunk's own fonts come
+  // entry fonts in
+  // parallel, then imports its browser entry; a chunk's own fonts come
   // with it. A Rust app (`app.rust`) has no code: its runtime mounts its
   // root. The page's host (`app.host`, nsh.json `web.host`) answers the
   // app's `nsh/host` calls: its `createHost(player)` runs once the player

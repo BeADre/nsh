@@ -36,7 +36,7 @@ async function fixture() {
     const dom = createDom(invoke, values, api, () => live, () => {});
     const components = createComponents(invoke, values, api, dom);
     const close = () => { if (live) { wasm.nsh_browser_dispose(); live = false; values.dispose(); } };
-    return { api, values, invoke, dom, modules: () => createModules(invoke, values, () => live, () => {}, components.make), close,
+    return { api, values, invoke, dom, components, modules: () => createModules(invoke, values, () => live, () => {}, components.make), close,
       restart() { close(); return start(); } };
   };
   return start();
@@ -550,8 +550,47 @@ test("host events preserve order, owner cleanup and platform calls", { skip: !pa
   api.root(stop => { dispose = stop; channel.host.on("ready", value => heard.push(value)); });
   await Promise.resolve(); assert.deepEqual(heard, [1]);
   channel.event("ready", 2); assert.deepEqual(heard, [1, 2]);
-  assert.equal(await channel.host.call("example", { a: 1 }), 42);
-  assert.deepEqual(calls, [["example", { a: 1 }]]);
+  assert.equal(await channel.host.call("example", { a: 1 }, { timeout: 0 }), 42);
+  assert.deepEqual(calls, [["example", { a: 1 }, { timeout: 0 }]]);
   dispose(); channel.event("ready", 3); assert.deepEqual(heard, [1, 2]);
-  channel.dispose(); close();
+  const top = [];
+  channel.host.on("top", value => top.push(value));
+  channel.event("top", 4); assert.deepEqual(top, [4]);
+  channel.dispose(); channel.event("top", 5); assert.deepEqual(top, [4]);
+  close();
+});
+
+
+test("Rust component event callbacks retain their error boundary owner", { skip: !path }, async () => {
+  const { api, values, components, close } = await fixture();
+  const Component = components.make({ name: "Fixture", id: 0, props: [], events: ["change"], methods: [] }, () => {});
+  let output, node, dispose;
+  api.root(stop => {
+    dispose = stop;
+    output = api.ErrorBoundary({ fallback: error => error, get children() {
+      node = Component({ onChange() { throw "component event"; } });
+      return node;
+    } });
+  });
+  components.component(values.nodeIds.get(node), "change", 1, false);
+  const read = value => typeof value === "function" ? read(value()) : value;
+  assert.equal(read(output), "component event");
+  dispose(); close();
+});
+
+test("Rust renderer getters retain their error boundary owner", { skip: !path }, async () => {
+  const { api, values, components, close } = await fixture();
+  const Component = components.make({ name: "Fixture", id: 0, props: [], events: [], methods: [] }, () => {});
+  let output, node, dispose;
+  api.root(stop => {
+    dispose = stop;
+    output = api.ErrorBoundary({ fallback: error => error, get children() {
+      node = Component({ get cell() { throw "renderer getter"; } });
+      return node;
+    } });
+  });
+  components.render(values.nodeIds.get(node), "cell", "row", 1);
+  const read = value => typeof value === "function" ? read(value()) : value;
+  assert.equal(read(output), "renderer getter");
+  dispose(); close();
 });

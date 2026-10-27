@@ -143,7 +143,7 @@ impl HostInput for Value {
         matches!(self.kind(), 5..=7)
     }
     fn as_bool(&self) -> Option<bool> {
-        (self.kind() == 2).then(|| self.0 == 3)
+        (self.kind() == 2).then_some(self.0 == 3)
     }
     fn as_number(&self) -> Option<f64> {
         (self.kind() == 3).then(|| invoke(2, self.0, 0, 0, 0.0))

@@ -21,7 +21,7 @@ mod values;
 
 use std::{cell::RefCell, rc::Rc};
 
-use nsh_core::{js::host::HostInput, element::JsHost};
+use nsh_core::{element::JsHost, js::host::HostInput};
 use values::{EXCEPTION, Value};
 
 struct Runtime {
@@ -85,20 +85,39 @@ impl Runtime {
             430 => {
                 let host = self.host.borrow().clone();
                 let available = host.as_ref().is_some_and(|host| host.available());
-                let params = host.map(|host| host.params()).unwrap_or_else(|| serde_json::json!({}));
+                let params = host
+                    .map(|host| host.params())
+                    .unwrap_or_else(|| serde_json::json!({}));
                 let params = self.bindings.json(&params)?;
-                Value::array([Value(if available { 3 } else { 2 }), Value(params.0[0] as u32)])
+                Value::array([
+                    Value(if available { 3 } else { 2 }),
+                    Value(params.0[0] as u32),
+                ])
             }
             431 | 432 => {
-                let name = args.index(0)?.as_string().ok_or_else(|| nsh_core::element::PropError("host: a message name".into()))?;
+                let name = args
+                    .index(0)?
+                    .as_string()
+                    .ok_or_else(|| nsh_core::element::PropError("host: a message name".into()))?;
                 nsh_core::host_channel::check_name(&name).map_err(nsh_core::element::PropError)?;
-                if !nsh_core::access::valid_host_name(&name) || !self.bindings.system.borrow().access.allows_host(&name) {
-                    return Err(nsh_core::element::PropError(format!("nsh/host: `{name}` is not granted")));
+                if !nsh_core::access::valid_host_name(&name)
+                    || !self.bindings.system.borrow().access.allows_host(&name)
+                {
+                    return Err(nsh_core::element::PropError(format!(
+                        "nsh/host: `{name}` is not granted"
+                    )));
                 }
                 let data = protocol::to_json(&compat::Value::new(args.index(1)?))?;
                 let id = args.index(2)?.as_number().unwrap_or(0.0) as u64;
-                let host = self.host.borrow().clone().ok_or_else(|| nsh_core::element::PropError("this platform has no host".into()))?;
-                if op == 431 { host.call(id, &name, data).map_err(nsh_core::element::PropError)?; } else { host.post(&name, data); }
+                let host = self.host.borrow().clone().ok_or_else(|| {
+                    nsh_core::element::PropError("this platform has no host".into())
+                })?;
+                if op == 431 {
+                    host.call(id, &name, data)
+                        .map_err(nsh_core::element::PropError)?;
+                } else {
+                    host.post(&name, data);
+                }
                 Ok(Value(0))
             }
             200 => {
@@ -146,13 +165,13 @@ impl Runtime {
             }
             405 => {
                 let json = args.index(0)?.as_string().unwrap_or_default();
-                if let Ok(value) = serde_json::from_str(&json) {
-                    if let Ok(setting) = nsh_core::StatusBarSetting::from_json(&value) {
-                        self.bindings.ops.borrow_mut().push(nsh_core::Op::Command {
-                            id: 1,
-                            command: nsh_core::Command::SetStatusBar(setting),
-                        });
-                    }
+                if let Ok(value) = serde_json::from_str(&json)
+                    && let Ok(setting) = nsh_core::StatusBarSetting::from_json(&value)
+                {
+                    self.bindings.ops.borrow_mut().push(nsh_core::Op::Command {
+                        id: 1,
+                        command: nsh_core::Command::SetStatusBar(setting),
+                    });
                 }
                 Ok(Value(0))
             }

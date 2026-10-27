@@ -2159,7 +2159,7 @@ fn nsh_crate(source: &Path, name: &str) -> PathBuf {
 /// published apps, `web-dev` for development ([`RustApp::web_dev_profile`]).
 fn web_profile(kind: crate::runtime::WebKind) -> &'static str {
     match kind {
-        crate::runtime::WebKind::Release => "web",
+        crate::runtime::WebKind::Browser => "web",
         crate::runtime::WebKind::Dev => "web-dev",
     }
 }
@@ -2953,7 +2953,7 @@ mod tests {
         let app = app(&dir, &[("app-native", dir.join("native"))], None);
         app.write_workspace().unwrap();
         let manifest = std::fs::read_to_string(app.workspace.join("Cargo.toml")).unwrap();
-        assert_eq!(super::web_profile(WebKind::Release), "web");
+        assert_eq!(super::web_profile(WebKind::Browser), "web");
         let web = "[profile.web]
 inherits = \"release\"
 opt-level = \"z\"

@@ -63,24 +63,30 @@ export function createComponents(invoke, values, reactive, dom) {
   return {
     make,
     component(id, name, value, spread) {
-      const current = state(id), fn = current?.props[handler(name)];
-      if (typeof fn === "function") reactive.batch(() => reactive.untracked(() => spread ? fn(...value) : fn(value)));
+      const current = state(id);
+      if (!current) return;
+      reactive.batch(() => reactive.runWithOwner(current.owner, () => reactive.untracked(() => reactive.protect(() => {
+        const fn = current.props[handler(name)];
+        if (typeof fn === "function") return spread ? fn(...value) : fn(value);
+      }))));
     },
     children(id, wanted) { state(id)?.lazy.set(wanted); },
     render(id, prop, key, value) {
       const current = state(id);
       if (!current) return;
-      this.unrender(id, prop, key);
-      const render = current.props[prop];
-      if (typeof render !== "function") return;
-      reactive.runWithOwner(current.owner, () => reactive.root(dispose => {
-        const holder = dom.rt.element("view");
-        dom.rt.prop(holder, "componentRender", `${prop}\x1f${key}`);
-        try { dom.rt.insert(holder, render(value)); dom.rt.append(current.node, holder); }
-        catch (error) { dispose(); throw error; }
-        let entries = current.renders.get(prop);
-        if (!entries) current.renders.set(prop, entries = new Map());
-        entries.set(key, { holder, dispose });
+      reactive.runWithOwner(current.owner, () => reactive.protect(() => {
+        this.unrender(id, prop, key);
+        const render = current.props[prop];
+        if (typeof render !== "function") return;
+        return reactive.root(dispose => {
+          const holder = dom.rt.element("view");
+          dom.rt.prop(holder, "componentRender", `${prop}\x1f${key}`);
+          try { dom.rt.insert(holder, render(value)); dom.rt.append(current.node, holder); }
+          catch (error) { dispose(); throw error; }
+          let entries = current.renders.get(prop);
+          if (!entries) current.renders.set(prop, entries = new Map());
+          entries.set(key, { holder, dispose });
+        });
       }));
     },
     unrender(id, prop, key) {

@@ -1087,17 +1087,17 @@ class Player {
     });
   }
 
-  /**
-   * Runs the Rust app the module was built for (an app's runtime with
-   * `nsh.json` `"root"`): its root component, with no bundle and no JS of
-   * the app's, replacing what ran.
-   */
   /** Runs a trusted standalone app with the browser ES module loader. */
   runModule(entry, options) {
     if (!this.browserHost) throw new Error("this runtime has no browser JavaScript host");
     return this.browserHost.run(entry, options);
   }
 
+  /**
+   * Runs the Rust app the module was built for (an app's runtime with
+   * `nsh.json` `"root"`): its root component, with no bundle and no JS of
+   * the app's, replacing what ran.
+   */
   runRust() {
     if (!this.wasm.nsh_start_rust) throw new Error("this runtime has no Rust app");
     const [width, height] = this.reset();
@@ -1130,7 +1130,7 @@ class Player {
   }
 
   /** Starts the app with `start(environment)`, which returns the pump delay. */
-  begin(width, start) {
+  begin(width, start, deferEvents = false) {
     this.idiom = this.options.idiom ?? this.measureIdiom(width);
     const environment = (this.reported = JSON.stringify(this.environment()));
     this.updateRootClasses();
@@ -1149,6 +1149,11 @@ class Player {
     } finally {
       this.starting = false;
     }
+    if (!deferEvents) this.startedApp();
+  }
+
+  /** Delivers queued host events after the app installs its listeners. */
+  startedApp() {
     this.started = true;
     const events = this.hostEvents;
     this.hostEvents = [];
@@ -1214,6 +1219,9 @@ class Player {
   }
 
   stop() {
+    if (this.stopping) return;
+    this.stopping = true;
+    try {
     // Host events wait for the next app (`begin`).
     this.started = false;
     this.hostEvents ??= [];
@@ -1225,6 +1233,7 @@ class Player {
     this.frame = 0;
     this.browserHost?.stop();
     this.wasm?.nsh_stop();
+    } finally { this.stopping = false; }
   }
 
   /**

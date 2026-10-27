@@ -8,13 +8,13 @@
 //! index.html                       the app's page (the only file that changes in place)
 //! manifest.webmanifest             name, icons, colors (installing it as an app)
 //! nsh.<digest>.js                  the DOM runtime
-//! nsh.<digest>.wasm                the engine, the core, the components and QuickJS
+//! nsh.<digest>.wasm                the engine, the core and the components
 //! nsh-bindgen.<digest>.js          wasm-bindgen's glue, for crates that call JS (`crate::bindgen`)
 //! snippets.<digest>/<crate>-<hash>/ the JS snippets the glue imports, under their own paths
-//! app.<digest>.nshc                the app's bundle, compiled to QuickJS bytecode
-//! harden.<digest>.nshc             the sandbox's hardening, compiled likewise
+//! app.<digest>.js                  the app's browser ES module
+//! browser.<digest>/               the browser binding modules and licenses
 //! host.<digest>.js                 the page's host (`nsh.json` `web.host`), when the app has one
-//! chunks/<name>.<digest>.nshc      what `import()` loads, fetched when first imported
+//! <chunk>.<digest>.js              what `import()` loads, fetched when first imported
 //! assets/<path>.<digest>.<ext>     `asset:/<path>`, loaded from its URL when used
 //! icons/<size>.<digest>.png        favicon, apple-touch-icon, the manifest's
 //! ```
@@ -25,10 +25,8 @@
 //! fonts are fetched before the app starts, as text is measured with them
 //! synchronously.
 //!
-//! The app ships compiled: the runtime of published apps has no QuickJS
-//! parser (`runtime::WebKind::Release`), and starts sooner without
-//! compiling. The bytecode is the CLI's (`nsh_js::BYTECODE_VERSION`),
-//! which the web build's 32-bit QuickJS reads as the 64-bit hosts do.
+//! Published standalone TSX runs as browser ES modules. Its Wasm runtime
+//! has no QuickJS; the existing embedded/development players retain it.
 
 use std::{
     fmt::Write as _,

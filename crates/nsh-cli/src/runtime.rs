@@ -510,6 +510,24 @@ fn existing(path: PathBuf, platform: Platform, name: &str) -> anyhow::Result<Pat
     )
 }
 
+/// The browser facade ships with the runtime, including registry-built apps.
+pub(crate) fn copy_browser_host(source: &Path, target: &Path) -> anyhow::Result<()> {
+    let from = source.join("browser");
+    let to = target.join("browser");
+    fs::create_dir_all(&to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        if entry
+            .path()
+            .extension()
+            .is_some_and(|ext| ext == "js" || ext == "txt")
+        {
+            fs::copy(entry.path(), to.join(entry.file_name()))?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::Platform;
@@ -567,22 +585,4 @@ mod tests {
         );
         assert_eq!(Platform::Gpui.host(false), "the development host for GPUI");
     }
-}
-
-/// The browser facade ships with the runtime, including registry-built apps.
-pub(crate) fn copy_browser_host(source: &Path, target: &Path) -> anyhow::Result<()> {
-    let from = source.join("browser");
-    let to = target.join("browser");
-    fs::create_dir_all(&to)?;
-    for entry in fs::read_dir(from)? {
-        let entry = entry?;
-        if entry
-            .path()
-            .extension()
-            .is_some_and(|ext| ext == "js" || ext == "txt")
-        {
-            fs::copy(entry.path(), to.join(entry.file_name()))?;
-        }
-    }
-    Ok(())
 }

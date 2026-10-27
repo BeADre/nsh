@@ -31,7 +31,7 @@ export function createHost(invoke, reactive, dom, environment, live, platform = 
       const entries = listeners.get(name) ?? new Set(); listeners.set(name, entries);
       const entry = { fn, owner: reactive.getOwner() }; entries.add(entry);
       const off = () => { entries.delete(entry); if (!entries.size) listeners.delete(name); }; off.remove = off;
-      reactive.cleanup(off);
+      if (entry.owner) reactive.cleanup(off);
       queueMicrotask(() => {
         if (!live()) return;
         for (let i = 0; i < inbox.length && listeners.get(name)?.size;) {
@@ -42,7 +42,7 @@ export function createHost(invoke, reactive, dom, environment, live, platform = 
       return off;
     },
     call(name, data, options) {
-      if (!initial[0]) return platform.call(name, data);
+      if (!initial[0]) return platform.call(name, data, options);
       return new Promise((resolve, reject) => {
         nameOf(name);
         const timeout = options?.timeout === undefined ? 30000 : Number(options.timeout);

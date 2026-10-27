@@ -41,7 +41,7 @@ export class Values {
       if (!symbol) { symbol = { id: this.nextIdentity++, refs: 0 }; this.symbols.set(value, symbol); }
       symbol.refs++;
     }
-    this.slots[index] = { value, refs: 1, generation, symbol };
+    this.slots[index] = { value, refs: 1, generation, symbol, node: this.nodeIds.get(value) ?? 0 };
     return ((generation << INDEX_BITS) | index) >>> 0;
   }
   slot(id) {
@@ -205,7 +205,7 @@ export class Values {
             try { description = JSON.stringify(value); } catch { description = String(value); }
             return this.put(description ?? String(value));
           }
-          case 14: return this.nodeIds.get(this.get(a)) ?? 0;
+          case 14: return this.slot(a).node ?? 0;
           case 15: return this.put(this.nodes.get(a)?.deref() ?? null);
           case 16: return this.retain(a);
           case 17: this.release(a); return 0;

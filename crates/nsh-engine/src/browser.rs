@@ -24,6 +24,7 @@ use crate::{
 };
 
 /// Services attached to a browser host when its local engine starts.
+#[non_exhaustive]
 pub struct Services {
     /// The same capability-scoped Rust system services supplied to native JS.
     pub system: nsh_core::element::System,
@@ -41,6 +42,35 @@ pub struct Services {
     pub tokens: Arc<Tokens>,
     /// The initial theme.
     pub theme: ThemeTokens,
+}
+
+impl Default for Services {
+    fn default() -> Self {
+        Self {
+            system: Default::default(),
+            host: Rc::new(UnconfiguredHost),
+            wake: Arc::new(|| {}),
+            registries: Vec::new(),
+            posts: Default::default(),
+            environment: Default::default(),
+            tokens: Default::default(),
+            theme: Default::default(),
+        }
+    }
+}
+
+struct UnconfiguredHost;
+impl nsh_core::host_channel::HostBridge for UnconfiguredHost {
+    fn available(&self) -> bool {
+        false
+    }
+    fn params(&self) -> nsh_core::JsonValue {
+        serde_json::json!({})
+    }
+    fn call(&self, _: u64, _: &str, _: nsh_core::JsonValue) -> Result<(), String> {
+        Err("no embedding host was configured".into())
+    }
+    fn post(&self, _: &str, _: nsh_core::JsonValue) {}
 }
 
 /// The browser's side of an engine turn. Implementations must not retain
@@ -91,12 +121,20 @@ thread_local! {
 
 /// A registration for the immediately following local-engine startup.
 /// Dropping it also clears a registration that startup did not consume.
-pub struct Registration(Rc<dyn Host>);
+#[derive(Default)]
+#[non_exhaustive]
+pub struct Registration(Option<Rc<dyn Host>>);
 impl Drop for Registration {
     fn drop(&mut self) {
+        let Some(host) = &self.0 else {
+            return;
+        };
         NEXT.with(|slot| {
             let mut slot = slot.borrow_mut();
-            if slot.as_ref().is_some_and(|host| Rc::ptr_eq(host, &self.0)) {
+            if slot
+                .as_ref()
+                .is_some_and(|pending| Rc::ptr_eq(pending, host))
+            {
                 slot.take();
             }
         });
@@ -112,7 +150,7 @@ pub fn register(host: Rc<dyn Host>) -> Result<Registration, String> {
             return Err("a browser host is already awaiting startup".into());
         }
         *slot = Some(host.clone());
-        Ok(Registration(host))
+        Ok(Registration(Some(host)))
     })
 }
 
@@ -163,7 +201,7 @@ impl Script {
                 wake: system.wake,
                 registries: sets.to_vec(),
                 posts,
-                environment: environment.clone(),
+                environment: *environment,
                 tokens,
                 theme,
             })?;

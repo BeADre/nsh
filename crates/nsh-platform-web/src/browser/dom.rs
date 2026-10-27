@@ -116,10 +116,10 @@ impl Dom {
                 .parent;
             if previous == Some(parent) {
                 let children = &nodes[parent as usize].as_ref().unwrap().children;
-                if let Some(index) = children.iter().position(|v| v.node() == Some(id)) {
-                    if children.get(index + 1).and_then(Value::node) == before {
-                        return Ok(());
-                    }
+                if let Some(index) = children.iter().position(|v| v.node() == Some(id))
+                    && children.get(index + 1).and_then(Value::node) == before
+                {
+                    return Ok(());
                 }
             }
             let old = previous.and_then(|p| {
@@ -217,7 +217,11 @@ impl Dom {
     }
     pub(super) fn trace_edges(&self, edges: &mut Vec<(u32, u32, u32, u32)>) {
         for (id, node) in self.nodes.borrow().iter().enumerate().skip(2) {
-            if let Some(node) = node { for child in &node.children { edges.push((2, id as u32, 0, child.0)); } }
+            if let Some(node) = node {
+                for child in &node.children {
+                    edges.push((2, id as u32, 0, child.0));
+                }
+            }
         }
     }
     pub(super) fn call(&self, op: u32, args: &Value) -> Result<Value, PropError> {
@@ -414,11 +418,10 @@ impl Dom {
                     .and_then(Option::take);
                 if let Some(node) = node {
                     for child in &node.children {
-                        if let Some(id) = child.node() {
-                            if let Some(Some(child)) = self.nodes.borrow_mut().get_mut(id as usize)
-                            {
-                                child.parent = None;
-                            }
+                        if let Some(id) = child.node()
+                            && let Some(Some(child)) = self.nodes.borrow_mut().get_mut(id as usize)
+                        {
+                            child.parent = None;
                         }
                     }
                     self.bindings.ops.borrow_mut().push(Op::Release { id });
