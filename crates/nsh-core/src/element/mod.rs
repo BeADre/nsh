@@ -99,14 +99,8 @@ pub use nsh_macros::{
 // The core's parts of `nsh_base`'s navigation and dialogs.
 #[doc(hidden)]
 pub use self::host::{modal, screen, stack};
-pub(crate) use self::{
-    animated::LiveNode,
-    back::BackListener,
-    builder::{ElKind, PlaceFn},
-    component::{AnyInstance, caught},
-    task::{Action, AnswerSlot, ClipboardRead, Executor},
-};
 pub use self::{
+    ambient::text_measurer,
     animated::{
         Animated, AnimatedNode, AnimatedValue, Animation, AnimationEnd, AnimationOperand,
         DiffClamp, Interpolation, Motion, Spring, Timing, sample_decay, sample_decay_within,
@@ -117,7 +111,8 @@ pub use self::{
         __hint_tooltip, Accessible, AnyElement, Attrs, BoundListConfig, Child, Children,
         ComponentBuilder, ComponentElement, ElNode, Element, FluentBuilder, Image, Interactive,
         IntoChild, IntoElement, IntoListener, IntoTooltip, Items, ListConfig, ListElement,
-        Listener, ParentElement, Position, Slot, SlotElement, Style, Text, View, image, text, view,
+        Listener, ParentElement, Position, Slot, SlotElement, Style, Text, TextPartStyle, View,
+        image, text, view,
     },
     call::{
         AnyValue, EventToJs, JsEvent, JsResult, MethodCall, OpCall, ParkedPost, Posts, RustCall,
@@ -180,6 +175,13 @@ pub use self::{
     tokens::{FONT_MONO, FONT_SANS, ThemeTokens, Token, TokenSource, Tokens},
     value::{JsValue, NodeRef, PropEnum, PropError, SharedString, TsType, TsTypes, ts_of},
     virtual_list::{ListLayout, ViewableItems, VirtualList, virtual_list},
+};
+pub(crate) use self::{
+    animated::LiveNode,
+    back::BackListener,
+    builder::{ElKind, PlaceFn},
+    component::{AnyInstance, caught},
+    task::{Action, AnswerSlot, ClipboardRead, Executor},
 };
 /// The geometry Rust components style with (`crate::geometry`).
 pub use crate::geometry::{

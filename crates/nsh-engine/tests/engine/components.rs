@@ -3352,6 +3352,329 @@ fn a_base_slider_moves_the_nearer_thumb_and_tells_screen_readers_each_value() {
     assert!(after.iter().any(|b| shows(b, "Price 21-75")));
 }
 
+const BASE_NUMBER_INPUT: &str = r##"import { mount, signal, Text, View } from "nsh";
+import { NumberInput } from "nsh/base";
+
+function App() {
+  const quantity = signal<number | null>(2);
+  return (
+    <View>
+      <NumberInput
+        value={quantity()}
+        onChange={(next) => quantity.set(next)}
+        min={0}
+        max={10}
+        step={0.5}
+        accessibilityLabel="Quantity"
+        decrementButton={<Text>Less</Text>}
+        incrementButton={<Text>More</Text>}
+        class="flex-row"
+        inputClass="w-[100px] h-[30px]"
+        incrementButtonClass="size-[30px]"
+        decrementButtonClass="size-[30px]"
+      />
+      <Text>{`Quantity ${quantity()}`}</Text>
+    </View>
+  );
+}
+
+mount(App);
+"##;
+
+/// `nsh/base`'s `NumberInput` from TSX: its field is a spin button for
+/// screen readers with its label and value, whose increment steps it (the
+/// field's text follows the app's value); an edit that is no number goes
+/// back natively, one that is reaches the app; the step buttons, hidden
+/// from screen readers and no stops of Tab, step it too.
+#[test]
+fn a_base_number_input_steps_its_field_and_refuses_text_that_is_no_number() {
+    use nsh_core::{AccessibilityRole, AccessibilityValue};
+    let (engine, rx) = start(BASE_NUMBER_INPUT);
+    let first = until(&rx, |b| shows(b, "Quantity 2"));
+    let items = || first.iter().flat_map(|b| &b.items);
+    let field = items()
+        .find_map(|i| match i {
+            MountItem::Create {
+                id,
+                kind: nsh_core::ViewKind::Input,
+            } => Some(*id),
+            _ => None,
+        })
+        .expect("the field");
+    let props_of = |batches: &[MountBatch], view: u32| {
+        batches
+            .iter()
+            .rev()
+            .flat_map(|b| b.items.iter().rev())
+            .find_map(|i| match i {
+                MountItem::ViewProps { id, props } if *id == view => Some(props.clone()),
+                _ => None,
+            })
+    };
+    let props = props_of(&first, field).expect("the field's props");
+    assert_eq!(props.accessibility.role, AccessibilityRole::Spinbutton);
+    assert_eq!(props.accessibility.label.as_deref(), Some("Quantity"));
+    let value = |now: f32| AccessibilityValue {
+        min: Some(0.0),
+        max: Some(10.0),
+        now: Some(now),
+        text: Some(format!("{now}").into()),
+    };
+    assert_eq!(props.accessibility.value, Some(value(2.0)));
+    let text_of = |batches: &[MountBatch]| {
+        batches
+            .iter()
+            .flat_map(|b| &b.items)
+            .filter_map(|i| match i {
+                MountItem::InputValue { id, text, count } if *id == field => {
+                    Some((text.clone(), *count))
+                }
+                _ => None,
+            })
+            .next_back()
+    };
+    assert_eq!(text_of(&first).map(|(t, _)| t).as_deref(), Some("2"));
+    let control = engine.control();
+
+    // A screen reader's increment: a step, which the app takes.
+    control.dispatch_event(
+        field,
+        EventKind::AccessibilityAction,
+        EventPayload::Map(vec![("actionName", PayloadValue::Str("increment".into()))]),
+    );
+    let after = until(&rx, |b| shows(b, "Quantity 2.5"));
+    assert_eq!(text_of(&after).map(|(t, _)| t).as_deref(), Some("2.5"));
+    assert_eq!(
+        props_of(&after, field).and_then(|p| p.accessibility.value),
+        Some(value(2.5))
+    );
+
+    // A letter: the field goes back to its number, based on that edit.
+    control.dispatch_event(
+        field,
+        EventKind::ChangeText,
+        EventPayload::Text {
+            text: "2.5a".into(),
+            count: 1,
+        },
+    );
+    let after = until(&rx, |b| text_of(std::slice::from_ref(b)).is_some());
+    assert_eq!(text_of(&after), Some(("2.5".to_owned(), 1)));
+    // A number: the app hears it, and nothing goes back.
+    control.dispatch_event(
+        field,
+        EventKind::ChangeText,
+        EventPayload::Text {
+            text: "7".into(),
+            count: 2,
+        },
+    );
+    let after = until(&rx, |b| shows(b, "Quantity 7"));
+    assert_eq!(text_of(&after), None);
+
+    // The step buttons: hidden from screen readers, no Tab stops; the
+    // increment (after the field) steps.
+    let buttons: Vec<u32> = items()
+        .filter_map(|i| match i {
+            MountItem::Events { id, events } if events.contains(EventKind::Press) => Some(*id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(buttons.len(), 2, "a button each way");
+    for &button in &buttons {
+        let props = props_of(&first, button).expect("the button's props");
+        assert!(props.accessibility.hidden);
+        assert_eq!(props.focusable, Some(false));
+    }
+    control.dispatch_event(buttons[1], EventKind::Press, EventPayload::None);
+    let after = until(&rx, |b| shows(b, "Quantity 7.5"));
+    assert_eq!(text_of(&after).map(|(t, _)| t).as_deref(), Some("7.5"));
+}
+
+const BASE_OTP_INPUT: &str = r##"import { mount, signal, Text, View } from "nsh";
+import { OtpInput } from "nsh/base";
+
+function App() {
+  const code = signal("");
+  const completes = signal<string[]>([]);
+  return (
+    <View>
+      <OtpInput
+        testID="otp"
+        length={4}
+        groups={2}
+        value={code()}
+        onChange={(next) => code.set(next)}
+        onComplete={({ value }) => completes.set([...completes(), value])}
+        accessibilityLabel="Code"
+        class="flex-row w-[200px] h-[40px]"
+        groupClass="flex-row"
+        cellClass="w-[40px] h-[40px] opacity-50 focus:opacity-100"
+        caretClass="w-[2px] h-[20px]"
+      />
+      <Text>{`Code: ${code()}`}</Text>
+      <Text>{`Completes: ${completes().join(",")}`}</Text>
+    </View>
+  );
+}
+
+mount(App);
+"##;
+
+/// `nsh/base`'s `OtpInput`: one native field over the cells, set up for
+/// one-time codes, the only element screen readers get; the cell that
+/// takes the next digit `focus:` while the field has the focus, with the
+/// caret in it; the app's code in the cells, `onComplete` once full.
+#[test]
+fn a_base_otp_input_types_into_one_field_over_its_cells() {
+    use nsh_core::{AutoFill, ViewKind};
+    let (engine, rx) = start(BASE_OTP_INPUT);
+    let first = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first frame");
+    assert!(shows(&first, "Code: "));
+    let created = |kind: ViewKind| -> Vec<u32> {
+        first
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                MountItem::Create { id, kind: k } if *k == kind => Some(*id),
+                _ => None,
+            })
+            .collect()
+    };
+    let children = |parent: u32| -> Vec<u32> {
+        let views = created(ViewKind::View);
+        first
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                MountItem::Insert {
+                    parent: p, child, ..
+                } if *p == parent && views.contains(child) => Some(*child),
+                _ => None,
+            })
+            .collect()
+    };
+    let props_of = |id: u32| {
+        first.items.iter().find_map(|i| match i {
+            MountItem::ViewProps { id: v, props } if *v == id => Some(props.clone()),
+            _ => None,
+        })
+    };
+    let root = first
+        .items
+        .iter()
+        .find_map(|i| match i {
+            MountItem::ViewProps { id, props } if props.test_id.as_deref() == Some("otp") => {
+                Some(*id)
+            }
+            _ => None,
+        })
+        .expect("the input's root");
+
+    // The field: over the whole input, set up for a code, named for screen
+    // readers.
+    let [field] = created(ViewKind::Input)[..] else {
+        panic!("one field");
+    };
+    let config = first
+        .items
+        .iter()
+        .find_map(|i| match i {
+            MountItem::Input { id, config } if *id == field => Some(config.clone()),
+            _ => None,
+        })
+        .expect("the field's config");
+    assert_eq!(config.keyboard, nsh_core::KeyboardType::Number);
+    assert_eq!(config.auto_fill, AutoFill::OneTimeCode);
+    assert!(config.caret_hidden);
+    assert!(!config.auto_correct);
+    assert!(!config.secure);
+    assert_eq!(
+        props_of(field).unwrap().accessibility.label.as_deref(),
+        Some("Code")
+    );
+    let all = std::slice::from_ref(&first);
+    let frame = |id| frame_of(all, id).expect("a frame");
+    assert_eq!(frame(field).size, frame(root).size);
+    assert_eq!(
+        frame(field).origin,
+        nsh_core::geometry::point(px(0.0), px(0.0))
+    );
+
+    // Two groups of two cells, hidden from screen readers.
+    // In the order they are laid out, left to right (the batch inserts
+    // siblings in an order of its own).
+    let in_row = |mut views: Vec<u32>| {
+        views.sort_by(|a, b| frame(*a).origin.x.0.total_cmp(&frame(*b).origin.x.0));
+        views
+    };
+    let groups = in_row(children(root));
+    assert_eq!(groups.len(), 2);
+    for group in &groups {
+        assert!(props_of(*group).unwrap().accessibility.hidden);
+    }
+    let cells: Vec<u32> = groups.iter().flat_map(|g| in_row(children(*g))).collect();
+    assert_eq!(cells.len(), 4);
+    assert!(frame(groups[1]).origin.x > frame(groups[0]).origin.x);
+    let opacity = |batches: &[MountBatch], cell: u32| {
+        batches
+            .iter()
+            .rev()
+            .flat_map(|b| b.items.iter().rev())
+            .find_map(|i| match i {
+                MountItem::ViewStyle { id, style } if *id == cell => Some(style.opacity),
+                _ => None,
+            })
+    };
+    for cell in &cells {
+        assert_eq!(opacity(all, *cell), Some(0.5));
+    }
+
+    // The focus: the first cell is `focus:`, with the caret in it.
+    engine
+        .control()
+        .dispatch_event(field, EventKind::Focus, EventPayload::None);
+    let after = until(&rx, |b| {
+        opacity(std::slice::from_ref(b), cells[0]).is_some()
+    });
+    assert_eq!(opacity(&after, cells[0]), Some(1.0));
+    assert!(after.iter().flat_map(|b| b.items.iter()).any(|i| matches!(
+        i,
+        MountItem::Insert { parent, .. } if *parent == cells[0]
+    )));
+
+    // Typing: the app's code fills the cells; the next cell is `focus:`.
+    let edit = |text: &str, count: u32| {
+        engine.control().dispatch_event(
+            field,
+            EventKind::ChangeText,
+            EventPayload::Text {
+                text: text.into(),
+                count,
+            },
+        )
+    };
+    edit("1２", 1);
+    let after = until(&rx, |b| shows(b, "Code: 12"));
+    assert!(after.iter().any(|b| shows(b, "1")));
+    assert!(after.iter().any(|b| shows(b, "2")));
+    assert_eq!(opacity(&after, cells[0]), Some(0.5));
+    assert_eq!(opacity(&after, cells[2]), Some(1.0));
+    // The full-width digit goes back to the field as an ASCII one.
+    assert!(after.iter().flat_map(|b| b.items.iter()).any(|i| matches!(
+        i,
+        MountItem::InputValue { id, text, .. } if *id == field && text == "12"
+    )));
+
+    // Full: reported once, the last cell `focus:`.
+    edit("1234", 2);
+    let after = until(&rx, |b| shows(b, "Completes: 1234"));
+    assert!(after.iter().any(|b| shows(b, "Code: 1234")));
+    assert_eq!(opacity(&after, cells[3]), Some(1.0));
+}
+
 const TAB_BAR: &str = r##"import { mount, signal } from "nsh";
 import { TabBar } from "nsh/mobile";
 
@@ -3944,6 +4267,83 @@ fn base_plot_marks_draw_the_edges_of_their_data() {
         .dispatch_event(wider, EventKind::Press, EventPayload::None);
     let after = until_drawn(&rx, |d| path_points(&d.ops).last() == Some(&(400.0, 0.0)));
     assert!(!plot_drawings(&after).is_empty());
+}
+
+const BASE_PLOT_BAND: &str = r##"import { mount, View } from "nsh";
+import { Area, Plot } from "nsh/base/plot";
+
+type Day = { hi: number; lo: number | null };
+
+function App() {
+  const days: Day[] = [
+    { hi: 30, lo: 10 },
+    { hi: 40, lo: 20 },
+    { hi: 30, lo: null },
+    { hi: 20, lo: 0 },
+  ];
+  return (
+    <View>
+      {/* A band: the bottom edge a field of each row, a row without one skipped. */}
+      <Plot data={days} y="hi" style={{ width: 200, height: 100 }}>
+        <Area y0="lo" curve="linear" />
+      </Plot>
+      {/* A number: a constant baseline. */}
+      <Plot data={[{ v: 10 }, { v: 20 }]} y="v" style={{ width: 200, height: 100 }}>
+        <Area y0={0} curve="linear" />
+      </Plot>
+      {/* A function of each row, with steps. */}
+      <Plot data={[{ hi: 20 }, { hi: 50 }]} style={{ width: 200, height: 100 }}>
+        <Area y1="hi" y0={(d: { hi: number }) => d.hi - 10} curve="stepAfter" />
+      </Plot>
+    </View>
+  );
+}
+
+mount(App);
+"##;
+
+/// `Area`'s `y0` of each row (d3's `area().y0(accessor)`): the bottom edge
+/// goes back through those values with the area's curve, a row without one
+/// is skipped on both edges, and the values widen the y domain; a number
+/// is still a constant baseline in the domain.
+#[test]
+fn a_base_plot_area_with_a_y0_of_each_row_is_a_band() {
+    let (_engine, rx) = start(BASE_PLOT_BAND);
+    // The function's values come a turn after the rows.
+    let steps = [
+        (0.0, 75.0),
+        (200.0, 75.0),
+        (200.0, 0.0),
+        (200.0, 25.0),
+        (200.0, 100.0),
+        (0.0, 100.0),
+    ];
+    let batches = until_drawn(&rx, |d| path_points(&d.ops).starts_with(&steps));
+    let latest = plot_drawings(&batches);
+    let [(_, band), (_, base), (_, stepped)] = &latest[..] else {
+        panic!("three areas: {latest:?}")
+    };
+    // The domain is 0 (the lowest `lo`) to 40: the top edge through `hi`,
+    // then back through `lo` from the last row, the third row (no `lo`)
+    // on neither edge.
+    assert_eq!(
+        path_points(&band.ops)[..6],
+        [
+            (0.0, 25.0),
+            (66.666664, 0.0),
+            (200.0, 50.0),
+            (200.0, 100.0),
+            (66.666664, 50.0),
+            (0.0, 75.0)
+        ]
+    );
+    // A number: down to its value, 0, which the domain takes in.
+    assert_eq!(
+        path_points(&base.ops)[..4],
+        [(0.0, 50.0), (200.0, 0.0), (200.0, 100.0), (0.0, 100.0)]
+    );
+    // The function's: 10 to 50, the bottom edge stepping as the top one.
+    assert_eq!(path_points(&stepped.ops)[..6], steps);
 }
 
 const BASE_PLOT_MOTION: &str = r##"import { mount, signal, Text, View } from "nsh";

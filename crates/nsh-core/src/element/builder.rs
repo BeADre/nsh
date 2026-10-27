@@ -19,9 +19,10 @@ use crate::{
 
 /// A handler of `E` on an element: a closure (`move |e: &E| ..`) that
 /// writes the signals it captured. It runs under the owner current when it
-/// was made (the component, region or row whose view made it), so what it
-/// makes (signals, animated values, element refs, tasks) is that owner's
-/// and goes with it; once that owner is disposed it no longer runs.
+/// was made (the component, the run of a region or the row whose view made
+/// it), so what it makes (signals, animated values, element refs, tasks) is
+/// that owner's and goes with it; once that owner is disposed it no longer
+/// runs, not even for an event already queued for its node.
 pub struct Listener<E: ?Sized> {
     f: Rc<dyn Fn(&E)>,
     owner: super::Owner,
@@ -38,6 +39,16 @@ impl<E: ?Sized + 'static> Listener<E> {
             f,
             owner: super::Owner::current_or_detached(),
         }
+    }
+
+    /// Whether both listeners belong to the same region run or component.
+    pub(crate) fn same_owner(&self, other: &Self) -> bool {
+        self.owner == other.owner
+    }
+
+    /// Whether this is the same installed callback (including its owner).
+    pub(crate) fn ptr_eq(&self, other: &Self) -> bool {
+        self.same_owner(other) && Rc::ptr_eq(&self.f, &other.f)
     }
 
     /// Calls it with `event`, under its owner; not once that owner is
@@ -961,6 +972,48 @@ impl JsValue for Style {
     /// A style is JS's to give, not to get back.
     fn to_js<'a>(&self, _host: &'a dyn super::JsHost) -> Result<super::JsOwned<'a>, PropError> {
         Err(PropError("a style does not convert back to JS".to_owned()))
+    }
+}
+
+/// The style of a component's part that shows or edits text (a number
+/// input's field): a [`Style`] whose TypeScript type takes the text styles
+/// too (`StyleProp<TextStyle>`: `color`, `fontSize`, `textAlign`,
+/// `placeholderColor`), as the part is a text or an input. Its setter takes
+/// the typed styles' closure, as a `Style`'s does; the part applies it with
+/// [`Element::inline_style`] (it is `Into<Style>`).
+#[derive(Debug, Clone, Default, PartialEq)]
+#[non_exhaustive]
+pub struct TextPartStyle(pub Style);
+
+impl From<Style> for TextPartStyle {
+    fn from(style: Style) -> Self {
+        Self(style)
+    }
+}
+
+impl From<StyleRefinement> for TextPartStyle {
+    fn from(style: StyleRefinement) -> Self {
+        Self(Style::from(style))
+    }
+}
+
+impl From<TextPartStyle> for Style {
+    fn from(style: TextPartStyle) -> Self {
+        style.0
+    }
+}
+
+impl JsValue for TextPartStyle {
+    fn ts_type(_types: &mut super::TsTypes) -> String {
+        "StyleProp<TextStyle>".into()
+    }
+
+    fn from_js(value: super::JsIn<'_>) -> Result<Self, PropError> {
+        Style::from_js(value).map(Self)
+    }
+
+    fn to_js<'a>(&self, host: &'a dyn super::JsHost) -> Result<super::JsOwned<'a>, PropError> {
+        self.0.to_js(host)
     }
 }
 
