@@ -250,6 +250,8 @@ pub struct Headless {
     /// The modifier keys held down (`keyboard.down`), which presses,
     /// drags and hovers carry.
     held: nsh_core::keymap::Modifiers,
+    /// The finger a `dragAndHold` left down, until `drop()`.
+    finger: Option<pointer::Finger>,
     screen: Screen,
     animator: Animator,
     dialogs: Dialogs,
@@ -300,6 +302,7 @@ impl Headless {
             errors,
             seen: Vec::new(),
             held: nsh_core::keymap::Modifiers::default(),
+            finger: None,
             screen,
             animator: Animator::new(clock.clone()),
             dialogs: Dialogs::Default,

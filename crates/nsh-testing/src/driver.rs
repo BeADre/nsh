@@ -26,6 +26,15 @@ pub(crate) trait Driver: Send {
     fn clear(&mut self, selector: &str) -> Result<(), String>;
     fn scroll(&mut self, selector: &str, distance: Points) -> Result<(), String>;
     fn drag(&mut self, selector: &str, by: Point<Points>) -> Result<(), String>;
+    /// Drags without lifting, until [`Driver::drop_held`].
+    fn drag_and_hold(&mut self, selector: &str, by: Point<Points>) -> Result<(), String> {
+        let _ = (selector, by);
+        Err("`dragAndHold` runs headless only for now: run the test without `--target`".into())
+    }
+    /// Lifts the finger `drag_and_hold` left down.
+    fn drop_held(&mut self) -> Result<(), String> {
+        Err("`drop` runs headless only for now: run the test without `--target`".into())
+    }
     fn press_key(&mut self, keys: &str) -> Result<(), String>;
     /// Holds (`down`) or lets go of modifier keys for the pointer's steps.
     fn hold_keys(&mut self, keys: &str, down: bool) -> Result<(), String> {
@@ -118,6 +127,12 @@ impl Driver for Headless {
     }
     fn hold_keys(&mut self, keys: &str, down: bool) -> Result<(), String> {
         Headless::hold_keys(self, keys, down)
+    }
+    fn drag_and_hold(&mut self, selector: &str, by: Point<Points>) -> Result<(), String> {
+        Headless::drag_and_hold(self, selector, by)
+    }
+    fn drop_held(&mut self) -> Result<(), String> {
+        Headless::drop_held(self)
     }
     fn press_key(&mut self, keys: &str) -> Result<(), String> {
         Headless::press_key(self, keys)

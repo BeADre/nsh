@@ -1516,6 +1516,23 @@ impl App {
         step(&this, move |app| app.drag(&selector, by)).await
     }
 
+    /// Drags as `drag` does but keeps the finger down, so the test can look
+    /// at the screen mid-drag (a drag preview, a drop line); `drop()` lifts
+    /// it. Headless only for now.
+    pub async fn drag_and_hold(
+        this: Instance<Self>,
+        selector: String,
+        by: DragBy,
+    ) -> Result<(), String> {
+        let by = nsh_core::geometry::point(by.x, by.y);
+        step(&this, move |app| app.drag_and_hold(&selector, by)).await
+    }
+
+    /// Lifts the finger `dragAndHold` left down, where it is.
+    pub async fn drop(this: Instance<Self>) -> Result<(), String> {
+        step(&this, move |app| app.drop_held()).await
+    }
+
     /// The mouse's secondary button over the middle of what `selector`
     /// names: it, or the nearest view around it listening, hears
     /// `onContextMenu`, whose handler shows a menu (`Menu.popup`: read it
