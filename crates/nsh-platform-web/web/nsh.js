@@ -860,9 +860,14 @@ class Player {
         throw new Error(`nsh.wasm called ${name}.${field}, which the web runtime does not provide`);
       };
     }
+    if (WebAssembly.Module.imports(module).some(entry => entry.module === "nsh_browser")) {
+      const { createBrowserHost } = await import("./browser/runtime.js");
+      this.browserHost = createBrowserHost(this);
+      imports.nsh_browser = this.browserHost.imports;
+    }
     imports.__wbindgen_placeholder__ && (imports.__wbindgen_placeholder__.__wbindgen_describe = () => {});
     const instance = await WebAssembly.instantiate(module, imports);
-    this.wasm = instance.exports;
+    this.wasm = this.browserHost ? this.browserHost.bind(instance.exports) : instance.exports;
     // The glue's own setup (its view of the memory, wasm-bindgen's tables)
     // before any of the app's code runs.
     glue?.__nsh_finalize(instance, module);
@@ -1137,6 +1142,12 @@ class Player {
     });
   }
 
+  /** Runs a trusted standalone app with the browser ES module loader. */
+  runModule(entry, options) {
+    if (!this.browserHost) throw new Error("this runtime has no browser JavaScript host");
+    return this.browserHost.run(entry, options);
+  }
+
   /**
    * Runs the Rust app the module was built for (an app's runtime with
    * `nsh.json` `"root"`): its root component, with no bundle and no JS of
@@ -1174,7 +1185,7 @@ class Player {
   }
 
   /** Starts the app with `start(environment)`, which returns the pump delay. */
-  begin(width, start) {
+  begin(width, start, deferEvents = false) {
     this.idiom = this.options.idiom ?? this.measureIdiom(width);
     const environment = (this.reported = JSON.stringify(this.environment()));
     this.updateRootClasses();
@@ -1193,6 +1204,11 @@ class Player {
     } finally {
       this.starting = false;
     }
+    if (!deferEvents) this.startedApp();
+  }
+
+  /** Delivers queued host events after the app installs its listeners. */
+  startedApp() {
     this.started = true;
     const events = this.hostEvents;
     this.hostEvents = [];
@@ -1258,6 +1274,9 @@ class Player {
   }
 
   stop() {
+    if (this.stopping) return;
+    this.stopping = true;
+    try {
     // Host events wait for the next app (`begin`).
     this.started = false;
     this.hostEvents ??= [];
@@ -1267,7 +1286,9 @@ class Player {
     clearTimeout(this.timer);
     cancelAnimationFrame(this.frame);
     this.frame = 0;
+    this.browserHost?.stop();
     this.wasm?.nsh_stop();
+    } finally { this.stopping = false; }
   }
 
   /**
