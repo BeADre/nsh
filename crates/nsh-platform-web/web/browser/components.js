@@ -1,3 +1,4 @@
+import { itemsProps } from "./list.js";
 // Rust component descriptors supply the public props, slots and ref API.
 export function createComponents(invoke, values, reactive, dom) {
   const states = new WeakMap();
@@ -22,8 +23,13 @@ export function createComponents(invoke, values, reactive, dom) {
       rt.append(node, holder);
       anchor ??= holder;
     }
-    if (spec.props.some(prop => prop.kind === "items" && "each" in props)) {
-      throw new Error(`${spec.export}: virtualized Items is not connected yet`);
+    for (const prop of spec.props.filter(prop => prop.kind === "items")) {
+      const forwarded = {};
+      for (const key of itemsProps) if (key in props) Object.defineProperty(forwarded, key, { enumerable: true, get: () => props[key] });
+      const holder = rt.list(forwarded);
+      rt.prop(holder, "componentSlot", prop.name);
+      rt.append(node, holder);
+      anchor ??= holder;
     }
     const previous = new Map();
     reactive.renderEffect(() => {

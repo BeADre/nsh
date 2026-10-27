@@ -1271,6 +1271,7 @@ opt-level = 3
                  [lib]\nname = {:?}\npath = \"lib.rs\"\ncrate-type = [\"cdylib\"]\n\n\
                  [features]\n# The runtime of published apps: bytecode only (nsh-platform-web).\n\
                  bytecode-only = [\"nsh-platform-web/bytecode-only\"]\n\
+                 browser = [\"nsh-platform-web/browser\"]\n\
                  # The development host's: what `nsh test --target web` asks about.\n\
                  dev = [\"nsh-platform-web/dev\"]\n\n\
                  [dependencies]\nnsh-core = {}\nnsh-base = {}\n{app}\n\n\
@@ -1279,7 +1280,8 @@ opt-level = 3
                 self.web_lib(),
                 src("nsh-core"),
                 self.nsh.dep("nsh-base", HIGHLIGHT),
-                src("nsh-platform-web"),
+                self.nsh
+                    .dep("nsh-platform-web", ", default-features = false"),
             ),
         )?;
         // nsh's `.cargo/config.toml` gives its own web runtime this stack
@@ -1424,6 +1426,7 @@ opt-level = 3
         let features: &[&str] = match kind {
             _ if rust => &[],
             crate::runtime::WebKind::Release => &["--features", "bytecode-only"],
+            crate::runtime::WebKind::Browser => &["--features", "browser"],
             crate::runtime::WebKind::Dev => &["--features", "dev"],
         };
         let (package, artifact) = if rust {
@@ -1451,6 +1454,10 @@ opt-level = 3
         runtime.glue = crate::bindgen::install(&built, &out, &stem)?;
         if self.nsh == Nsh::Registry {
             let js = self.registry_crate("nsh-platform-web")?.join("web/nsh.js");
+            crate::runtime::copy_browser_host(
+                js.parent().context("web runtime has no parent")?,
+                &out,
+            )?;
             fs::copy(&js, &runtime.js)
                 .with_context(|| format!("copy {} to {}", js.display(), runtime.js.display()))?;
         }

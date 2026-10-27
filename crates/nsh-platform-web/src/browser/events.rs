@@ -189,6 +189,7 @@ pub(super) fn payload(host: &Bindings, payload: &EventPayload) -> Result<Value, 
                     })?,
                 ),
                 ("timestamp", number(touch.timestamp)),
+                ("activated", touch.activated.map_or(Value(0), number)),
                 ("points", Value::array(points)?),
             ])?
         }

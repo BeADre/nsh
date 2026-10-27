@@ -1,28 +1,48 @@
 //! Keyed row matching stays in Rust; the browser supplies row closures.
-use std::{cell::RefCell, collections::HashMap};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+};
 
 use nsh_core::{element::PropError, js::host::HostInput};
 
 use super::values::{Value, invoke};
-#[derive(Hash, PartialEq, Eq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 enum Key {
     Object(u32),
     String(String),
+    BigInt(String),
+    Symbol(u32),
     Number(u64),
     Primitive(u32),
 }
 impl Key {
     fn of(value: &Value) -> Result<Self, PropError> {
         Ok(match value.kind() {
-            3 => Self::Number(value.as_number().unwrap_or(f64::NAN).to_bits()),
+            3 => {
+                let number = value.as_number().unwrap_or(f64::NAN);
+                // Match the native rows' SameValueZero semantics.
+                Self::Number(
+                    if number == 0.0 {
+                        0.0
+                    } else if number.is_nan() {
+                        f64::NAN
+                    } else {
+                        number
+                    }
+                    .to_bits(),
+                )
+            }
             4 => Self::String(value.as_string().unwrap_or_default()),
             5..=7 => Self::Object(invoke(33, value.0, 0, 0, 0.0) as u32),
             0..=2 => Self::Primitive(value.0),
-            _ => {
-                return Err(PropError(
-                    "symbol and bigint row keys need an identity handle".into(),
-                ));
-            }
+            8 => Self::Symbol(invoke(33, value.0, 0, 0, 0.0) as u32),
+            9 => Self::BigInt(
+                Value::checked(invoke(43, value.0, 0, 0, 0.0))?
+                    .as_string()
+                    .unwrap_or_default(),
+            ),
+            _ => return Err(PropError("unknown row key kind".into())),
         })
     }
 }
@@ -34,6 +54,7 @@ struct Row {
 #[derive(Default)]
 pub(super) struct Rows {
     lists: RefCell<Vec<Option<Vec<Row>>>>,
+    disposed: RefCell<HashSet<usize>>,
 }
 impl Rows {
     fn dispose(row: Row) {
@@ -52,26 +73,34 @@ impl Rows {
             .index(0)?
             .as_number()
             .ok_or_else(|| PropError("invalid row list".into()))? as usize;
+        if op == 312 {
+            self.disposed.borrow_mut().insert(id);
+            let old = self
+                .lists
+                .borrow_mut()
+                .get_mut(id)
+                .and_then(Option::take)
+                .unwrap_or_default();
+            for row in old {
+                Self::dispose(row);
+            }
+            return Ok(Value(0));
+        }
+        if self.disposed.borrow().contains(&id) {
+            return Err(PropError("row list disposed".into()));
+        }
         let old = self
             .lists
             .borrow_mut()
             .get_mut(id)
             .and_then(Option::take)
             .ok_or_else(|| PropError("row list disposed or updating".into()))?;
-        if op == 312 {
-            for row in old {
-                Self::dispose(row);
-            }
-            return Ok(Value(0));
-        }
         let mut old: Vec<_> = old.into_iter().map(Some).collect();
         let mut keys: HashMap<Key, Vec<usize>> = HashMap::new();
         // Key values remain retained, so object identities cannot disappear.
         for (index, row) in old.iter().enumerate().rev() {
             let row = row.as_ref().unwrap();
-            keys.entry(Key::of(&row._key_value)?)
-                .or_default()
-                .push(index);
+            keys.entry(row.key.clone()).or_default().push(index);
         }
         let mut next = Vec::new();
         let result = (|| {
@@ -126,6 +155,12 @@ impl Rows {
         })();
         for row in old.into_iter().flatten() {
             Self::dispose(row);
+        }
+        if self.disposed.borrow().contains(&id) {
+            for row in next {
+                Self::dispose(row);
+            }
+            return result.and_then(|_| Value::array([]));
         }
         self.lists.borrow_mut()[id] = Some(next);
         result

@@ -5,28 +5,41 @@ import { Values } from "./values.js";
 import { createReactive } from "./reactive.js";
 import { createModules } from "./modules.js";
 import { createDom } from "./dom.js";
+import { createGestures } from "./gesture.js";
+import { createAnimation } from "./animation.js";
+import { createCanvas } from "./canvas.js";
+import { createNavigation } from "./navigation.js";
+import { createKeymap } from "./keymap.js";
+import { createEnvironment } from "./environment.js";
 import { createComponents } from "./components.js";
 
 const path = process.env.NSH_BROWSER_WASM;
 async function fixture() {
   const module = await WebAssembly.compile(await readFile(path));
-  const values = new Values();
-  let wasm;
+  let bridge;
   const imports = {};
   for (const entry of WebAssembly.Module.imports(module)) {
     assert.equal(entry.kind, "function");
     (imports[entry.module] ??= {})[entry.name] = () => 0;
     assert.doesNotMatch(entry.name, /rquickjs/);
   }
-  imports.nsh_browser = values.imports(() => wasm.memory);
-  wasm = (await WebAssembly.instantiate(module, imports)).exports;
-  wasm.nsh_browser_initialize();
-  let live = true;
-  const invoke = (op, args) => values.with([args], ([id]) => values.result(wasm.nsh_browser_call(op, id)));
-  const api = createReactive(invoke, () => live);
-  const dom = createDom(invoke, values, api, () => live, () => {});
-  const components = createComponents(invoke, values, api, dom);
-  return { api, values, modules: () => createModules(invoke, values, () => live, () => {}, components.make), close() { wasm.nsh_browser_dispose(); live = false; values.dispose(); } };
+  imports.nsh_browser = { value: (...args) => bridge.value(...args) };
+  const raw = (await WebAssembly.instantiate(module, imports)).exports;
+  const start = () => {
+    const values = new Values();
+    bridge = values.imports(() => raw.memory);
+    const wasm = values.bind(raw);
+    wasm.nsh_browser_initialize();
+    let live = true;
+    const invoke = (op, args) => values.boundary(() => values.with([args], ([id]) => values.result(wasm.nsh_browser_call(op, id))), () => raw.nsh_browser_trace());
+    const api = createReactive(invoke, () => live, values);
+    const dom = createDom(invoke, values, api, () => live, () => {});
+    const components = createComponents(invoke, values, api, dom);
+    const close = () => { if (live) { wasm.nsh_browser_dispose(); live = false; values.dispose(); } };
+    return { api, values, invoke, dom, modules: () => createModules(invoke, values, () => live, () => {}, components.make), close,
+      restart() { close(); return start(); } };
+  };
+  return start();
 }
 
 test("browser closures run on the shared Wasm reactive scheduler", { skip: !path }, async () => {
@@ -156,4 +169,333 @@ test("throwing null and undefined preserves their identity", { skip: !path }, as
     assert.ok(caught);
   }
   close();
+});
+
+
+test("keyed rows reuse zero keys and recover after a key callback throws", { skip: !path }, async () => {
+  const { invoke, close } = await fixture();
+  const id = invoke(310, []);
+  let created = 0, disposed = 0;
+  const factory = () => ({
+    item: { set() {} }, index: { set() {} },
+    output: ++created, dispose() { disposed++; },
+  });
+  try {
+    assert.deepEqual(invoke(311, [id, [-0], factory]), [1]);
+    assert.deepEqual(invoke(311, [id, [0], factory]), [1]);
+    assert.equal(disposed, 0);
+    const failure = new Error("key failed");
+    assert.throws(() => invoke(311, [id, [0], factory, () => { throw failure; }]), error => error === failure);
+    assert.equal(disposed, 1);
+    assert.deepEqual(invoke(311, [id, [1], factory]), [2]);
+    invoke(312, [id]);
+    assert.equal(disposed, 2);
+  } finally { close(); }
+});
+
+test("discarded signal cycles are collected without disposing the app", { skip: !path || !global.gc }, async () => {
+  const { api, values, close } = await fixture();
+  const baseline = values.retained;
+  const refs = [];
+  for (let i = 0; i < 30; i++) {
+    (() => {
+      const initial = {};
+      const signal = api.signal(initial);
+      initial.read = signal;
+      const next = { read: signal };
+      signal.set(next);
+      refs.push(new WeakRef(signal));
+    })();
+  }
+  for (let i = 0; i < 30; i++) {
+    await new Promise(resolve => setTimeout(resolve, 5));
+    global.gc();
+  }
+  assert.ok(refs.every(ref => !ref.deref()));
+  assert.equal(values.retained, baseline);
+  close();
+});
+
+
+test("class cycles collect, escaped callbacks stay live, and old callbacks are inert after remount", { skip: !path || !global.gc }, async () => {
+  let f = await fixture();
+  let modules = f.modules();
+  let Box = modules.exports.get("test/browser")?.CallbackBox;
+  assert.ok(Box, "build ownership tests with --features browser-tests");
+  const collect = async () => { for (let i = 0; i < 30; i++) { await new Promise(resolve => setTimeout(resolve, 5)); global.gc(); } };
+  let weak;
+  (() => { const object = new Box(() => object ? 42 : 0); weak = new WeakRef(object); })();
+  await collect();
+  assert.equal(weak.deref(), undefined);
+  (() => { const object = new Box(() => object ? 43 : 0); object.escape(); weak = new WeakRef(object); })();
+  await collect();
+  assert.ok(weak.deref());
+  assert.equal(Box.callKept(), 43);
+  Box.clearKept();
+  await collect();
+  assert.equal(weak.deref(), undefined);
+  (() => { const object = new Box(() => object ? 44 : 0); object.escape(); })();
+  modules.dispose();
+  f = f.restart();
+  modules = f.modules();
+  Box = modules.exports.get("test/browser").CallbackBox;
+  assert.equal(Box.callKept(), -1);
+  const signal = f.api.signal({ live: true });
+  Box.clearKept();
+  assert.deepEqual(signal(), { live: true });
+  modules.dispose();
+  f.close();
+});
+
+
+test("active memo payloads survive accessor collection until their owner is disposed", { skip: !path || !global.gc }, async () => {
+  const { api, close } = await fixture();
+  let dispose, payload;
+  api.root(stop => { dispose = stop; const memo = api.computed(() => ({ alive: true })); payload = new WeakRef(memo()); });
+  const collect = async () => { for(let i=0;i<20;i++){await new Promise(resolve=>setTimeout(resolve,5));global.gc();} };
+  await collect();
+  assert.ok(payload.deref());
+  dispose();
+  await collect();
+  assert.equal(payload.deref(), undefined);
+  close();
+});
+
+test("native animation samples and derived-node identity use the Rust graph protocol", { skip: !path }, async () => {
+  const f = await fixture();
+  const animation = createAnimation(f.invoke, ()=>!f.values.closed, ()=>{}, {api:{reduceMotion:()=>false}});
+  const {AnimatedValue,Animated,Easing}=animation.api;
+  assert.deepEqual(Easing.sample(Easing.quad,3),[0,0.25,1]);
+  const a=AnimatedValue(1),b=AnimatedValue(2);
+  assert.equal(a.add(3),a.add(3));
+  assert.notEqual(a.add(3),b.add(3));
+  a.add(NaN);
+  assert.throws(()=>a.add(null),TypeError);
+  let jsonCalls=0;
+  const range=[0,1];range.toJSON=()=>{jsonCalls++;return [];};
+  const first=a.interpolate({inputRange:range,outputRange:[0,10]});
+  range[1]=2;
+  assert.notEqual(first,a.interpolate({inputRange:range,outputRange:[0,10]}));
+  assert.equal(jsonCalls,0);
+  assert.ok(a instanceof AnimatedValue);
+  assert.ok(Animated.sampleSpring({toValue:1}).length>1);
+  const read=a.getValue();animation.finished([[2,true,7]]);assert.equal(await read,7);
+  let finished;
+  const composite=Animated.sequence([Animated.timing(a,{toValue:3}),Animated.delay(5)]);
+  const end=composite.start(value=>{finished=value.finished;});animation.finished([[4,true]]);
+  assert.equal(await end,true);assert.equal(finished,true);
+  animation.dispose();f.close();
+});
+
+test("canvas records paths and gradients through the shared Rust decoder", { skip: !path }, async () => {
+  const f = await fixture();
+  const canvas = createCanvas(f.invoke,f.api,f.dom,()=>!f.values.closed,()=>{});
+  let node,dispose,hit,context;
+  f.api.root(stop=>{dispose=stop;node=canvas.Canvas({draw(cx){
+    context=cx;const path=new canvas.Path2D();path.rect(0,0,10,10);
+    const gradient=cx.createLinearGradient(0,0,10,10);gradient.addColorStop(0,"red");gradient.addColorStop(1,"blue");
+    cx.fillStyle=gradient;cx.fill(path);hit=cx.isPointInPath(path,5,5);cx.save();cx.lineWidth=4;cx.restore();
+  }});});
+  f.dom.event(f.values.nodeIds.get(node),"onLayout",{size:{width:20,height:20}});
+  assert.equal(f.invoke(602,[[999],null,0,0,undefined,false]),false);
+  assert.equal(hit,true);assert.equal(context.lineWidth,1);assert.equal(context.canvas.width,20);
+  assert.ok(context instanceof canvas.CanvasRenderingContext2D);
+  assert.equal(context.isPointInPath(new canvas.Path2D("M0 0L10 0L10 10Z"),7,3),true);
+  dispose();f.close();
+});
+
+test("navigation keeps duplicate route entries and keymaps validate atomically", { skip: !path }, async () => {
+  const f=await fixture();const env=createEnvironment(f.api,f.invoke,f.dom);
+  const {createNavStack}=createNavigation(f.api,f.dom,env);
+  let dispose,nav;
+  f.api.root(stop=>{dispose=stop;nav=createNavStack(["a","a","b"]);});
+  const before=nav.__nshEntries();nav.setRoutes(["a","b","a"]);
+  assert.deepEqual(nav.__nshEntries(),[before[0],before[2],before[1]]);
+  nav.pop(99);assert.deepEqual(nav.routes(),["a"]);nav.replace("c");assert.deepEqual(nav.routes(),["c"]);
+  const keymap=createKeymap(f.invoke,f.api,f.dom,{appleKeyboard:false},()=>{});
+  assert.equal(keymap.label("mod+k"),"Ctrl+K");
+  let hits=0;const unbind=keymap.bind("mod+k",()=>hits++);
+  assert.throws(()=>keymap.bind({"mod+l":()=>{},"invalid-key":()=>{}}),TypeError);
+  f.dom.event(1,"onKeyCommand",1);assert.equal(hits,1);unbind();unbind();f.dom.event(1,"onKeyCommand",1);assert.equal(hits,1);
+  dispose();f.close();
+});
+
+
+test("touch dispatch captures, grants, tracks the Rust pan, and releases", { skip: !path }, async () => {
+  const f=await fixture();const gestures=createGestures(f.invoke,f.values,f.api,f.dom,()=>!f.values.closed,()=>{});f.dom.setTouches(gestures);
+  const seen=[];let child,parent,dispose;
+  f.api.root(stop=>{
+    dispose=stop;parent=f.dom.rt.element("view");child=f.dom.rt.element("view");f.dom.rt.append(parent,child);
+    f.dom.rt.prop(parent,"onTouchStartCapture",()=>seen.push("capture"));
+    const pan=gestures.PanResponder.create({onStartShouldSetPanResponder:()=>true,onPanResponderGrant:()=>seen.push("grant"),onPanResponderMove:(e,g)=>seen.push([g.dx,g.dy]),onPanResponderRelease:(e,g)=>seen.push(["release",g.dx])});
+    f.dom.rt.spread(child,pan.panHandlers);
+  });
+  const target=f.values.nodeIds.get(child),outer=f.values.nodeIds.get(parent);
+  const touch=(phase,x,y,timestamp)=>f.dom.event(target,"onTouch",{phase,timestamp,points:[{identifier:1,target,path:[target,outer],pageX:x,pageY:y,locationX:x,locationY:y,changed:true,timestamp}]});
+  touch("start",0,0,0);touch("move",10,5,10);touch("end",10,5,20);
+  assert.deepEqual(seen,["capture","grant",[10,5],["release",10]]);
+  dispose();f.close();
+});
+
+test("virtualized lists recycle owners and preserve the last item while data shrinks", { skip: !path }, async () => {
+  const { createLists } = await import("./list.js");
+  const { api, invoke, values, dom, close } = await fixture();
+  const lists = createLists(invoke, values, api, dom, () => true, () => {});
+  const data = api.signal([{ id: "a" }, { id: "b" }, { id: "c" }]);
+  const rows = [], reports = [];
+  let node, dispose, cleaned = 0;
+  api.root(stop => {
+    dispose = stop;
+    node = lists.render({ get each() { return data(); },
+      children(item, index) { rows.push({ item, index }); api.cleanup(() => cleaned++); return () => item()?.id; },
+      onViewableItemsChange(info) { reports.push(info); } });
+  });
+  const id = values.nodeIds.get(node);
+  lists.bind(id, [[0, 0], [1, 1]]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].item().id, "a");
+  lists.bind(id, [[0, 2]]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].item().id, "c");
+  data.set([{ id: "d" }]);
+  assert.equal(rows[0].item().id, "c");
+  lists.bind(id, [[0, 0]]);
+  assert.equal(rows[0].item().id, "d");
+  dom.event(id, "onViewableItemsChange", { first: 0, last: 0 });
+  assert.equal(reports[0].viewableItems[0].key, "d");
+  dispose();
+  assert.equal(cleaned, 2);
+  lists.bind(id, [[0, 0]]);
+  assert.equal(rows.length, 2);
+  close();
+});
+
+test("resources cancel superseded loads, retain values, and ignore settlement after disposal", { skip: !path }, async () => {
+  const { createResource } = await import("./resource.js");
+  const { api, invoke, close } = await fixture();
+  const resource = createResource(invoke, api, () => true, () => {});
+  const source = api.signal(1), requests = [];
+  let result, dispose;
+  api.root(stop => {
+    dispose = stop;
+    result = resource(source, (key, info) => new Promise((resolve, reject) => requests.push({ key, info, resolve, reject })));
+  });
+  assert.equal(result.state(), "pending");
+  source.set(2);
+  assert.equal(requests[0].info.signal.aborted, true);
+  requests[0].resolve("stale"); requests[1].resolve("current");
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(result(), "current"); assert.equal(result.state(), "ready");
+  result.refetch(); assert.equal(result.state(), "refreshing"); assert.equal(requests[2].info.refetching, true);
+  assert.equal(result.mutate("local"), "local");
+  requests[2].reject("failure"); await Promise.resolve(); await Promise.resolve();
+  assert.equal(result.error(), "failure"); assert.equal(result(), "local");
+  source.set(false); assert.equal(result.state(), "ready");
+  source.set(3); dispose(); assert.equal(requests[3].info.signal.aborted, true);
+  requests[3].resolve("late"); await Promise.resolve(); await Promise.resolve();
+  assert.equal(result(), "local"); close();
+});
+
+test("list binding continues after a row failure and teardown finishes after cleanup throws", { skip: !path }, async () => {
+  const { createLists } = await import("./list.js");
+  const { api, invoke, values, dom, close } = await fixture();
+  const lists = createLists(invoke, values, api, dom, () => true, () => {});
+  let node, dispose, made = [], cleaned = [];
+  api.root(stop => {
+    dispose = stop;
+    node = lists.render({ each: [0, 1, 2], children(item) {
+      const key = item(); made.push(key);
+      api.cleanup(() => { cleaned.push(key); if (key === 1) throw new Error("cleanup"); });
+      if (key === 0) throw new Error("render");
+      return key;
+    } });
+  });
+  const id = values.nodeIds.get(node);
+  assert.throws(() => lists.bind(id, [[0, 0], [1, 1], [2, 2]]), /render/);
+  assert.deepEqual(made, [0, 1, 2]);
+  assert.throws(dispose, /cleanup/);
+  assert.deepEqual(cleaned, [0, 1, 2]);
+  assert.doesNotThrow(() => lists.bind(id, [[0, 0]]));
+  close();
+});
+
+test("standard utilities retain Buffer, hash, compression, and virtual path behavior", { skip: !path }, async () => {
+  const { createStandard } = await import("./standard.js");
+  const { invoke, close } = await fixture();
+  const modules = createStandard(invoke, () => true), { Buffer } = modules.get("buffer"), crypto = modules.get("crypto"), zlib = modules.get("zlib"), paths = modules.get("path"), url = modules.get("url");
+  const native = await import("node:crypto");
+  const bytes = Buffer.from("Native Shell");
+  assert.equal(bytes.toString("base64"), "TmF0aXZlIFNoZWxs");
+  assert.equal(Buffer.from([0, 1, 255]).readUInt16BE(1), 511);
+  for (const algorithm of ["md5", "sha1", "sha256", "sha384", "sha512"]) {
+    assert.equal(crypto.createHash(algorithm).update(bytes).digest("hex"), native.createHash(algorithm).update(bytes).digest("hex"));
+    assert.equal(crypto.createHmac(algorithm, "key").update(bytes).digest("hex"), native.createHmac(algorithm, "key").update(bytes).digest("hex"));
+  }
+  for (const [compress, decompress] of [["gzip", "gunzip"], ["deflate", "inflate"], ["deflateRaw", "inflateRaw"], ["brotliCompress", "brotliDecompress"], ["zstdCompress", "zstdDecompress"]]) {
+    assert.equal(zlib[decompress + "Sync"](zlib[compress + "Sync"](bytes)).toString(), "Native Shell");
+  }
+  assert.throws(() => zlib.gunzipSync(zlib.gzipSync(bytes), { maxOutputLength: 1 }), /output exceeds/);
+  assert.equal(paths.resolve("docs", "..", "images"), "/images");
+  assert.equal(url.pathToFileURL("docs/a b#c%20.txt").href, "file:///docs/a%20b%23c%2520.txt");
+  assert.equal(url.fileURLToPath("file:///a%20b"), "/a%20b");
+  assert.equal(url.domainToUnicode("xn--bcher-kva.de"), "bücher.de");
+  close();
+});
+
+test("symbol and bigint keyed rows reuse identity and release symbol intern entries", { skip: !path }, async () => {
+  const { api, dom, values, close } = await fixture();
+  const symbol = Symbol.for("row"), local = Symbol("row");
+  const source = api.signal([symbol, 123n, local]); let rows, dispose, created = 0;
+  api.root(stop => { dispose = stop; rows = dom.rt.each(source, () => ++created); });
+  assert.deepEqual(rows(), [1, 2, 3]);
+  source.set([local, symbol, 123n]);
+  assert.deepEqual(rows(), [3, 1, 2]);
+  source.set([]); assert.deepEqual(rows(), []);
+  for (let i = 0; i < 20 && values.symbols.size; i++) { await new Promise(resolve => setTimeout(resolve, 5)); global.gc?.(); }
+  assert.equal(values.symbols.size, 0);
+  dispose(); close();
+});
+
+test("hash updates consume ArrayBuffers immediately and HMAC refuses CRC", { skip: !path }, async () => {
+  const { createStandard } = await import("./standard.js");
+  const { invoke, close } = await fixture();
+  const crypto = createStandard(invoke, () => true).get("crypto");
+  const input = new Uint8Array([1, 2]), key = new Uint8Array([3, 4]);
+  const hash = crypto.createHash("sha256").update(input.buffer), hmac = crypto.createHmac("sha256", key.buffer).update(input.buffer);
+  input.fill(0); key.fill(0);
+  const native = await import("node:crypto");
+  assert.equal(hash.digest("hex"), native.createHash("sha256").update(new Uint8Array([1, 2])).digest("hex"));
+  assert.equal(hmac.digest("hex"), native.createHmac("sha256", new Uint8Array([3, 4])).update(new Uint8Array([1, 2])).digest("hex"));
+  assert.throws(() => crypto.createHmac("crc32", "secret"), /not available/);
+  assert.throws(() => crypto.createHash("crc32c"), /not available/);
+  assert.equal(new crypto.Crc32().update("123456789").digest("hex"), "cbf43926");
+  close();
+});
+
+test("compiled refs assign variables, signals and callbacks and reject memo refs", { skip: !path }, async () => {
+  const { api, dom, close } = await fixture();
+  const node = dom.rt.element("view"), ref = api.signal(null), memo = api.computed(() => null);
+  assert.equal(dom.rt.ref(undefined, node), false);
+  assert.equal(dom.rt.ref(ref, node), true); assert.equal(ref(), node);
+  let received; assert.equal(dom.rt.ref(value => { received = value; }, node), true); assert.equal(received, node);
+  assert.throws(() => dom.rt.ref(memo, node), /read-only/);
+  assert.throws(() => dom.rt.ref(null, node, "constant"), /cannot be assigned/);
+  close();
+});
+
+test("error boundaries catch component, binding and listener failures and reset", { skip: !path }, async () => {
+  const { api, dom, values, close } = await fixture();
+  const fail = api.signal(false); let output, reset, dispose, node;
+  const read = value => typeof value === "function" ? read(value()) : value;
+  api.root(stop => {
+    dispose = stop;
+    output = api.ErrorBoundary({
+      fallback(error, retry) { reset = retry; return `caught ${error}`; },
+      get children() { node = dom.rt.element("view"); dom.rt.prop(node, "onPress", () => { throw "event"; }); return () => { if (fail()) throw "binding"; return "ok"; }; },
+    });
+  });
+  assert.equal(read(output), "ok"); fail.set(true);
+  assert.equal(read(output), "caught binding"); fail.set(false); reset(); assert.equal(read(output), "ok");
+  dom.event(values.nodeIds.get(node), "onPress", {});
+  assert.equal(read(output), "caught event"); dispose(); close();
 });

@@ -18,7 +18,7 @@ export function createEnvironment(reactive, invoke, dom) {
     windowSize: () => fields.window(), safeArea: () => fields.safeArea(), safeAreaInsets: () => insets(),
     keyboardFrame: () => fields.keyboard(), colorScheme: () => fields.colorScheme(), setColorScheme,
     fontScale: () => fields.fontScale(), pixelRatio: () => fields.pixelRatio(), locale: () => fields.locale(),
-    reduceMotion: () => fields.reduceMotion(), screenReader: () => fields.screenReader(), platform,
+    reduceMotion: () => fields.reduceMotion(), screenReader: () => fields.screenReader(), screenReaderEnabled: () => fields.screenReader(), platform,
     token(name) { tokens(); return invoke(402, [name, fields.colorScheme() === "dark"]); },
   };
   return {

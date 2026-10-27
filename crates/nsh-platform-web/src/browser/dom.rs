@@ -217,6 +217,53 @@ impl Dom {
     }
     pub(super) fn call(&self, op: u32, args: &Value) -> Result<Value, PropError> {
         match op {
+            315 => {
+                let id = Self::id(&args.index(0)?)?;
+                let call = args.index(2)?.as_number().unwrap_or(0.0) as u32;
+                self.bindings.ops.borrow_mut().push(Op::Command {
+                    id,
+                    command: nsh_core::Command::Measure { call },
+                });
+                Ok(Value(0))
+            }
+            313 => {
+                let ancestor = args.index(0)?.as_number().unwrap_or(0.0) as u32;
+                let mut child = args.index(1)?.as_number().unwrap_or(0.0) as u32;
+                let nodes = self.nodes.borrow();
+                loop {
+                    if child == ancestor {
+                        return Ok(Value(3));
+                    }
+                    let Some(parent) = nodes
+                        .get(child as usize)
+                        .and_then(Option::as_ref)
+                        .and_then(|n| n.parent)
+                    else {
+                        return Ok(Value(2));
+                    };
+                    child = parent;
+                }
+            }
+            314 => {
+                let id = args
+                    .index(0)?
+                    .as_number()
+                    .ok_or_else(|| PropError("invalid node ID".into()))?
+                    as u32;
+                let name = args
+                    .index(1)?
+                    .as_string()
+                    .ok_or_else(|| PropError("invalid command".into()))?;
+                if let Some(command) =
+                    protocol::decode_command(&name, compat::Value::new(args.index(2)?))?
+                {
+                    self.bindings
+                        .ops
+                        .borrow_mut()
+                        .push(Op::Command { id, command });
+                }
+                Ok(Value(0))
+            }
             300 => {
                 let name = args
                     .index(0)?
@@ -276,14 +323,18 @@ impl Dom {
                 self.set_text(id, text)?;
                 Ok(Value(0))
             }
-            305 => {
+            305 | 309 => {
                 let id = Self::id(&args.index(0)?)?;
                 let name = args
                     .index(1)?
                     .as_string()
                     .ok_or_else(|| PropError("expected event name".into()))?;
-                let event = EventKind::from_handler(&name)
-                    .ok_or_else(|| PropError("unknown event name".into()))?;
+                let event = if op == 309 {
+                    EventKind::from_prop(&name)
+                } else {
+                    EventKind::from_handler(&name)
+                }
+                .ok_or_else(|| PropError(format!("unknown event name {name}")))?;
                 self.bindings.ops.borrow_mut().push(Op::Listen {
                     id,
                     event,

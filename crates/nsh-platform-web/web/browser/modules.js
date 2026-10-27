@@ -10,6 +10,7 @@ export function createModules(invoke, values, live, wake, makeComponent) {
     // An older wrapper may finalize after wrap() already replaced it.
     if (instances.get(id)?.deref()) return;
     instances.delete(id);
+    values.classPeers.delete(id);
     invoke(203, [id]);
   });
   const call = (op, prefix, receiver, args, promise, throws) => {
@@ -34,6 +35,7 @@ export function createModules(invoke, values, live, wake, makeComponent) {
   const remember = (object, id) => {
     values.instances.set(object, id);
     instances.set(id, new WeakRef(object));
+    values.classPeers.set(id, new WeakRef(object));
     finalizers.register(object, id);
     return object;
   };
@@ -70,8 +72,6 @@ export function createModules(invoke, values, live, wake, makeComponent) {
         if (!live()) throw new Error("the app was disposed");
         invoke(205, [this, spec.id]);
       };
-      Object.defineProperty(Constructor.prototype, "dispose", { value: dispose, configurable: true, writable: true });
-      if (Symbol.dispose) Object.defineProperty(Constructor.prototype, Symbol.dispose, { value: dispose, configurable: true, writable: true });
       for (const member of spec.members) {
         if (member.kind === "constructor") continue;
         const fn = function (...args) {
@@ -84,6 +84,8 @@ export function createModules(invoke, values, live, wake, makeComponent) {
         else { descriptor.value = fn; descriptor.writable = true; }
         Object.defineProperty(target, member.name, descriptor);
       }
+      Object.defineProperty(Constructor.prototype, "dispose", { value: dispose, configurable: true, writable: true });
+      if (Symbol.dispose) Object.defineProperty(Constructor.prototype, Symbol.dispose, { value: dispose, configurable: true, writable: true });
     }
   }
   for (const set of metadata) {
@@ -106,6 +108,7 @@ export function createModules(invoke, values, live, wake, makeComponent) {
   }
   return {
     exports,
+    measure(node) { return call(315, [], node, [], true, false); },
     reply(id, ok, value) {
       const waiter = pending.get(id);
       if (!waiter) return;
@@ -116,6 +119,7 @@ export function createModules(invoke, values, live, wake, makeComponent) {
       const waiters = [...pending.values()];
       pending.clear();
       instances.clear();
+      values.classPeers.clear();
       classes.clear();
       exports.clear();
       for (const waiter of waiters) waiter.reject(new Error("the app was disposed"));

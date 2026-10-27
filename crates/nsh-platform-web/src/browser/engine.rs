@@ -66,7 +66,11 @@ impl Host for Runtime {
             (|| {
                 Ok(vec![
                     Value::number(id.into()),
-                    Value::string(event.handler_name())?,
+                    Value::string(if event.handler_name().is_empty() {
+                        event.prop_name()
+                    } else {
+                        event.handler_name()
+                    })?,
                     events::payload(&self.bindings, payload)?,
                 ])
             })(),
@@ -199,10 +203,10 @@ impl Host for Runtime {
         out.append(&mut self.fonts.borrow_mut());
     }
     fn wants_frame(&self) -> bool {
-        self.frame.get()
+        false
     }
     fn run_frame(&self) {
-        self.notify("frame", []);
+        // Browser requestAnimationFrame callbacks run in the app realm.
     }
     fn animations_finished(&self, finished: &[nsh_core::animation::Finished]) {
         self.event(

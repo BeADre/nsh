@@ -16,8 +16,15 @@ export class Values {
     this.nodeIds = new WeakMap();
     this.instances = new WeakMap();
     this.identities = new WeakMap();
+    this.symbols = new Map();
     this.nextIdentity = 1;
     this.wrap = null;
+    this.classPeers = new Map();
+    this.accessors = new Map();
+    this.signals = new WeakSet();
+    this.memos = new WeakSet();
+    this.mirrors = new WeakMap();
+    this.depth = 0;
   }
   put(value) {
     if (this.closed) throw new Error("the app was disposed");
@@ -28,7 +35,13 @@ export class Values {
     const index = this.freeSlots.pop() ?? this.slots.length;
     if (index >= INDEX_MASK) throw new RangeError("too many retained browser values");
     const generation = this.slots[index]?.generation ?? 0;
-    this.slots[index] = { value, refs: 1, generation };
+    let symbol;
+    if (typeof value === "symbol") {
+      symbol = this.symbols.get(value);
+      if (!symbol) { symbol = { id: this.nextIdentity++, refs: 0 }; this.symbols.set(value, symbol); }
+      symbol.refs++;
+    }
+    this.slots[index] = { value, refs: 1, generation, symbol };
     return ((generation << INDEX_BITS) | index) >>> 0;
   }
   slot(id) {
@@ -39,13 +52,75 @@ export class Values {
     }
     return slot;
   }
-  get(id) { return this.slot(id >>> 0).value; }
+  get(id) {
+    const slot = this.slot(id >>> 0);
+    const value = slot.weak ? slot.weak.deref() : slot.value;
+    if (slot.weak && value === undefined) throw new ReferenceError("a browser value was collected");
+    return value;
+  }
+  // All Wasm entries, including pumps and finalizers, use this boundary.
+  // Temporarily promote before Rust can clone a callback into a task;
+  // only demote after conservative reference accounting at outermost exit.
+  boundary(body, trace) {
+    if (this.closed) return body();
+    const outer = this.depth++ === 0;
+    if (outer) for (const slot of this.slots) {
+      if (slot?.refs > 0 && slot.weak) slot.value = slot.weak.deref();
+    }
+    try { return body(); }
+    finally {
+      try {
+        if (outer && !this.closed) {
+          this.edges = [];
+          trace();
+          const mirrors = new WeakMap(), counts = new Map();
+          for (const [kind, owner, generation, id] of this.edges) {
+            const peer = (kind === 0 ? this.classPeers.get(owner) : this.accessors.get(`${owner}:${generation}`))?.deref();
+            if (!peer) continue;
+            const slot = this.slot(id);
+            if (slot.refs === Infinity || (slot.weak && slot.value === undefined)) continue;
+            const value = slot.value;
+            if ((typeof value !== "object" || value === null) && typeof value !== "function") continue;
+            let held = mirrors.get(peer);
+            if (!held) mirrors.set(peer, held = []);
+            held.push(value);
+            counts.set(id, (counts.get(id) ?? 0) + 1);
+          }
+          for (let i = 4; i < this.slots.length; i++) {
+            const slot = this.slots[i];
+            if (!slot || !slot.refs) continue;
+            const id = ((slot.generation << INDEX_BITS) | i) >>> 0;
+            if (slot.value !== undefined && counts.get(id) === slot.refs) {
+              slot.weak = new WeakRef(slot.value);
+              slot.value = undefined;
+            } else if (slot.value !== undefined) {
+              // An unreported/shared Rust reference remains a strong root.
+              slot.weak = undefined;
+            }
+          }
+          this.mirrors = mirrors;
+          this.edges = null;
+        }
+      } finally { this.depth--; }
+    }
+  }
+  reconcile() { if (this.trace) this.boundary(() => {}, this.trace); }
+  bind(wasm) {
+    this.trace = () => wasm.nsh_browser_trace();
+    return Object.fromEntries(Object.entries(wasm).map(([name, value]) => [name,
+      typeof value === "function" && name !== "nsh_browser_trace"
+        ? (...args) => this.boundary(() => value(...args), () => wasm.nsh_browser_trace()) : value,
+    ]));
+  }
   retain(id) { this.slot(id).refs++; return id; }
   release(id) {
     if (this.closed || id < 4) return;
     const slot = this.slot(id);
     if (--slot.refs !== 0) return;
+    if (slot.symbol && --slot.symbol.refs === 0) this.symbols.delete(slot.value);
+    slot.symbol = undefined;
     slot.value = undefined;
+    slot.weak = undefined;
     // Retire slots at generation exhaustion instead of allowing ABA.
     if (slot.generation < MAX_GENERATION) {
       slot.generation++;
@@ -76,11 +151,15 @@ export class Values {
     this.slots.length = 0;
     this.freeSlots.length = 0;
     this.nodes.clear();
+    this.classPeers.clear();
+    this.accessors.clear();
+    this.mirrors = new WeakMap();
     this.nodeIds = new WeakMap();
     this.instances = new WeakMap();
     this.wrap = null;
     this.settle = null;
     this.identities = new WeakMap();
+    this.symbols = new Map();
     this.error = null;
     this.hasError = false;
   }
@@ -104,7 +183,7 @@ export class Values {
             if (typeof v === "string") return 4;
             if (Array.isArray(v)) return 5;
             if (typeof v === "function") return 6;
-            return typeof v === "object" ? 7 : 8;
+            return typeof v === "object" ? 7 : typeof v === "bigint" ? 9 : 8;
           }
           case 1: return typeof this.get(a) === "boolean" ? Number(this.get(a)) : NaN;
           case 2: return typeof this.get(a) === "number" ? this.get(a) : NaN;
@@ -140,10 +219,11 @@ export class Values {
           case 27: { const error = this.error; this.error = null; this.hasError = false; return this.put(error); }
           case 28: return this.put(this.wrap(a, b));
           case 29: return this.instances.get(this.get(a)) ?? 0;
-          case 31: if (!this.hasError) { this.error = new Error(text(b, c)); this.hasError = true; } return EXCEPTION;
+          case 31: if (!this.hasError) { this.error = new TypeError(text(b, c)); this.hasError = true; } return EXCEPTION;
           case 32: return Number(this.get(a) === this.get(b));
           case 33: {
             const v = this.get(a);
+            if (typeof v === "symbol") return this.slot(a).symbol.id;
             if ((typeof v !== "object" || v === null) && typeof v !== "function") return a;
             let identity = this.identities.get(v);
             if (identity === undefined) { identity = this.nextIdentity++; this.identities.set(v, identity); }
@@ -167,6 +247,8 @@ export class Values {
           case 41: return this.put(new File([this.get(a)], this.get(b), { type: this.get(c), lastModified: Number.isNaN(number) ? Date.now() : number }));
           case 43: return this.put(String(this.get(a)));
           case 45: return Number(this.hasError);
+          case 46: this.edges?.push([a, b, c, number >>> 0]); return 0;
+          case 47: { const slot = this.slot(a); return Number(!slot.weak || slot.weak.deref() !== undefined); }
           default: throw new Error(`unknown browser value operation ${op}`);
         }
       } catch (error) {

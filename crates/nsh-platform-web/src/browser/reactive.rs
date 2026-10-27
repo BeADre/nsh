@@ -108,12 +108,14 @@ unsafe impl r::Host for Host {
 pub(super) struct Runtime {
     graph: Box<UnsafeCell<r::Graph<Host>>>,
     outside: RefCell<Vec<RustCleanup>>,
+    handles: RefCell<std::collections::HashMap<u32, u32>>,
 }
 impl Default for Runtime {
     fn default() -> Self {
         Self {
             graph: Box::new(UnsafeCell::new(r::Graph::new(Data::default()))),
             outside: RefCell::default(),
+            handles: RefCell::default(),
         }
     }
 }
@@ -156,6 +158,7 @@ impl Runtime {
             return Ok(Value(1));
         }
         let generation = unsafe { self.host().graph() }.generation(id);
+        self.handles.borrow_mut().insert(id, generation);
         Value::array([Value::number(id.into()), Value::number(generation.into())])
     }
     fn node(&self, handle: &Value) -> Result<u32, PropError> {
@@ -181,6 +184,23 @@ impl Runtime {
         } else {
             Equals::Default
         }
+    }
+    /// Only payloads whose lifetime belongs to a JS handle can be
+    /// attributed to that handle. Active scheduler-owned memos stay rooted.
+    pub(super) fn trace_edges(&self, edges: &mut Vec<(u32, u32, u32, u32)>) {
+        let graph = unsafe { self.host().graph() };
+        self.handles.borrow_mut().retain(|id, generation| {
+            if !graph.live(*id, *generation, u32::MAX) {
+                return false;
+            }
+            if graph.kind(*id) == Kind::Signal || graph.disposed(*id) {
+                edges.push((1, *id, *generation, graph.value(*id).0));
+                if let Some(equals) = graph.custom_equals(*id) {
+                    edges.push((1, *id, *generation, equals.0));
+                }
+            }
+            true
+        });
     }
     pub(super) fn owner(&self) -> u32 {
         unsafe { self.host().graph() }.owner()

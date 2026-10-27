@@ -190,6 +190,9 @@ impl HostInput for Value {
             _ => true,
         }
     }
+    fn animated_node(&self) -> Option<u32> {
+        self.get("__av").ok()?.as_number().map(|v| v as u32)
+    }
     fn node(&self) -> Option<u32> {
         let id = invoke(14, self.0, 0, 0, 0.0) as u32;
         (id != 0).then_some(id)

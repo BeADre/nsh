@@ -42,6 +42,7 @@ pub(super) struct Bindings {
     instances: RefCell<Vec<Option<Rc<dyn ClassInstance>>>>,
     callbacks: RefCell<HashMap<u32, Weak<BrowserCallback>>>,
     pending: RefCell<HashMap<u32, JsCall>>,
+    primitive_callbacks: RefCell<Vec<Weak<BrowserCallback>>>,
     next_call: Cell<u32>,
     pub(super) stopped: Cell<bool>,
     pub(super) reactive: RefCell<Weak<super::reactive::Runtime>>,
@@ -58,6 +59,7 @@ impl Bindings {
             instances: RefCell::default(),
             callbacks: RefCell::default(),
             pending: RefCell::default(),
+            primitive_callbacks: RefCell::default(),
             next_call: Cell::new(1),
             stopped: Cell::new(false),
             reactive: RefCell::default(),
@@ -117,15 +119,51 @@ impl Bindings {
             .and_then(Option::take);
         drop(instance);
     }
+    /// Match the native collector's conservative Trace contract. A Rust
+    /// task or another instance retaining this value is an external root.
+    pub(super) fn trace_edges(&self, edges: &mut Vec<(u32, u32, u32, u32)>) {
+        let instances = self.instances.borrow();
+        for (index, instance) in instances.iter().enumerate() {
+            let Some(instance) = instance else { continue };
+            if Rc::strong_count(instance) != 1 {
+                continue;
+            }
+            instance.trace(&mut nsh_core::element::Tracer::new(&mut |callback| {
+                let any: &dyn std::any::Any = callback;
+                if let Some(callback) = any.downcast_ref::<BrowserCallback>()
+                    && Weak::ptr_eq(&callback.host, &self.own)
+                    && !self.stopped.get()
+                    && let Ok(value) = callback.value.try_borrow()
+                    && let Some(value) = &*value
+                {
+                    edges.push((0, index as u32 + 1, 0, value.0));
+                }
+            }));
+        }
+    }
     pub(super) fn stop(&self) {
         if self.stopped.replace(true) {
             return;
         }
         self.posts.borrow().close();
+        // Closing resources may post callbacks; stopped is already set.
+        let locals = self.system.borrow().locals.clone();
+        locals.close_all();
         let pending = self.pending.take();
         let instances = self.instances.take();
         let ops = self.ops.take();
-        self.callbacks.borrow_mut().clear();
+        // Externally retained callbacks may outlive this app. Release their
+        // arena handles now, before a later run installs a different arena.
+        let callbacks = self.callbacks.take();
+        let primitives = self.primitive_callbacks.take();
+        for callback in callbacks
+            .into_values()
+            .chain(primitives)
+            .filter_map(|c| c.upgrade())
+        {
+            let value = callback.value.borrow_mut().take();
+            drop(value);
+        }
         drop((pending, instances, ops));
     }
     fn keep_callback(&self, raw: JsRaw) -> Rc<BrowserCallback> {
@@ -133,10 +171,14 @@ impl Bindings {
             self.kind(raw),
             JsKind::Object | JsKind::Function | JsKind::Array
         ) {
-            return Rc::new(BrowserCallback {
+            let callback = Rc::new(BrowserCallback {
                 host: self.own.clone(),
-                value: Value::borrowed(id(raw)),
+                value: RefCell::new(Some(Value::borrowed(id(raw)))),
             });
+            let mut retained = self.primitive_callbacks.borrow_mut();
+            retained.retain(|value| value.strong_count() != 0);
+            retained.push(Rc::downgrade(&callback));
+            return callback;
         }
         let id = invoke(33, id(raw), 0, 0, 0.0) as u32;
         if let Some(callback) = self.callbacks.borrow().get(&id).and_then(Weak::upgrade) {
@@ -144,7 +186,7 @@ impl Bindings {
         }
         let callback = Rc::new(BrowserCallback {
             host: self.own.clone(),
-            value: Value::borrowed(id_raw(raw)),
+            value: RefCell::new(Some(Value::borrowed(id_raw(raw)))),
         });
         self.callbacks
             .borrow_mut()
@@ -217,7 +259,7 @@ fn owned(value: Value) -> JsRaw {
 
 struct BrowserCallback {
     host: Weak<Bindings>,
-    value: Value,
+    value: RefCell<Option<Value>>,
 }
 impl CallbackHandle for BrowserCallback {
     fn call_now(&self, call: JsCall) {
@@ -246,7 +288,12 @@ impl CallbackHandle for BrowserCallback {
         if own.stopped.get() || !std::ptr::addr_eq::<Bindings, dyn JsHost>(&*own, host) {
             return None;
         }
-        Some(owned(self.value.clone()))
+        let value = self.value.borrow();
+        let value = value.as_ref()?;
+        if invoke(47, value.0, 0, 0, 0.0) == 0.0 {
+            return None;
+        }
+        Some(owned(value.clone()))
     }
 }
 impl JsHost for Bindings {

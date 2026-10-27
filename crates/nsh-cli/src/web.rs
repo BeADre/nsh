@@ -95,7 +95,7 @@ pub(crate) fn package(
             missing.join(", ")
         );
     }
-    let runtime = runtime::web(runtime::WebKind::Release, true)?.context("no web runtime")?;
+    let runtime = runtime::web(runtime::WebKind::Browser, true)?.context("no web runtime")?;
     let dir = options.out.join(name);
     let step = ui::Step::start(format!("packaging {}", ui::path(&dir)));
     if dir.exists() {
@@ -104,6 +104,12 @@ pub(crate) fn package(
     let site = Site::new(&dir)?;
     let js = fs::read_to_string(&runtime.js)
         .with_context(|| format!("read {}", runtime.js.display()))?;
+    let browser_path =
+        publish_browser_host(&site, runtime.js.parent().context("runtime has no parent")?)?;
+    let js = js.replace(
+        "./browser/runtime.js",
+        &format!("./{browser_path}/runtime.js"),
+    );
     // About a third of its size: the runtime is downloaded before anything
     // shows (the app's code is minified as it is bundled).
     let js = nsh_bundler::minify_module("nsh.js", &js).map_err(anyhow::Error::msg)?;
@@ -124,17 +130,17 @@ pub(crate) fn package(
     let (code, harden) = if built.rust_root {
         (String::new(), String::new())
     } else {
-        let code = site.add(&format!("{}.{}", CODE.0, CODE.1), &built.bytecode)?;
+        let code = site.add("app.js", built.code.as_bytes())?;
         // The runtime cannot compile its hardening: it comes compiled by
         // the QuickJS that compiled the app.
-        (code, site.add("harden.nshc", &nsh_js::compile_harden()?)?)
+        (code, String::new())
     };
     // Chunk id -> URL: the page hands the map to the runtime, which fetches
     // lazy chunks on demand. Static entry dependencies are staged before startup.
     let mut chunks = serde_json::Map::new();
     for chunk in &built.chunks {
         let stem = chunk.id.strip_suffix(".js").unwrap_or(&chunk.id);
-        let url = site.add(&format!("chunks/{stem}.{}", CODE.1), &chunk.bytecode)?;
+        let url = site.add(&format!("{stem}.js"), chunk.code.as_bytes())?;
         chunks.insert(chunk.id.clone(), url.into());
     }
     let mut assets = serde_json::Map::new();
@@ -174,6 +180,7 @@ pub(crate) fn package(
         "harden": harden,
         "capabilities": built.capabilities_json(),
         "rust": built.rust_root,
+        "browser": !built.rust_root,
         "assets": assets,
         "fonts": fonts,
         "chunkFonts": chunk_fonts,
@@ -236,6 +243,43 @@ fn serve(dir: &Path) -> anyhow::Result<()> {
         std::thread::sleep(Duration::from_millis(200));
     }
     Ok(())
+}
+
+/// Version the complete facade directory together so relative ES imports
+/// remain valid, and every public file keeps immutable cache semantics.
+fn publish_browser_host(site: &Site, root: &Path) -> anyhow::Result<String> {
+    let mut paths = fs::read_dir(root.join("browser"))?
+        .map(|entry| entry.map(|e| e.path()))
+        .collect::<Result<Vec<_>, _>>()?;
+    paths.retain(|path| {
+        path.extension()
+            .is_some_and(|ext| ext == "js" || ext == "txt")
+    });
+    paths.sort();
+    let mut files = Vec::new();
+    let mut content = Vec::new();
+    for path in paths {
+        let name = path
+            .file_name()
+            .context("host file has no name")?
+            .to_string_lossy()
+            .into_owned();
+        let code = fs::read_to_string(&path)?;
+        let code = if name.ends_with(".js") {
+            nsh_bundler::minify_module(&name, &code).map_err(anyhow::Error::msg)?
+        } else {
+            code
+        };
+        content.extend_from_slice(name.as_bytes());
+        content.push(0);
+        content.extend_from_slice(code.as_bytes());
+        files.push((name, code));
+    }
+    let directory = format!("browser.{}", digest(&content));
+    for (name, code) in files {
+        site.write(&format!("{directory}/{name}"), code.as_bytes())?;
+    }
+    Ok(directory)
 }
 
 /// Adds the wasm-bindgen glue `path` (`crate::bindgen`) to `site`, named by

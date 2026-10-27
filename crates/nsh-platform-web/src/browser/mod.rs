@@ -1,14 +1,22 @@
 //! Browser JavaScript's value and reactive bridge. App execution stays in
 //! the page; this module contains no interpreter or source evaluator.
+mod animation;
 mod bindings;
+mod canvas;
 mod compat;
 mod dom;
 mod engine;
 mod events;
+#[cfg(feature = "browser-tests")]
+mod fixtures;
+mod gesture;
+mod keymap;
 mod modules;
 mod protocol;
 mod reactive;
+mod resource;
 mod rows;
+mod standard;
 mod values;
 
 use std::{cell::RefCell, rc::Rc};
@@ -22,6 +30,10 @@ struct Runtime {
     bindings: Rc<bindings::Bindings>,
     dom: dom::Dom,
     rows: rows::Rows,
+    resources: resource::Resources,
+    standard: standard::Standard,
+    animation: animation::Animations,
+    gestures: gesture::Gestures,
     listener: RefCell<Option<Value>>,
     registries: RefCell<Vec<nsh_core::element::Registry>>,
     tokens: RefCell<Option<std::sync::Arc<nsh_core::element::Tokens>>>,
@@ -29,7 +41,6 @@ struct Runtime {
     host: RefCell<Option<Rc<dyn nsh_core::host_channel::HostBridge>>>,
     wake: RefCell<Option<std::sync::Arc<dyn Fn() + Send + Sync>>>,
     fonts: RefCell<Vec<String>>,
-    frame: std::cell::Cell<bool>,
     options: RefCell<(Option<String>, Option<String>)>,
 }
 impl Default for Runtime {
@@ -42,6 +53,10 @@ impl Default for Runtime {
             modules: modules::Modules::new(bindings.clone()),
             dom: dom::Dom::new(bindings.clone()),
             rows: rows::Rows::default(),
+            resources: resource::Resources::default(),
+            standard: standard::Standard::default(),
+            animation: animation::Animations::default(),
+            gestures: gesture::Gestures::default(),
             listener: RefCell::default(),
             registries: RefCell::default(),
             tokens: RefCell::default(),
@@ -49,7 +64,6 @@ impl Default for Runtime {
             host: RefCell::default(),
             wake: RefCell::default(),
             fonts: RefCell::default(),
-            frame: std::cell::Cell::new(false),
             options: RefCell::default(),
             bindings,
         }
@@ -58,8 +72,15 @@ impl Default for Runtime {
 impl Runtime {
     fn call(&self, op: u32, args: &Value) -> Result<Value, nsh_core::element::PropError> {
         match op {
+            800..=807 => self.resources.call(op, args),
+            900..=906 => self.standard.call(op, args),
+            700..=702 => self.gestures.call(&self.bindings, op, args),
+            313..=315 => self.dom.call(op, args),
+            600..=603 => canvas::call(&self.bindings, op, args),
+            500..=507 => self.animation.call(&self.bindings, op, args),
+            450..=451 => keymap::call(&self.bindings, op, args),
             310..=312 => self.rows.call(op, args),
-            300..=308 => self.dom.call(op, args),
+            300..=309 => self.dom.call(op, args),
             100..=114 => self.reactive.call(op, args),
             200 => {
                 let registries = self.registries.borrow().clone();
@@ -234,6 +255,20 @@ thread_local! {
 pub(crate) extern "C" fn nsh_browser_initialize() {
     let previous = REACTIVE.with(|slot| slot.borrow_mut().replace(Rc::new(Runtime::default())));
     drop(previous);
+    #[cfg(feature = "browser-tests")]
+    REACTIVE.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .unwrap()
+            .registries
+            .borrow_mut()
+            .extend(
+                nsh_core::runtime::registries()
+                    .iter()
+                    .cloned()
+                    .chain([fixtures::registry()]),
+            );
+    });
 }
 
 /// Release a stopped app's graph after its owners have been disposed.
@@ -241,6 +276,21 @@ pub(crate) extern "C" fn nsh_browser_initialize() {
 pub(crate) extern "C" fn nsh_browser_dispose() {
     let previous = REACTIVE.with(|slot| slot.borrow_mut().take());
     drop(previous);
+}
+
+/// Enumerate references at a quiescent outermost Wasm boundary. Collect
+/// raw handle IDs first; no graph/instance borrow crosses a browser call.
+#[unsafe(no_mangle)]
+pub(crate) extern "C" fn nsh_browser_trace() {
+    let runtime = REACTIVE.with(|slot| slot.borrow().clone());
+    if let Some(runtime) = runtime {
+        let mut edges = Vec::new();
+        runtime.bindings.trace_edges(&mut edges);
+        runtime.reactive.trace_edges(&mut edges);
+        for (kind, owner, generation, value) in edges {
+            values::invoke(46, kind, owner, generation, value.into());
+        }
+    }
 }
 
 /// Dispatch one synchronous call with arguments in a borrowed browser
