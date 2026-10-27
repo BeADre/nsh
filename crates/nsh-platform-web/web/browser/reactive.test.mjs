@@ -594,3 +594,17 @@ test("Rust renderer getters retain their error boundary owner", { skip: !path },
   assert.equal(read(output), "renderer getter");
   dispose(); close();
 });
+
+test("cleanup returns its callback and permits an unowned registration", { skip: !path }, async () => {
+  const { api, close } = await fixture();
+  let calls = 0;
+  const cleanup = () => calls++;
+  assert.equal(api.cleanup(cleanup), cleanup);
+  api.root(dispose => {
+    assert.equal(api.cleanup(cleanup), cleanup);
+    dispose();
+  });
+  assert.equal(calls, 1);
+  close();
+  assert.equal(calls, 1);
+});

@@ -50,11 +50,15 @@ export function createReactive(invoke, live, values) {
   const renderEffect = (fn, initial) => call(104, guarded(fn), initial, false);
   const effect = fn => call(104, guarded(() => { const dispose = fn(); if (typeof dispose === "function") cleanup(dispose); }), undefined, true);
   const cleanup = fn => {
+    // Native cleanup returns its argument and simply releases it when
+    // no owner exists; module-level registration is not an exception.
+    if (!call(110)) return fn;
     const boundary = call(112, boundaryKey, undefined);
-    return call(109, () => {
+    call(109, () => {
       try { return fn(); }
       catch (error) { if (!boundary) throw error; if (!caught.has(boundary)) caught.set(boundary, error); }
     });
+    return fn;
   };
   const batch = fn => call(107, fn);
   const untracked = fn => call(108, fn);

@@ -20,11 +20,11 @@ static server sends compressed responses.
 | Workload | Raw | Gzip | Brotli |
 |---|---:|---:|---:|
 | Counter before | 16,159,518 | 5,632,521 | 4,221,196 |
-| Counter after | 12,540,452 | 4,539,426 | 3,425,836 |
+| Counter after | 12,540,474 | 4,539,436 | 3,425,833 |
 | Gallery before | 16,937,823 | 5,976,278 | 4,509,345 |
-| Gallery after | 13,100,498 | 4,724,702 | 3,589,336 |
+| Gallery after | 13,100,520 | 4,724,712 | 3,589,333 |
 
-Counter saves 795,360 Brotli bytes (18.8%). Gallery saves 920,009 Brotli bytes (20.4%). The 1,000,000-byte goal is **not reached**.
+Counter saves 795,363 Brotli bytes (18.8%). Gallery saves 920,012 Brotli bytes (20.4%). The 1,000,000-byte goal is **not reached**.
 
 The identical Wasm is shared by both workloads:
 
@@ -40,7 +40,7 @@ that every Gallery screen downloads at startup. Counter requests all its shipped
 | Gallery | Initial raw | Initial gzip | Initial Brotli | Optional raw | Optional gzip | Optional Brotli |
 |---|---:|---:|---:|---:|---:|---:|
 | before | 16,303,701 | 5,693,613 | 4,272,416 | 634,122 | 282,665 | 236,929 |
-| after | 12,642,843 | 4,570,712 | 3,453,620 | 457,655 | 153,990 | 135,716 |
+| after | 12,642,865 | 4,570,722 | 3,453,617 | 457,655 | 153,990 | 135,716 |
 
 ## What remains
 
@@ -98,9 +98,9 @@ Validated locally:
   to row 500,000, animation replay, press events, alert cancellation and editor input.
 - Custom RustExports package: constructors and `using`, callback updates, class transfer/property setter,
   async module/class calls, disposed-class errors and the typed Gauge component's change event.
-- 38 actual-Wasm bridge tests; Chromium realm/host-event/startup/replacement/disposal checks, including
+- 39 actual-Wasm bridge tests; Chromium realm/host-event/startup/replacement/disposal checks, including
   failing module loads, throwing cleanup and reentrant error handling. A new `tests/compat` case checks
-  Buffer/error brands and nextTick on native and packaged browser hosts.
+  Buffer/error brands, cleanup identity and nextTick on native and packaged browser hosts.
 - Native engine: 312 tests, five ignored, plus its doctest. CLI: 86 passed, one ignored. Browser and
   engine/CLI/xtask Clippy clean; nightly workspace formatting and CI dependency-path checks pass.
 - Independent read-only review covered ownership, stale handles, callbacks, promises, error boundaries,
