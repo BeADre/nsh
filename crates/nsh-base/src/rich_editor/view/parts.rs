@@ -52,7 +52,8 @@ pub struct RichEditorClasses {
     pub drop_cursor: Option<SharedString>,
     /// The checkbox of a task item (a node whose spec's `extra.render` is
     /// `"task"`, with a `checked` attribute): the item is a row of the
-    /// checkbox and its content; a `Checkbox` with no look.
+    /// checkbox and its content; a `Checkbox` with no look, whose `checked:`
+    /// classes follow the item.
     #[prop(skip_none)]
     pub task_checkbox: Option<SharedString>,
     /// A block the selection is in while the editor has the focus (after

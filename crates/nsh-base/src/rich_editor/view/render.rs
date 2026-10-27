@@ -335,8 +335,10 @@ fn task_checkbox(rv: Rv, item: ReadSignal<BlockItem>) -> impl IntoElement {
             .unwrap_or(false)
     };
     let press_rv = rv.clone();
-    // The part is the checkbox's box; the checkbox fills it.
+    // The part is the checkbox's box; the checkbox fills it. The box
+    // follows the item's state, so the app's `checked:` classes show it.
     view()
+        .project_checked(checked)
         .app_class(move || props.classes.with(|c| c.part(Part::TaskCheckbox).cloned()))
         .inline_style(move || {
             props
