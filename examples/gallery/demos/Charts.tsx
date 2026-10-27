@@ -372,6 +372,8 @@ const EQUITY = (() => {
 })();
 const TROUGH = EQUITY.reduce((a, b) => (b.drawdown < a.drawdown ? b : a));
 const PEAK = EQUITY.slice(0, TROUGH.day + 1).reduce((a, b) => (b.value > a.value ? b : a));
+/** The days of the worst run, from its high to its low. */
+const WORST_RUN = EQUITY.slice(PEAK.day, TROUGH.day + 1);
 const RECOVERED = EQUITY.find((d) => d.day > TROUGH.day && d.value >= PEAK.value);
 const UNDERWATER = EQUITY.filter((d) => d.drawdown < -0.05).length / EQUITY.length;
 const EQUITY_HEIGHT = 140;
@@ -424,6 +426,9 @@ function Drawdown() {
       <View style={{ marginTop: size.gap, gap: 6 }}>
         <Plot
           data={EQUITY}
+          // Days on a linear scale, so the worst run's own rows land on their days.
+          x="day"
+          xScale={{ type: "linear", domain: [0, EQUITY.length - 1] }}
           y="value"
           yScale={{ type: "linear", domain: [VALUE_LO, VALUE_HI] }}
           appearGeneration={1}
@@ -437,12 +442,19 @@ function Drawdown() {
           focusStyle={focusRing(4)}
           style={{ height: EQUITY_HEIGHT }}
         >
-          {/* The worst run, from its high to its low. */}
-          <View style={{ position: "absolute", left: across(PEAK.day), width: `${((TROUGH.day - PEAK.day) / (EQUITY.length - 1)) * 100}%`, top: 0, bottom: 0, backgroundColor: alpha(colors.danger, 0.07), pointerEvents: "none" }}>
+          {/* The worst run, from its high to its low, its value hatched under the curve. */}
+          <View style={{ position: "absolute", left: across(PEAK.day), width: `${((TROUGH.day - PEAK.day) / (EQUITY.length - 1)) * 100}%`, top: 0, bottom: 0, backgroundColor: alpha(colors.danger, 0.04), pointerEvents: "none" }}>
             <Text style={{ ...axis, position: "absolute", left: 6, top: 6, color: toneColor("danger") }}>{`MAX ${signed(TROUGH.drawdown, 1)}%`}</Text>
           </View>
           <Grid y={ticks(VALUE_LO, VALUE_HI, 3)} style={{ stroke: colors.line }} />
           <Area backgroundStyle={wash(toneColor("accent"), 0.16)} hoverDotClass="hidden" />
+          {/* Hairline stripes 6pt apart, falling to the right. */}
+          <Area
+            data={WORST_RUN}
+            x="day"
+            backgroundStyle={{ backgroundImage: `repeating-linear-gradient(-45deg, ${alpha(colors.danger, 0.32)} 0px, ${alpha(colors.danger, 0.32)} 1px, transparent 1px, transparent 6px)` }}
+            hoverDotClass="hidden"
+          />
           <Line style={{ stroke: toneColor("accent"), strokeWidth: 1.75 }} hoverDotStyle={{ backgroundColor: toneColor("accent"), borderColor: colors.inset }} />
           {mark("equity", "accent")}
         </Plot>
@@ -473,7 +485,8 @@ function Drawdown() {
           <Text style={{ ...axis, position: "absolute", left: 0, bottom: 2, pointerEvents: "none" }}>{`${DD_FLOOR}%`}</Text>
           <View style={{ position: "absolute", left: across(TROUGH.day), top: (TROUGH.drawdown / DD_FLOOR) * WATER_HEIGHT, width: 0, height: 0, pointerEvents: "none" }}>
             <View style={{ position: "absolute", left: -3.5, top: -3.5, width: 7, height: 7, borderRadius: 3.5, borderWidth: 1.5, borderColor: colors.inset, backgroundColor: toneColor("danger") }} />
-            <Text style={{ ...axis, position: "absolute", left: 8, top: -6, color: toneColor("danger") }}>{`${signed(TROUGH.drawdown, 1)}%`}</Text>
+            {/* A width of its own: the zero-width anchor would wrap it at every break. */}
+            <Text style={{ ...axis, position: "absolute", left: 8, top: -6, width: 64, color: toneColor("danger") }}>{`${signed(TROUGH.drawdown, 1)}%`}</Text>
           </View>
           {mark("water", "danger")}
         </Plot>
