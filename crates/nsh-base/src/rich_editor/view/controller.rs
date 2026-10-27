@@ -561,7 +561,9 @@ impl Rv {
         }
         let mut parts = inserted.split('\n').peekable();
         while let Some(part) = parts.next() {
-            self.text_input(part, composed);
+            for piece in typed_pieces(part, composed) {
+                self.text_input(piece, composed);
+            }
             if parts.peek().is_some() {
                 self.key(&KeyEvent::new("Enter"));
             }
@@ -2068,9 +2070,30 @@ fn common_prefix(a: &str, b: &str) -> usize {
         .unwrap_or_else(|| a.len().min(b.len()))
 }
 
+/// The insertions a change of the sink's text makes: an input method's
+/// commit as one, else each character on its own, as it was typed. A
+/// platform may coalesce a frame's keys (or a test's typed string) into one
+/// change; input rules must still see each character.
+fn typed_pieces(text: &str, composed: bool) -> Vec<&str> {
+    if composed {
+        return vec![text];
+    }
+    text.char_indices()
+        .map(|(i, c)| &text[i..i + c.len_utf8()])
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn coalesced_typing_goes_in_character_by_character() {
+        assert_eq!(typed_pieces("a**b", false), ["a", "*", "*", "b"]);
+        assert_eq!(typed_pieces("中文", false), ["中", "文"]);
+        assert_eq!(typed_pieces("中文", true), ["中文"]);
+        assert!(typed_pieces("", false).is_empty());
+    }
 
     #[test]
     fn graphemes_step_whole() {
