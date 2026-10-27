@@ -101,6 +101,9 @@ struct Drag {
     /// Set when the press started inside the selection (or on a draggable
     /// node): the drag moves what is selected rather than selecting.
     moving: Option<Moving>,
+    /// Pressed with Mod: a selection the drag makes across blocks covers
+    /// them whole on release (Tiptap's NodeRange).
+    blocks: bool,
 }
 
 /// What a drag that started inside the selection carries
@@ -1338,6 +1341,7 @@ impl Rv {
                     click: click_sel,
                     source: None,
                 }),
+                blocks: false,
             });
             return;
         }
@@ -1391,6 +1395,7 @@ impl Rv {
             shift,
             scroll,
             moving: None,
+            blocks: mod_key,
         });
     }
 
@@ -1620,6 +1625,7 @@ impl Rv {
                 click: None,
                 source: Some((from, to)),
             }),
+            blocks: false,
         });
         // The content may have moved on the page since its last layout.
         self.place();
@@ -1787,6 +1793,9 @@ impl Rv {
             ..
         }) = drag
         else {
+            if drag.is_some_and(|d| d.blocks) {
+                self.snap_to_blocks();
+            }
             return;
         };
         match target {
@@ -1796,6 +1805,16 @@ impl Rv {
                     self.set_selection(click, false);
                 }
             }
+        }
+    }
+
+    /// Widens a selection across sibling blocks to cover them whole.
+    fn snap_to_blocks(&self) {
+        let state = self.session.state();
+        if let Some(selection) = blocks_selection(state.doc(), state.selection()) {
+            let mut tr = state.tr();
+            tr.set_selection(selection);
+            self.dispatch(tr);
         }
     }
 
@@ -2348,6 +2367,29 @@ fn typed_pieces(text: &str, composed: bool) -> Vec<&str> {
         .collect()
 }
 
+/// `selection` widened to the whole sibling blocks it spans, when it spans
+/// more than one parent.
+fn blocks_selection(doc: &Node, selection: &Selection) -> Option<Selection> {
+    let (a, h) = (
+        doc.resolve(selection.anchor()).ok()?,
+        doc.resolve(selection.head()).ok()?,
+    );
+    if a.same_parent(&h) {
+        return None;
+    }
+    let range = a.block_range(&h, None)?;
+    let (start, end) = (
+        doc.resolve(range.start()).ok()?,
+        doc.resolve(range.end()).ok()?,
+    );
+    let (anchor, head) = if h.pos >= a.pos {
+        (start, end)
+    } else {
+        (end, start)
+    };
+    Some(TextSelection::between(&anchor, &head, None))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2403,6 +2445,23 @@ mod tests {
                 .text_between(0, tr.doc().content().size(), Some("|"), None),
             "abcd|xbcy"
         );
+    }
+
+    #[test]
+    fn a_mod_drag_across_blocks_selects_them_whole() {
+        let state = state_of(serde_json::json!({
+            "type": "doc",
+            "content": [para("one"), para("two"), para("three")],
+        }));
+        let doc = state.doc();
+        // From inside "one" to inside "two": both blocks whole.
+        let picked = blocks_selection(doc, &TextSelection::create(doc, 2, Some(7))).unwrap();
+        assert_eq!((picked.from(), picked.to()), (1, 9));
+        // Backwards keeps its direction.
+        let back = blocks_selection(doc, &TextSelection::create(doc, 12, Some(2))).unwrap();
+        assert_eq!((back.anchor(), back.head()), (16, 1));
+        // Inside one block, nothing changes.
+        assert!(blocks_selection(doc, &TextSelection::create(doc, 1, Some(3))).is_none());
     }
 
     #[test]

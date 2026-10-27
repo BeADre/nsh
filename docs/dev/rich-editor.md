@@ -285,7 +285,8 @@ JS describes.
   page points (`ViewRequest::DragBlock` / `DragTo` / `EndDrag`). The drop goes before or after the innermost block
   at the pointer's height whose parent takes the block, by the half the pointer is over, wherever the pointer is
   across (the handle sits in the gutter); off every block, beside the nearest block that takes it, so a list item
-  dropped below its list stays in it. The view tells the session its focus (`isFocused`, `focus` / `blur` events) and honors `setEditable`.
+  dropped below its list stays in it. A selection dragged with Mod held across blocks covers them whole on release
+  (Tiptap's NodeRange), ready for the handle to carry. The view tells the session its focus (`isFocused`, `focus` / `blur` events) and honors `setEditable`.
 - **Events**: `create`, `update`, `selectionUpdate`, `transaction` (a summary), `focus`, `blur`, `paste`, `drop`,
   `delete`, `destroy`, posted to JS after the fact.
 - **Formats**: JSON (Tiptap's document JSON loads as is), Markdown (each type's form declared by its extension), HTML
