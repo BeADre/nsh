@@ -7,7 +7,7 @@
 //! places stay apart: a position at a line wrap is two places, which the
 //! selection's affinity tells apart.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use nsh_core::{TextLine, prelude::*};
 use unicode_segmentation::UnicodeSegmentation;
@@ -101,6 +101,9 @@ pub(crate) struct TextGeo {
     pub(crate) owner: Option<u64>,
 }
 
+/// Measures a text in a font (the platform's measurer, captured).
+pub(crate) type Measure = Rc<dyn Fn(&str, &str) -> Points>;
+
 /// The geometry of a rendered document.
 #[derive(Default)]
 pub(crate) struct Geometry {
@@ -114,6 +117,8 @@ pub(crate) struct Geometry {
     pub(crate) atoms: HashMap<u64, usize>,
     /// The font measuring within a line (relative widths only).
     pub(crate) font: String,
+    /// Captured on the view's engine thread, independent of runtime entry.
+    pub(crate) measure: Option<Measure>,
 }
 
 /// A place a point lands on.
@@ -126,6 +131,13 @@ pub(crate) enum Hit {
 }
 
 impl Geometry {
+    fn measure_text(&self, text: &str) -> Points {
+        self.measure.as_ref().map_or_else(
+            || measure_text(&self.font, text),
+            |measure| measure(&self.font, text),
+        )
+    }
+
     /// Block `id`'s top left in the content box.
     pub(crate) fn origin(&self, id: u64) -> Option<Point<Points>> {
         let mut at = Point::default();
@@ -244,7 +256,7 @@ impl Geometry {
         if x >= line.width {
             return line.end;
         }
-        let full = measure_text(&self.font, &line.text).max(px(1.0));
+        let full = self.measure_text(&line.text).max(px(1.0));
         let mut best = (line.start, Points(f32::MAX));
         let mut units = 0u32;
         let mut boundaries = vec![(0u32, 0usize)];
@@ -261,7 +273,7 @@ impl Geometry {
             let w = if b == 0 {
                 px(0.0)
             } else {
-                line.width * (measure_text(&self.font, &line.text[..b]).0 / full.0)
+                line.width * (self.measure_text(&line.text[..b]).0 / full.0)
             };
             let d = Points((w - x).0.abs());
             if d < best.1 {
@@ -282,8 +294,8 @@ impl Geometry {
         let units: Vec<u16> = line.text.encode_utf16().collect();
         let k = ((t - line.start) as usize).min(units.len());
         let prefix = String::from_utf16_lossy(&units[..k]);
-        let full = measure_text(&self.font, &line.text).max(px(1.0));
-        line.width * (measure_text(&self.font, &prefix).0 / full.0)
+        let full = self.measure_text(&line.text).max(px(1.0));
+        line.width * (self.measure_text(&prefix).0 / full.0)
     }
 
     /// The place at `p` (content box): an atom it is on, else the nearest

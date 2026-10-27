@@ -192,6 +192,7 @@ impl Rv {
             tree: Rc::default(),
             geo: Rc::new(RefCell::new(Geometry {
                 font: "16px sans-serif".into(),
+                measure: Some(Rc::new(nsh_core::element::text_measurer())),
                 ..Geometry::default()
             })),
             decorations: Rc::default(),
