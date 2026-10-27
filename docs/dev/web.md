@@ -699,7 +699,7 @@ browsers' touches into what phones report:
   runtime renders in it. `slide` moves the dialog up from below the root's bottom edge (a fade with reduced motion),
   `fade` fades it; `onOpen` follows the transition. A dialog the app removes leaves the same way, then reports
   `onClose`.
-- **Dialogs over the window** (`createPlayer`'s `dialogs: "viewport"`, `viewportDialogs`): dialogs and alerts cover
+- **Dialogs over the window** (`createPlayer`'s `dialogs: "viewport"`, `viewportDialogs`): dialogs, sheets and alerts cover
   the whole window, as iOS and Android present them from an app that embeds NSH in part of its screen. Each stays
   where it is in the root, so its events, focus, `inert` and history are as above, and is a manual popover in the
   browser's top layer (`raise`): above the page whatever the stacking contexts, transforms and clipping around the
@@ -713,8 +713,17 @@ browsers' touches into what phones report:
   The layer has a blocking `wheel` listener of its own for that (`raise`): Chrome waits for the root's only over the
   root's box and scrolls the page under the rest of the layer at once, its `wheel` event no longer cancelable.
   Without popovers (before Chrome 114, Safari 17 and Firefox 125) they stay over the container, with a warning. The
-  page around stays reachable with Tab and to screen readers, and the app's window (`windowSize()`) and
-  `env(keyboard-inset-height)` stay the container's.
+  page around is inert and its scrolling is locked until the last viewport layer closes. The app's window
+  (`windowSize()`) and `env(keyboard-inset-height)` stay the container's.
+  In an iframe the player elevates the iframe itself to a manual popover in its host document, preserving
+  its DOM and running engine. It pins the app at its original size and scaled position while the modal root
+  fills the enlarged iframe. Same-origin ancestor frames are elevated together; a cross-origin immediate
+  host registers `hostPlayerFrame(iframe)` and accepts requests only from that frame's window through a
+  transferred MessagePort. Install this host before loading the player. The last layer's removal, stop,
+  navigation or frame removal releases the host's size, focus, inert state and scroll lock. A host that
+  itself crosses another origin needs that outer embedder's cooperation; it cannot bypass that boundary.
+  `Sheet` uses a web modal root around its existing overlays, with its own animation and close lifecycle.
+  The documentation player enables viewport dialogs, so the website's iframe demos use this path.
 - **History**: when the app is the page (`window.top === window`, or `createPlayer`'s `history` option) every page
   above a stack's first and every dialog is a history entry (`pushState`, state `{ nsh: depth }`), so the browser's
   back button and the mouse's go back in the app; entries the app takes away itself are gone back over with

@@ -248,7 +248,7 @@ const player = await createPlayer(document.querySelector("#phone"), {
   // dark: true,            // force an appearance; otherwise it follows the system
   // idiom: "phone",        // force "phone", "pad" or "desktop"; otherwise the pointer and the size decide
   // history: false,        // pages and dialogs as browser history entries; by default only when the app is the page, not in an iframe
-  // dialogs: "viewport",   // Dialog and AlertDialog over the whole browser window; by default over the container
+  // dialogs: "viewport",   // Dialog, Sheet and AlertDialog over the whole browser window; by default over the container
 });
 player.run(await (await fetch("./bundle.nshc")).arrayBuffer());
 ```
@@ -264,6 +264,26 @@ With `nsh-playground.wasm`, `player.runSource(tsx, name, options)` compiles TSX 
 The container's size is the app's window (`windowSize()`); resizing the container resizes the app. `player.setDark(true)` switches the appearance at run time, which apps observe through `colorScheme()` and `dark:` classes.
 
 Dialogs and alerts cover the container. With `dialogs: "viewport"` they cover the whole browser window, as a page's own modal dialogs do, while the app keeps the container as its window: a `Dialog` lays out at the window's size and safe area and slides in from its bottom edge, its backdrop covers the whole page, and the mouse wheel over it leaves the page in place. The dialog shows in the browser's top layer (Chrome 114, Safari 17, Firefox 125 and later), so it is above the rest of the page wherever the container is; in earlier browsers it covers the container.
+
+
+`Sheet` follows the same presentation setting as `Dialog` and `AlertDialog`. In a same-origin iframe,
+viewport presentation automatically covers the outer page, while the app keeps its original layout size.
+The iframe returns to its original position and size when the last popup closes; its engine and state stay alive.
+The documentation demos enable this presentation.
+
+For a cross-origin or sandboxed iframe, the embedding page registers the host before loading the player:
+
+```js
+import { hostPlayerFrame } from "./nsh.js";
+const frame = document.querySelector("iframe");
+const disconnect = hostPlayerFrame(frame);
+frame.src = "https://apps.example.com/player.html"; // player uses dialogs: "viewport"
+// When removing the embedding: disconnect();
+```
+
+The host accepts requests from this iframe's window, keeps the surrounding page inert and locks its scrolling
+while a popup is visible, and restores both on close. Each cross-origin embedding boundary requires its host's
+cooperation; without it, presentation remains within that document and the player reports a warning.
 
 ## The host's functions
 

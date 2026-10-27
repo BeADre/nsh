@@ -22,8 +22,8 @@
 // (see `run`), `prepareChunk(id)` (a promise for what chunk `id` needs once it
 // runs, such as fonts for `readAsset`; awaited with the chunk's download),
 // `dark`, `idiom` ("phone", "pad" or "desktop" instead of the one the
-// pointer and the viewport suggest), `dialogs` ("viewport": `Dialog` and
-// `AlertDialog` cover the whole window, in the browser's top layer, rather
+// pointer and the viewport suggest), `dialogs` ("viewport": `Dialog`,
+// `Sheet` and `AlertDialog` cover the whole window, in the browser's top layer, rather
 // than the container, which they cover by default and in browsers without
 // popovers), `overlay` (false: no error box), `onError`, `onLog`, `host`
 // (the functions `nsh/host`'s `host.call(name, args)` reaches: an object
@@ -218,7 +218,7 @@ img.nsh-fill { pointer-events: none; }
    the window. The second rule undoes the popover's own box; an alert's
    backdrop below and the views' own classes override it. */
 .nsh-root > .nsh-viewport { position: fixed; inset: 0; width: auto; height: auto; margin: 0; }
-.nsh-viewport { border: 0; padding: 0; overflow: visible; color: inherit; background-color: transparent; }
+.nsh-viewport { touch-action: none; border: 0; padding: 0; overflow: visible; color: inherit; background-color: transparent; }
 .nsh-dialog-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.35); display: flex;
   align-items: center; justify-content: center; z-index: 1000; }
 .nsh-dialog { width: 270px; border-radius: 14px; background: rgba(245,245,245,.97); color: #000; text-align: center;
@@ -592,6 +592,129 @@ function rightToLeft(locale) {
     // Not a valid tag.
   }
   return /^(ar|he|iw|fa|ur|ps|sd|ug|yi|dv|ckb|syr)(-|$)/i.test(locale);
+}
+
+/** Hosts viewport dialogs from a cross-origin player iframe. Call once on
+ * the embedding page; the returned function disconnects the host. Same-origin
+ * players arrange this directly. Only this iframe's window may request it. */
+export function hostPlayerFrame(frame) {
+  const win = frame.ownerDocument.defaultView, leases = new Set();
+  const closeAll = () => { for (const close of [...leases]) close(); };
+  const message = (event) => {
+    if (event.source !== frame.contentWindow || event.data !== "nsh:viewport" || !event.ports[0]) return;
+    const port = event.ports[0];
+    let release;
+    const close = () => { release?.(); release = null; port.close(); leases.delete(close); };
+    try {
+      const lease = frameViewport(frame);
+      release = lease.release;
+      leases.add(close);
+      port.onmessage = (e) => { if (e.data === "release") close(); };
+      port.postMessage(lease.rect);
+    } catch (error) {
+      port.postMessage({ error: String(error) });
+      close();
+    }
+  };
+  win.addEventListener("message", message);
+  frame.addEventListener("load", closeAll);
+  const observer = new win.MutationObserver(() => { if (!frame.isConnected) closeAll(); });
+  observer.observe(frame.ownerDocument, { childList: true, subtree: true });
+  return () => {
+    closeAll(); observer.disconnect();
+    win.removeEventListener("message", message);
+    frame.removeEventListener("load", closeAll);
+  };
+}
+
+/** A modal owns the page around its branch until the last lease ends. */
+function lockViewportPage(branch) {
+  const doc = branch.ownerDocument, html = doc.documentElement;
+  const state = doc._nshViewportPage ??= {
+    leases: [], inert: new Map(), overflow: html.style.getPropertyValue("overflow"),
+    priority: html.style.getPropertyPriority("overflow"),
+  };
+  const lease = { branch };
+  const sync = () => {
+    for (const [node, inert] of state.inert) node.inert = inert;
+    state.inert.clear();
+    const top = state.leases.at(-1)?.branch;
+    if (!top) {
+      html.style.setProperty("overflow", state.overflow, state.priority);
+      delete doc._nshViewportPage;
+      return;
+    }
+    html.style.setProperty("overflow", "hidden", "important");
+    for (let node = top; node?.parentElement; node = node.parentElement) {
+      for (const sibling of node.parentElement.children) {
+        if (sibling === node || ["HEAD", "SCRIPT", "STYLE"].includes(sibling.tagName)) continue;
+        state.inert.set(sibling, sibling.inert); sibling.inert = true;
+      }
+    }
+  };
+  state.leases.push(lease); sync();
+  return () => { state.leases = state.leases.filter(l => l !== lease); sync(); };
+}
+
+/** Elevate the iframe itself without moving/reloading its document. Its
+ * popovers can then cover the host viewport while the app keeps its size. */
+function frameViewport(frame) {
+  if (frame._nshViewport) {
+    const state = frame._nshViewport;
+    state.users++;
+    return { rect: state.rect, release: () => state.release() };
+  }
+  const doc = frame.ownerDocument, win = doc.defaultView;
+  const bounds = frame.getBoundingClientRect();
+  const sx = bounds.width / (frame.offsetWidth || bounds.width);
+  const sy = bounds.height / (frame.offsetHeight || bounds.height);
+  let rect = { left: bounds.left + frame.clientLeft * sx, top: bounds.top + frame.clientTop * sy, sx, sy };
+  let outer;
+  if (win.parent !== win) {
+    // A same-origin ancestor chain is lifted all the way to its outer page.
+    const parentFrame = win.frameElement;
+    if (!parentFrame) throw new Error("install hostPlayerFrame in the outer embedding page");
+    outer = frameViewport(parentFrame);
+    rect = { left: outer.rect.left + rect.left * outer.rect.sx, top: outer.rect.top + rect.top * outer.rect.sy,
+      sx: sx * outer.rect.sx, sy: sy * outer.rect.sy };
+  }
+  const saved = frame.getAttribute("style"), popover = frame.getAttribute("popover");
+  const focused = doc.activeElement;
+  const css = win.getComputedStyle(frame);
+  let placeholder;
+  if (css.position !== "absolute" && css.position !== "fixed") {
+    placeholder = doc.createElement("span");
+    placeholder.style.cssText = `display:inline-block;width:${frame.offsetWidth}px;height:${frame.offsetHeight}px;vertical-align:${css.verticalAlign};margin:${css.margin}`;
+    frame.before(placeholder);
+  }
+  frame.setAttribute("popover", "manual");
+  for (const [name, value] of Object.entries({ position: "fixed", inset: "0", width: "100%", height: "100%",
+    "min-width": "0", "min-height": "0", "max-width": "none", "max-height": "none",
+    "border-radius": "0", "clip-path": "none", margin: "0", border: "0", padding: "0", transform: "none", "box-sizing": "border-box" })) {
+    frame.style.setProperty(name, value, "important");
+  }
+  try { frame.showPopover(); } catch (error) {
+    if (saved === null) frame.removeAttribute("style"); else frame.setAttribute("style", saved);
+    if (popover === null) frame.removeAttribute("popover"); else frame.setAttribute("popover", popover);
+    placeholder?.remove(); outer?.release(); throw error;
+  }
+  const unlock = lockViewportPage(frame);
+  frame.focus({ preventScroll: true });
+  const state = frame._nshViewport = { users: 1, rect, release() {
+    if (frame._nshViewport !== state || --state.users) return;
+    observer.disconnect();
+    frame.hidePopover();
+    if (saved === null) frame.removeAttribute("style"); else frame.setAttribute("style", saved);
+    if (popover === null) frame.removeAttribute("popover"); else frame.setAttribute("popover", popover);
+    unlock();
+    placeholder?.remove(); outer?.release(); delete frame._nshViewport;
+    if (focused?.isConnected) focused.focus({ preventScroll: true });
+  } };
+  const observer = new win.MutationObserver(() => {
+    if (!frame.isConnected) { state.users = 1; state.release(); }
+  });
+  observer.observe(doc, { childList: true, subtree: true });
+  return { rect, release: () => state.release() };
 }
 
 /** Loads the runtime and makes a player in `container`. */
@@ -1304,6 +1427,12 @@ class Player {
     // Host events wait for the next app (`begin`).
     this.started = false;
     this.hostEvents ??= [];
+    this.frameSession?.close();
+    this.viewportPageRelease?.(); this.viewportPageRelease = null;
+    for (const layer of this.frameLayers ?? []) layer.remove();
+    this.frameLayers?.clear();
+    if (this.viewportDialogs) this.dialogs = [];
+    this.viewportObserver?.disconnect();
     this.fileOperations.clear();
     for (const id of [...this.requests.keys()]) this.fetchCancel(id);
     for (const id of [...this.websockets.keys()]) this.websocketCancel(id);
@@ -1730,6 +1859,7 @@ class Player {
   }
 
   placeFrame(el) {
+    if (el === this.root && this.frameSession) return;
     const f = el._frame;
     if (!f) return;
     if (el._track) {
@@ -3865,6 +3995,7 @@ class Player {
       if (el._leaving) {
         el.remove();
         this.viewportObserver?.unobserve(el);
+        this.releaseFrame(el);
         this.dropLeftWith(el);
       }
       if (!reported) this.event(el._id, "onDismiss");
@@ -3875,7 +4006,85 @@ class Player {
    * already (`viewportDialogs`): above the page around the container,
    * whatever its stacking, transforms and clipping. Moving it in the DOM,
    * as appending does, takes it out of the top layer. */
+  /** Keep the app's layout fixed while its iframe covers the host page. */
+  holdFrame(el) {
+    if (typeof window === "undefined") return;
+    const layers = this.frameLayers ??= new Set();
+    if (layers.has(el)) return;
+    layers.add(el);
+    if (layers.size > 1) return;
+    this.viewportPageRelease = lockViewportPage(this.root);
+    if (window.parent === window) return;
+    const root = this.root, box = root.getBoundingClientRect();
+    const properties = ["position", "left", "top", "width", "height", "transform", "transform-origin"];
+    const saved = properties.map((p) => [p, root.style.getPropertyValue(p), root.style.getPropertyPriority(p)]);
+    const backgrounds = [document.documentElement, document.body].map((node) =>
+      [node, node.style.getPropertyValue("background"), node.style.getPropertyPriority("background")]);
+    for (const [node] of backgrounds) node.style.setProperty("background", "transparent", "important");
+    const pin = (rect) => {
+      const values = ["fixed", `${rect.left + box.left * rect.sx}px`, `${rect.top + box.top * rect.sy}px`,
+        `${root.clientWidth}px`, `${root.clientHeight}px`, `scale(${rect.sx},${rect.sy})`, "0 0"];
+      properties.forEach((p, i) => root.style.setProperty(p, values[i], "important"));
+    };
+    pin({ left: 0, top: 0, sx: 1, sy: 1 });
+    const session = this.frameSession = { close: null };
+    let cancelled = false, release, timer;
+    const close = session.close = () => {
+      if (cancelled) return;
+      cancelled = true; clearTimeout(timer);
+      window.removeEventListener("pagehide", close);
+      for (const [p, value, priority] of saved) root.style.setProperty(p, value, priority);
+      for (const [node, value, priority] of backgrounds) node.style.setProperty("background", value, priority);
+      release?.();
+      if (this.frameSession === session) this.frameSession = null;
+    };
+    window.addEventListener("pagehide", close, { once: true });
+    const ready = (lease) => {
+      if (cancelled) { lease.release(); return; }
+      release = lease.release; pin(lease.rect);
+      for (const layer of layers) if (layer._kind === "modal") this.placeModal(layer);
+    };
+    try {
+      if (window.frameElement) {
+        ready(frameViewport(window.frameElement));
+        return;
+      }
+    } catch (error) {
+      console.warn("[nsh] iframe viewport host:", error);
+    }
+    const channel = new MessageChannel();
+    release = () => { channel.port1.postMessage("release"); channel.port1.close(); };
+    channel.port1.onmessage = ({ data }) => {
+      clearTimeout(timer);
+      if (data.error) { console.warn("[nsh] iframe viewport host:", data.error); close(); return; }
+      ready({ rect: data, release });
+    };
+    // The parent opted in with hostPlayerFrame(frame); the transferred port
+    // is private to this request, and its host checks the source window.
+    const request = () => {
+      if (cancelled) return;
+      window.parent.postMessage("nsh:viewport", "*", [channel.port2]);
+      timer = setTimeout(() => {
+        console.warn("[nsh] install hostPlayerFrame(iframe) on the embedding page for viewport dialogs");
+        close();
+      }, 1500);
+    };
+    // The host releases the previous document's leases on iframe load.
+    // Send after this document's load, including for initially open dialogs.
+    if (document.readyState === "complete") request();
+    else window.addEventListener("load", request, { once: true });
+  }
+
+  releaseFrame(el) {
+    this.frameLayers?.delete(el);
+    if (!this.frameLayers?.size) {
+      this.frameSession?.close();
+      this.viewportPageRelease?.(); this.viewportPageRelease = null;
+    }
+  }
+
   raise(el) {
+    this.holdFrame(el);
     if (!el.popover) {
       el.classList.add("nsh-viewport");
       el.popover = "manual";
@@ -4689,6 +4898,7 @@ class Player {
       if (answered) return;
       answered = true;
       backdrop.remove();
+      this.releaseFrame(backdrop);
       this.dialogs = this.dialogs.filter((d) => d !== backdrop);
       this.scopeFocus();
       if (restore?.isConnected) restore.focus({ preventScroll: true });
@@ -4821,10 +5031,14 @@ class Player {
     let a = 1, b = 0, c = 0, d = 1;
     for (let node = el; node; node = node.parentElement) {
       const transform = getComputedStyle(node).transform;
-      if (transform === "none") continue;
-      const m = new DOMMatrix(transform);
-      [a, b, c, d] = [m.a * a + m.c * b, m.b * a + m.d * b,
-        m.a * c + m.c * d, m.b * c + m.d * d];
+      if (transform !== "none") {
+        const m = new DOMMatrix(transform);
+        [a, b, c, d] = [m.a * a + m.c * b, m.b * a + m.d * b,
+          m.a * c + m.c * d, m.b * c + m.d * d];
+      }
+      // Top-layer views ignore their DOM ancestors' transforms (including
+      // the preserved app scale inside an elevated iframe).
+      if (node.classList?.contains("nsh-viewport")) break;
     }
     const r = el.getBoundingClientRect();
     const det = a * d - b * c;
