@@ -481,7 +481,6 @@ function Drawdown() {
             hoverDotClass="hidden"
           />
           <Line style={{ stroke: toneColor("danger"), strokeWidth: 1.25 }} hoverDotStyle={{ backgroundColor: toneColor("danger"), borderColor: colors.inset }} />
-          <Grid y={[0]} style={{ stroke: colors.border }} />
           {/* The floor's value, and the low marked where it is. */}
           <Text style={{ ...axis, position: "absolute", left: 0, bottom: 2, pointerEvents: "none" }}>{`${DD_FLOOR}%`}</Text>
           <View style={{ position: "absolute", left: across(TROUGH.day), top: (TROUGH.drawdown / DD_FLOOR) * WATER_HEIGHT, width: 0, height: 0, pointerEvents: "none" }}>
