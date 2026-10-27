@@ -1087,8 +1087,11 @@ fn drop_cursor(rv: Rv) -> impl IntoElement {
                 Size::new(line.size.width, px(CARET_WIDTH)),
             )
         };
+        // Tests find the line mid-drag by its id (`nsh/test`'s `dragAndHold`).
         Some(part(
-            rect(b).bg(move || theme().foreground),
+            rect(b)
+                .test_id("rich-editor-drop-cursor")
+                .bg(move || theme().foreground),
             &rv,
             Part::DropCursor,
         ))
