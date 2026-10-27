@@ -293,7 +293,8 @@ report it:
   `Menu { closed }`) or closed;
 - `drag_and_hold` / `drop_held` (`headless/pointer.rs`, `app.dragAndHold` / `app.drop`): a drag whose `Finger` stays
   in `Headless.finger` until `drop()` lifts it (a new drag lifts it first), so a test reads the screen mid-drag.
-  The real targets refuse it for now (`Driver`'s default).
+  On a real target `TestStep::DragAndHold` / `Drop` reach `Native::drag_and_hold` / `drop_at` (Linux; the others
+  refuse them for now).
 - `hold_keys` (`headless/keyboard.rs`, `app.keyboard.down` / `up`): the modifiers held, which `press_payload` and
   hover events carry; a drag's press is a full press payload (its start in the pressed view), and on a desktop a
   drag presses at once even in a scroll view, as a mouse does. On Linux the agent holds them for its simulated
