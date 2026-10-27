@@ -576,16 +576,55 @@ impl RichEditorSession {
     /// The document position at `{ x, y }` (points of the content box of
     /// the view showing the editor), or `null`.
     pub(crate) fn pos_at_coords(&self, coords: JsonValue) -> Option<usize> {
-        let x = coords.get("x")?.as_f64()? as f32;
-        let y = coords.get("y")?.as_f64()? as f32;
+        let (x, y) = point_of(&coords)?;
         self.session
             .pos_at_coords(nsh_core::prelude::point(px(x), px(y)))
+    }
+
+    /// The caret's box `{ x, y, width, height }` at `pos` in page
+    /// coordinates (the root view's, as `onHoverMove`'s `pagePosition` and
+    /// a responder's `pageX` / `pageY`; ProseMirror's `coordsAtPos` in the
+    /// window's), or `null` before the pointer has been over the editor.
+    pub(crate) fn page_coords_at_pos(&self, pos: usize) -> Option<JsonValue> {
+        self.session.page_coords_at_pos(pos).map(|b| rect_json(&b))
+    }
+
+    /// The document position at the page point `{ x, y }` (ProseMirror's
+    /// `posAtCoords` in the window's coordinates), or `null`.
+    pub(crate) fn pos_at_page_coords(&self, page: JsonValue) -> Option<usize> {
+        let (x, y) = point_of(&page)?;
+        self.session
+            .pos_at_page_coords(nsh_core::prelude::point(px(x), px(y)))
     }
 
     /// The box around the selection, in points of the content box of the
     /// view showing the editor, or `null`.
     pub(crate) fn selection_rect(&self) -> Option<JsonValue> {
         self.session.selection_rect().map(|b| rect_json(&b))
+    }
+
+    /// Starts moving the block at `pos` from the page point `{ x, y }` (a
+    /// drag handle's press, as Tiptap's `DragHandle` starts
+    /// ProseMirror's drag): the block is selected, `dragTo` moves the drop
+    /// cursor (scrolling at the view's edges) and `endDrag` drops it.
+    pub(crate) fn drag_block(&self, pos: usize, page: JsonValue) {
+        if let Some((x, y)) = point_of(&page) {
+            self.session
+                .drag_block(pos, nsh_core::prelude::point(px(x), px(y)));
+        }
+    }
+
+    /// A block drag (`dragBlock`) moved to the page point `{ x, y }`.
+    pub(crate) fn drag_to(&self, page: JsonValue) {
+        if let Some((x, y)) = point_of(&page) {
+            self.session.drag_to(nsh_core::prelude::point(px(x), px(y)));
+        }
+    }
+
+    /// A block drag (`dragBlock`) ended: the block drops at the drop
+    /// cursor, or stays selected when it never moved.
+    pub(crate) fn end_drag(&self) {
+        self.session.end_drag();
     }
 
     /// Whether a view of the editor has the keyboard focus.
@@ -1550,6 +1589,14 @@ impl RichEditorApi {
             }),
         )
     }
+}
+
+/// `{ x, y }` as two floats.
+fn point_of(value: &JsonValue) -> Option<(f32, f32)> {
+    Some((
+        value.get("x")?.as_f64()? as f32,
+        value.get("y")?.as_f64()? as f32,
+    ))
 }
 
 #[cfg(test)]

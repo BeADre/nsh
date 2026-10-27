@@ -85,6 +85,10 @@ pub(crate) fn slot_id(id: u64) -> u64 {
     id | (1 << 62)
 }
 
+/// The content's offset from the page (content less page) and the scroll
+/// offset it was noted at.
+type PageOffset = (Point<Points>, Points);
+
 /// A press being dragged.
 #[derive(Debug, Clone)]
 struct Drag {
@@ -109,6 +113,10 @@ struct Moving {
     moved: bool,
     /// What a release without a drag selects: a caret at the press.
     click: Option<Selection>,
+    /// The dragged range, deleted on a move rather than the selection
+    /// (prosemirror-view's `dragging.node`: a plugin may turn a selected
+    /// table into its cells while it is dragged).
+    source: Option<(usize, usize)>,
 }
 
 /// What the native input that takes typed text holds.
@@ -150,6 +158,10 @@ pub(crate) struct Rv {
     sink: Rc<RefCell<Sink>>,
     next_composition: Rc<Cell<i64>>,
     drag: Rc<RefCell<Option<Drag>>>,
+    /// The content point less the page point of the last pointer over the
+    /// content, and the scroll offset then: how a drag the app starts
+    /// from a page point (a drag handle's) maps into the content.
+    pointer: Rc<Cell<Option<PageOffset>>>,
     /// Where a drag that moves the selection would drop it (the drop
     /// cursor).
     pub(crate) drop_at: Signal<Option<usize>>,
@@ -161,6 +173,9 @@ pub(crate) struct Rv {
     pub(crate) scroll: ElementRef,
     pub(crate) content: ElementRef,
     pub(crate) scroll_y: Signal<Points>,
+    /// `scroll_y` outside the reactive graph, for the page queries JS
+    /// asks (`pageCoordsAtPos`, `posAtPageCoords`).
+    pub(crate) scrolled: Rc<Cell<Points>>,
     pub(crate) viewport: Signal<Size<Points>>,
     /// The content box's height, how far the scroll view scrolls.
     pub(crate) content_height: Signal<Points>,
@@ -211,6 +226,7 @@ impl Rv {
             sink: Rc::default(),
             next_composition: Rc::new(Cell::new(1)),
             drag: Rc::default(),
+            pointer: Rc::default(),
             drop_at: signal(None),
             goal_x: Rc::default(),
             selected: Rc::default(),
@@ -218,6 +234,7 @@ impl Rv {
             scroll: element_ref(),
             content: element_ref(),
             scroll_y: signal(px(0.0)),
+            scrolled: Rc::default(),
             viewport: signal(Size::default()),
             content_height: signal(px(0.0)),
             autoscroll: Rc::default(),
@@ -263,6 +280,8 @@ impl Rv {
             thread: std::thread::current().id(),
             geo: self.geo.clone(),
             state: self.st.clone(),
+            pointer: self.pointer.clone(),
+            scrolled: self.scrolled.clone(),
         }));
         let session = self.session.clone();
         cleanup(move || {
@@ -283,6 +302,12 @@ impl Rv {
                     match request {
                         ViewRequest::Focus => rv.focus(),
                         ViewRequest::Blur => rv.blur(),
+                        ViewRequest::DragBlock { pos, page } => {
+                            rv.drag_block(pos, page);
+                        }
+                        ViewRequest::DragTo(page) => rv.drag_to(page),
+                        ViewRequest::EndDrag => rv.release(),
+                        ViewRequest::Place => rv.place(),
                     }
                 }
             });
@@ -1284,6 +1309,7 @@ impl Rv {
         if self.click_hooks(&state, pos, &click, clicks) {
             return;
         }
+        self.note_pointer(at, page);
         let shift = Point::new(at.x - page.x, at.y - page.y);
         let scroll = self.scroll_y.get_untracked();
         // A press inside the selection (or on a draggable node) may drag
@@ -1310,6 +1336,7 @@ impl Rv {
                     slice: selection.content(),
                     moved: !copy,
                     click: click_sel,
+                    source: None,
                 }),
             });
             return;
@@ -1509,6 +1536,87 @@ impl Rv {
             .unwrap_or_else(|| TextSelection::between(anchor, head, None))
     }
 
+    /// The pointer is over the content at `at` and the page at `page`: the
+    /// offset a drag the app starts from the page (a handle's) maps by.
+    pub(crate) fn note_pointer(&self, at: Point<Points>, page: Point<Points>) {
+        self.pointer.set(Some((
+            Point::new(at.x - page.x, at.y - page.y),
+            self.scroll_y.get_untracked(),
+        )));
+    }
+
+    /// Measures where the content is on the page (after a layout, and as a
+    /// handle drag starts): the offset page queries and handle drags map
+    /// by, before any pointer has been over the content.
+    pub(crate) fn place(&self) {
+        let content = self.content;
+        let pointer = self.pointer.clone();
+        let scroll = self.scroll_y;
+        let drag = self.drag.clone();
+        spawn(async move {
+            if let Some(m) = content.measure().await {
+                let at = scroll.get_untracked();
+                let shift = Point::new(-m.page.x, -m.page.y);
+                pointer.set(Some((shift, at)));
+                // A drag begun on an older offset (the content moved on the
+                // page without a layout of its own) maps by the new one.
+                if let Some(drag) = drag.borrow_mut().as_mut() {
+                    drag.shift = Point::new(shift.x, shift.y - (at - drag.scroll));
+                }
+            }
+        });
+    }
+
+    /// Starts moving the block at `pos` from the page point `page`
+    /// (prosemirror-view's `dragging` as Tiptap's drag handle sets it): the
+    /// block is selected and carried; a release that never moves it keeps
+    /// it selected.
+    pub(crate) fn drag_block(&self, pos: usize, page: Point<Points>) -> bool {
+        if !self.editable() {
+            return false;
+        }
+        let Some((shift, scroll)) = self.pointer.get() else {
+            return false;
+        };
+        let state = self.session.state();
+        let doc = state.doc().clone();
+        let Some(node) = doc.node_at(pos) else {
+            return false;
+        };
+        // A handle carries any block, a table too: what a press may
+        // select (`selectable`) does not limit what the handle moves.
+        if node.is_inline() {
+            return false;
+        }
+        let selection: Selection = NodeSelection::create(&doc, pos);
+        // The handle owns the pointer: a table's grip under it (a row's,
+        // on the table's left border) does not drag along.
+        self.table_gesture.borrow_mut().take();
+        self.set_selection(selection.clone(), false);
+        // The press is where the pointer is now; the scroll since the
+        // offset was noted moves the content under it.
+        let scrolled = self.scroll_y.get_untracked() - scroll;
+        *self.drag.borrow_mut() = Some(Drag {
+            anchor: pos,
+            shift: Point::new(shift.x, shift.y - scrolled),
+            scroll: self.scroll_y.get_untracked(),
+            moving: Some(Moving {
+                // The block alone, closed (a selection's content would
+                // carry a list item inside its open list).
+                slice: Slice::new(Fragment::from(node.clone()), 0, 0),
+                moved: true,
+                click: None,
+                source: Some((pos, pos + node.node_size())),
+            }),
+        });
+        // The content may have moved on the page since its last layout.
+        self.place();
+        // The press is the handle's, off the content; it starts no
+        // move of its own, so the drop cursor waits for the first `page`.
+        self.drag_at(page);
+        true
+    }
+
     /// The pointer dragged to `page` (root): the selection extends there.
     pub(crate) fn drag_to(&self, page: Point<Points>) {
         if self.table_dragging() {
@@ -1525,19 +1633,34 @@ impl Rv {
         };
         let scrolled = self.scroll_y.get_untracked() - drag.scroll;
         let at = Point::new(page.x + drag.shift.x, page.y + drag.shift.y + scrolled);
-        let hit = self.hit(at);
-        let pos = match hit {
-            Some(Hit::Text(p, _) | Hit::Node(p)) => p,
-            None => return,
-        };
         if let Some(moving) = &drag.moving {
             let state = self.session.state();
-            let target = drop_point(state.doc(), pos, &moving.slice).unwrap_or(pos);
-            if self.drop_at.get_untracked() != Some(target) {
+            // A whole block goes between blocks, by the half of the block
+            // the pointer is over (ProseMirror's drop point, as Tiptap's
+            // drag handle sees it), wherever the pointer is across: a
+            // handle sits in the gutter, off the text; other content
+            // where it is dropped.
+            let slice = &moving.slice;
+            let block = (slice.open_start == 0 && slice.content.child_count() == 1)
+                .then(|| slice.content.child(0))
+                .filter(|n| n.is_block());
+            let target = block
+                .and_then(|node| self.block_drop(at, node))
+                .and_then(|p| drop_point(state.doc(), p, slice))
+                .or_else(|| {
+                    self.hit_clamped(at)
+                        .and_then(|p| drop_point(state.doc(), p, slice))
+                });
+            if let Some(target) = target
+                && self.drop_at.get_untracked() != Some(target)
+            {
                 self.drop_at.set(Some(target));
             }
             return;
         }
+        let Some(pos) = self.hit_clamped(at) else {
+            return;
+        };
         let state = self.session.state();
         let doc = state.doc();
         let (Ok(a), Ok(h)) = (doc.resolve(drag.anchor), doc.resolve(pos)) else {
@@ -1551,6 +1674,65 @@ impl Rv {
         let mut tr = state.tr();
         tr.set_selection(selection);
         self.dispatch(tr);
+    }
+
+    /// The position at content point `at`; above or below the content, on
+    /// the first or last line (a block dropped past the end goes last).
+    fn hit_clamped(&self, at: Point<Points>) -> Option<usize> {
+        let bottom = (self.content_height.get_untracked() - px(1.0)).max(px(0.0));
+        match self
+            .hit(at)
+            .or_else(|| self.hit(Point::new(at.x, at.y.min(bottom).max(px(0.0)))))?
+        {
+            Hit::Text(p, _) | Hit::Node(p) => Some(p),
+        }
+    }
+
+    /// Where block `node` dropped at content point `at` goes: before or
+    /// after the innermost block at that height whose parent takes the
+    /// node, by the half the pointer is over; else beside the nearest
+    /// block whose parent takes it.
+    fn block_drop(&self, at: Point<Points>, node: &Node) -> Option<usize> {
+        let state = self.session.state();
+        let doc = state.doc();
+        let tree = self.tree.borrow();
+        let geo = self.geo.borrow();
+        let mut inside: Option<(usize, usize)> = None;
+        let mut nearest: Option<(Points, usize)> = None;
+        for b in tree.children.values().flatten() {
+            let (Some(origin), Some((_, frame))) = (geo.origin(b.id), geo.frames.get(&b.id)) else {
+                continue;
+            };
+            let Ok(rp) = doc.resolve(b.pos) else {
+                continue;
+            };
+            let index = rp.index(rp.depth);
+            if !rp.parent().can_replace_with(index, index, node.ty(), None) {
+                continue;
+            }
+            let (top, bottom) = (origin.y, origin.y + frame.size.height);
+            let boundary = if at.y < top + frame.size.height * 0.5 {
+                b.pos
+            } else {
+                b.pos + b.node.node_size()
+            };
+            if at.y >= top && at.y < bottom {
+                if inside.is_none_or(|(depth, _)| rp.depth > depth) {
+                    inside = Some((rp.depth, boundary));
+                }
+            } else {
+                // Past a list's last item, the item still goes in the list.
+                let distance = if at.y < top {
+                    top - at.y
+                } else {
+                    at.y - bottom
+                };
+                if nearest.is_none_or(|(d, _)| distance < d) {
+                    nearest = Some((distance, boundary));
+                }
+            }
+        }
+        inside.map(|(_, pos)| pos).or(nearest.map(|(_, pos)| pos))
     }
 
     /// The press ended: a drag that moves the selection drops it where
@@ -1573,7 +1755,7 @@ impl Rv {
             return;
         };
         match target {
-            Some(target) => self.drop(&moving.slice, target, moving.moved),
+            Some(target) => self.drop(&moving.slice, target, moving.moved, moving.source),
             None => {
                 if let Some(click) = moving.click {
                     self.set_selection(click, false);
@@ -1625,6 +1807,7 @@ impl Rv {
         let to = (from + speed.y).min(max).max(px(0.0));
         if to != from {
             self.scroll_y.set(to);
+            self.scrolled.set(to);
             self.scroll.scroll_to(Point::new(px(0.0), to), false);
             self.drag_at(page);
         }
@@ -1633,7 +1816,13 @@ impl Rv {
     /// Drops `slice` at `pos` (prosemirror-view's drop): the plugins'
     /// `handle_drop` first, else the source deleted when `moved` and the
     /// slice inserted, selected (origin `Drop`, meta `uiEvent: "drop"`).
-    pub(crate) fn drop(&self, slice: &Slice, pos: usize, moved: bool) {
+    pub(crate) fn drop(
+        &self,
+        slice: &Slice,
+        pos: usize,
+        moved: bool,
+        source: Option<(usize, usize)>,
+    ) {
         if !self.editable() {
             return;
         }
@@ -1641,7 +1830,7 @@ impl Rv {
         if self.some_hook(&state, |p, d| p.handle_drop(&state, slice, pos, moved, d)) {
             return;
         }
-        if let Some(tr) = drop_transaction(&state, slice, pos, moved) {
+        if let Some(tr) = drop_transaction(&state, slice, pos, moved, source) {
             self.dispatch(tr);
         }
         self.focus();
@@ -1978,10 +2167,17 @@ pub(crate) fn drop_transaction(
     slice: &Slice,
     insert: usize,
     moved: bool,
+    source: Option<(usize, usize)>,
 ) -> Option<Transaction> {
     let mut tr = state.tr();
-    if moved {
-        tr.delete_selection();
+    match (moved, source) {
+        (true, Some((from, to))) => {
+            tr.delete(from, to).ok()?;
+        }
+        (true, None) => {
+            tr.delete_selection();
+        }
+        (false, _) => {}
     }
     let pos = tr.mapping.map(insert, 1);
     let single = (slice.open_start == 0 && slice.open_end == 0 && slice.content.child_count() == 1)
@@ -2157,7 +2353,7 @@ mod tests {
         tr.set_selection(TextSelection::create(state.doc(), 2, Some(4)));
         let state = state.apply(tr).unwrap();
         let slice = state.selection().content();
-        let tr = drop_transaction(&state, &slice, 8, true).unwrap();
+        let tr = drop_transaction(&state, &slice, 8, true, None).unwrap();
         assert_eq!(
             tr.doc()
                 .text_between(0, tr.doc().content().size(), Some("|"), None),
@@ -2166,7 +2362,7 @@ mod tests {
         assert_eq!((tr.selection().from(), tr.selection().to()), (6, 8));
         assert_eq!(tr.get_meta("uiEvent"), Some(&Value::from("drop")));
         // A copy keeps the source.
-        let tr = drop_transaction(&state, &slice, 8, false).unwrap();
+        let tr = drop_transaction(&state, &slice, 8, false, None).unwrap();
         assert_eq!(
             tr.doc()
                 .text_between(0, tr.doc().content().size(), Some("|"), None),
@@ -2255,6 +2451,8 @@ struct GeometryHandle {
     thread: std::thread::ThreadId,
     geo: Rc<RefCell<Geometry>>,
     state: Rc<RefCell<EditorState>>,
+    pointer: Rc<Cell<Option<PageOffset>>>,
+    scrolled: Rc<Cell<Points>>,
 }
 
 // SAFETY: the `Rc`s are only touched on `thread`, the engine thread that
@@ -2268,6 +2466,16 @@ unsafe impl Sync for GeometryHandle {}
 impl GeometryHandle {
     fn here(&self) -> bool {
         std::thread::current().id() == self.thread
+    }
+
+    /// The content point less the page point now: the offset the pointer
+    /// last showed, moved by the scroll since.
+    fn page_shift(&self) -> Option<Point<Points>> {
+        let (shift, scroll) = self.pointer.get()?;
+        Some(Point::new(
+            shift.x,
+            shift.y + (self.scrolled.get() - scroll),
+        ))
     }
 }
 
@@ -2303,5 +2511,12 @@ impl ViewGeometry for GeometryHandle {
         geo.range_rects(from, to)
             .into_iter()
             .reduce(|a, b| a.union(&b))
+    }
+
+    fn page_shift(&self) -> Option<Point<Points>> {
+        if !self.here() {
+            return None;
+        }
+        GeometryHandle::page_shift(self)
     }
 }

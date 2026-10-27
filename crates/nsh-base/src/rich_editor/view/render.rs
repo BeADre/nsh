@@ -81,6 +81,7 @@ pub(crate) fn render(rv: Rv) -> impl IntoElement {
             .flex_1()
             .on_scroll(move |e: &ScrollEvent| {
                 scroll_rv.scroll_y.set(e.offset.y);
+                scroll_rv.scrolled.set(e.offset.y);
                 scroll_rv.viewport.set(e.size);
             })
             .on_layout(move |b: &Bounds<Points>| layout_rv.viewport.set(b.size))
@@ -93,11 +94,16 @@ pub(crate) fn render(rv: Rv) -> impl IntoElement {
 fn content(rv: Rv) -> impl IntoElement {
     let desktop = is_desktop();
     let (down, tap, mov, up, end) = (rv.clone(), rv.clone(), rv.clone(), rv.clone(), rv.clone());
+    let over = rv.clone();
+    let placed = rv.clone();
     let height = rv.content_height;
     part(
         view()
             .element_ref(&rv.content)
-            .on_layout(move |b: &Bounds<Points>| height.set(b.size.height))
+            .on_layout(move |b: &Bounds<Points>| {
+                height.set(b.size.height);
+                placed.place();
+            })
             .relative()
             .cursor(Cursor::Text),
         &rv,
@@ -106,6 +112,12 @@ fn content(rv: Rv) -> impl IntoElement {
     .on(EventKind::PressDown, move |p: &EventPayload| {
         if let (true, EventPayload::Press(e)) = (desktop, p) {
             down.press(e.position, e.page_position, e.modifiers, e.clicks.max(1));
+        }
+    })
+    // Where the pointer is, for drags the app starts from a page point.
+    .on(EventKind::HoverMove, move |p: &EventPayload| {
+        if let EventPayload::Hover(e) = p {
+            over.note_pointer(e.position, e.page_position);
         }
     })
     .on(EventKind::Press, move |p: &EventPayload| {

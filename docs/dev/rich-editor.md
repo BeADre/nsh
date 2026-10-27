@@ -275,7 +275,16 @@ JS describes.
   `posAtCoords`, `selectionRect`; JS reads them on the revision it subscribes to. The three geometry queries answer
   in points of the editor's content box (the box that scrolls, so its scroll offset is already in them) from the
   last view that mounted the session (`ViewGeometry`, registered by the controller); with no view they answer
-  nothing. The view tells the session its focus (`isFocused`, `focus` / `blur` events) and honors `setEditable`.
+  nothing. `pageCoordsAtPos` / `posAtPageCoords` answer the same in page (root) points, for UI an app places
+  outside the editor (a block handle): the view keeps the content's page offset, measured after each layout of the
+  content and as a handle drag starts, and moved by the scroll since.
+- **Handle drags** (Tiptap's drag handle, ProseMirror's `view.dragging`): `dragBlock(pos, page)` selects the block
+  at `pos` (a table too, though a press does not select one) and carries it closed, `dragTo(page)` moves the drop
+  cursor and `endDrag()` drops it, removing the source, as one undo step; the app's handle sends its pointer's
+  page points (`ViewRequest::DragBlock` / `DragTo` / `EndDrag`). The drop goes before or after the innermost block
+  at the pointer's height whose parent takes the block, by the half the pointer is over, wherever the pointer is
+  across (the handle sits in the gutter); off every block, beside the nearest block that takes it, so a list item
+  dropped below its list stays in it. The view tells the session its focus (`isFocused`, `focus` / `blur` events) and honors `setEditable`.
 - **Events**: `create`, `update`, `selectionUpdate`, `transaction` (a summary), `focus`, `blur`, `paste`, `drop`,
   `delete`, `destroy`, posted to JS after the fact.
 - **Formats**: JSON (Tiptap's document JSON loads as is), Markdown (each type's form declared by its extension), HTML

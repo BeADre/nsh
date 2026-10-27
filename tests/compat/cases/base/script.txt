@@ -1692,6 +1692,7 @@ expect Node: true node
 expect Items: true true
 expect Takeover: true 1 ba
 expect Empty: true
+expect Page: null null ab
 expect Error: thrown
 expect Keys: none
 # The subscriber hears the changes in JS's next turn.
