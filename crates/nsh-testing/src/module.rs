@@ -1442,7 +1442,7 @@ impl Keyboard {
 
     /// Holds modifier keys down (`"mod"`, `"shift"`, `"alt"`, `"ctrl"`,
     /// `"meta"`, joined by `+`) until `up`: the presses, drags and hovers
-    /// meanwhile carry them (a Mod-click, a Shift-drag). Headless only.
+    /// meanwhile carry them (a Mod-click, a Shift-drag). Headless and on Linux.
     pub async fn down(this: Instance<Self>, keys: String) -> Result<(), String> {
         let steps = this.with(|k| k.steps.clone());
         steps.run(move |app| app.hold_keys(&keys, true)).await

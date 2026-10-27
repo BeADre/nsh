@@ -420,6 +420,12 @@ impl Driver for Remote {
     fn press_key(&mut self, keys: &str) -> Result<(), String> {
         self.action(TestStep::PressKey { keys: keys.into() })
     }
+    fn hold_keys(&mut self, keys: &str, down: bool) -> Result<(), String> {
+        self.action(TestStep::HoldKeys {
+            keys: keys.into(),
+            down,
+        })
+    }
     fn hover(&mut self, selector: &str) -> Result<(), String> {
         self.action(TestStep::Hover {
             selector: selector.into(),

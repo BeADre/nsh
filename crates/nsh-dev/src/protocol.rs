@@ -433,6 +433,15 @@ pub enum TestStep {
         /// The keystroke: `"mod+k"`, `"escape"`.
         keys: String,
     },
+    /// Holds modifier keys down, or lets go of them, for the pointer's
+    /// steps until then (`app.keyboard.down` / `up`).
+    HoldKeys {
+        /// The modifiers: `"mod"`, `"shift"`, `"alt"`, `"ctrl"`, `"meta"`,
+        /// joined by `+`.
+        keys: String,
+        /// Whether they go down (else up).
+        down: bool,
+    },
     /// Goes back as the user does (`app.back`).
     Back,
     /// Lets the app run (`app.wait`).

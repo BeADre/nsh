@@ -207,6 +207,26 @@ impl Native for LinuxNative {
             .unwrap_or_else(|| Err("the window is gone".to_owned()))
     }
 
+    fn hold_keys(&self, keys: &str, down: bool) -> Result<(), String> {
+        let mut mask = gdk::ModifierType::empty();
+        for name in keys.split('+') {
+            mask |= match name.trim().to_ascii_lowercase().as_str() {
+                // Linux's command key is Control.
+                "mod" | "ctrl" | "control" => gdk::ModifierType::CONTROL_MASK,
+                "alt" | "option" => gdk::ModifierType::ALT_MASK,
+                "shift" => gdk::ModifierType::SHIFT_MASK,
+                "meta" | "cmd" | "command" | "super" => gdk::ModifierType::SUPER_MASK,
+                other => {
+                    return Err(format!(
+                        "`{other}` is no modifier key: mod, shift, alt, ctrl or meta"
+                    ));
+                }
+            };
+        }
+        self.on_main(move |_| crate::input::hold(mask, down))
+            .ok_or_else(|| "the window is gone".to_owned())
+    }
+
     fn hover(&self, at: Point<Points>) -> Result<(), String> {
         let (x, y) = (at.x.0, at.y.0);
         self.on_main(move |s| crate::input::simulate(s, Simulated::Hover(x, y)))

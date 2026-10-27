@@ -970,6 +970,15 @@ pub trait Native: Send + Sync {
         let _ = keys;
         Err("this platform's test agent presses no hardware keys: run the test headless".into())
     }
+    /// Holds modifier keys down (`down`) or lets go of them: the presses,
+    /// drags and hovers until then carry them. One that cannot refuses it.
+    fn hold_keys(&self, keys: &str, down: bool) -> Result<(), String> {
+        let _ = (keys, down);
+        Err(
+            "holding keys (`keyboard.down` / `keyboard.up`) runs headless and on Linux for now"
+                .into(),
+        )
+    }
     /// Types `text` into the focused input, key by key.
     fn type_text(&self, text: &str);
     /// Presses `key`.
@@ -1242,6 +1251,11 @@ impl Agent {
                     .and_then(|()| self.settled()),
             ),
             TestStep::OpenedUrls => self.scene.opened_urls().map(Value::from),
+            TestStep::HoldKeys { keys, down } => done(
+                self.native
+                    .hold_keys(&keys, down)
+                    .and_then(|()| self.settled()),
+            ),
             TestStep::PressKey { keys } => {
                 done(self.native.press_keys(&keys).and_then(|()| self.settled()))
             }

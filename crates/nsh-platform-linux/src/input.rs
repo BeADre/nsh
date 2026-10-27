@@ -693,12 +693,30 @@ pub(crate) enum Simulated {
     ContextMenu(f32, f32),
 }
 
+#[cfg(feature = "dev")]
+thread_local! {
+    /// The modifier keys a test holds down (`keyboard.down`), which its
+    /// simulated presses and hovers carry.
+    static HELD: std::cell::Cell<gdk::ModifierType> = const { std::cell::Cell::new(gdk::ModifierType::empty()) };
+}
+
+/// Holds (`down`) or lets go of `keys` for the simulated pointer.
+#[cfg(feature = "dev")]
+pub(crate) fn hold(keys: gdk::ModifierType, down: bool) {
+    HELD.with(|held| {
+        let mut now = held.get();
+        now.set(keys, down);
+        held.set(now);
+    });
+}
+
 /// Feeds a simulated pointer action through the same path as real input.
 #[cfg(feature = "dev")]
 pub(crate) fn simulate(surface: &Rc<Surface>, action: Simulated) {
     let time = glib::monotonic_time() as f64 / 1000.0;
+    let held = HELD.with(std::cell::Cell::get);
     match action {
-        Simulated::Down(x, y) => down(surface, Key::Mouse, x, y, time, gdk::ModifierType::empty()),
+        Simulated::Down(x, y) => down(surface, Key::Mouse, x, y, time, held),
         Simulated::Up(x, y) => {
             up(surface, Key::Mouse, x, y, time, false);
             // GTK never sees simulated input: a release on a hosted widget
@@ -718,10 +736,10 @@ pub(crate) fn simulate(surface: &Rc<Surface>, action: Simulated) {
         Simulated::Hover(x, y) => {
             mouse_moved(surface, x, y);
             hover(surface, x, y);
-            hover_moved(surface, x, y, gdk::ModifierType::empty());
+            hover_moved(surface, x, y, held);
         }
         Simulated::ContextMenu(x, y) => {
-            context_menu(surface, x, y, gdk::ModifierType::empty());
+            context_menu(surface, x, y, held);
         }
     }
 }
