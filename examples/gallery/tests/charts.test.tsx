@@ -1,10 +1,10 @@
 // The Charts demo: `nsh/base/plot`'s `Plot` with a line, an area and grid
-// lines over a week of visitors, the row under the pointer reported (the
-// cross line, dots and tooltip are the plot's parts), another week drawn
-// in, sales per month as bars side by side or stacked with a value over
-// each, a donut of revenue by region that turns into a pie and reports the
-// slice under the pointer, and a list of sparklines, one plot per row,
-// that follow no pointer.
+// lines over a week of visitors, the row under the pointer or the arrow
+// keys reported (the cross line, dots and tooltip are the plot's parts),
+// another week drawn in, sales per month as bars side by side or stacked
+// with a value over each, a donut of revenue by region that turns into a
+// pie and reports the slice under the pointer or the arrow keys, and a
+// list of sparklines, one plot per row, that follow no pointer.
 import { beforeEach, expect, open, test } from "nsh/test";
 import type { App } from "nsh/test";
 
@@ -24,6 +24,51 @@ test("a plot is one image for screen readers and reports the day under the point
   // The pointer at the middle: Thursday, the fourth of seven days.
   await app.waitFor("Plot: Thu, 2,480");
   expect(app.texts()).toContain("2,480 visitors");
+});
+
+test("Tab reaches the plot, whose arrow keys move the day it shows", async () => {
+  // Tab goes from stop to stop until it reaches the plot (the sparklines
+  // take no focus); there the first Right starts at Monday.
+  let tabs = 0;
+  while (!app.shows("text:Plot: Mon, 1,820")) {
+    expect(++tabs).toBeLessThan(60);
+    await app.keyboard.press("tab");
+    await app.keyboard.press("right");
+    await app.wait(50);
+  }
+  await app.keyboard.press("right");
+  await app.waitFor("Plot: Tue, 2,140");
+  expect(app.texts()).toContain("2,140 visitors");
+  await app.keyboard.press("end");
+  await app.waitFor("Plot: Sun, 1,180");
+  await app.keyboard.press("home");
+  await app.waitFor("Plot: Mon, 1,820");
+  // Left at the first day stays there; Escape clears the hover, then Left
+  // starts at the last day.
+  await app.keyboard.press("left");
+  await app.keyboard.press("escape");
+  await app.waitFor("Plot: left");
+  await app.keyboard.press("left");
+  await app.waitFor("Plot: Sun, 1,180");
+  // Tab moves on: the hover the keys made goes with the focus.
+  await app.keyboard.press("tab");
+  await app.waitFor("Plot: left");
+});
+
+test("the pie's slices step with the arrow keys once Tab reaches it", async () => {
+  let tabs = 0;
+  while (!app.shows("text:Pie: North America, $482k")) {
+    expect(++tabs).toBeLessThan(80);
+    await app.keyboard.press("tab");
+    await app.keyboard.press("right");
+    await app.wait(50);
+  }
+  await app.keyboard.press("right");
+  await app.waitFor("Pie: EMEA, $312k");
+  await app.keyboard.press("end");
+  await app.waitFor("Pie: Other, $74k");
+  await app.keyboard.press("escape");
+  await app.waitFor("Pie: left");
 });
 
 test("another week draws the plot again with its rows", async () => {

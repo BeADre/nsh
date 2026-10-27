@@ -1,7 +1,7 @@
 import { List, signal, Text, View } from "nsh";
 import { Area, Bar, Grid, Line, Pie, Plot } from "nsh/base/plot";
 import { platform } from "nsh";
-import { alpha, Button, Caption, Card, colors, DemoPage, finish, Legend, mono, Segmented, toneColor } from "../ui";
+import { alpha, Button, Caption, Card, colors, DemoPage, finish, focusRing, Legend, mono, Segmented, toneColor } from "../ui";
 
 const pointer = platform.idiom === "desktop";
 const size = pointer ? { gap: 10, label: 14, detail: 12, switch: "small" as const } : { gap: 12, label: 15, detail: 13, switch: "regular" as const };
@@ -176,6 +176,9 @@ export function Charts() {
               if (index != null) tip.set(index);
               last.set(index == null ? "Plot: left" : `Plot: ${rows()[index].day}, ${count(rows()[index].visitors)}`);
             }}
+            // Tab reaches the plot: its arrow keys move the hover, in the
+            // gallery's focus ring.
+            focusStyle={focusRing(4)}
             style={{ flex: 1, height: 160 }}
           >
             <Grid y={[1000, 2000, 3000]} style={{ stroke: colors.line }} />
@@ -239,6 +242,8 @@ export function Charts() {
               hover.set(index);
               last.set(index == null ? "Pie: left" : `Pie: ${REGIONS[index].name}, ${money(REGIONS[index].revenue)}`);
             }}
+            // A round ring around the pie.
+            focusStyle={{ ...focusRing(4), borderRadius: RING / 2 }}
             style={{ width: RING, height: RING }}
           >
             <Pie
@@ -338,6 +343,7 @@ export function Charts() {
               hover.set(index);
               last.set(index == null ? "Bars: left" : `Bars: ${SALES[index].month}, ${total(SALES[index])}k`);
             }}
+            focusStyle={focusRing(4)}
             style={{ flex: 1, height: SALES_HEIGHT }}
           >
             <Grid y={[40, 80, 120]} style={{ stroke: colors.line }} />
