@@ -1588,7 +1588,21 @@ impl Rv {
         if node.is_inline() {
             return false;
         }
-        let selection: Selection = NodeSelection::create(&doc, pos);
+        // Pressed inside a selection over several of its siblings, the
+        // handle carries them all (Tiptap's drag handle with a range
+        // selected); else the block alone, closed (a selection's content
+        // would carry a list item inside its open list).
+        let (from, to) = self
+            .sibling_range(state.selection(), pos)
+            .unwrap_or((pos, pos + node.node_size()));
+        let selection: Selection = if to - from == node.node_size() {
+            NodeSelection::create(&doc, pos)
+        } else {
+            state.selection().clone()
+        };
+        let Ok(carried) = doc.slice(from, to, false) else {
+            return false;
+        };
         // The handle owns the pointer: a table's grip under it (a row's,
         // on the table's left border) does not drag along.
         self.table_gesture.borrow_mut().take();
@@ -1601,12 +1615,10 @@ impl Rv {
             shift: Point::new(shift.x, shift.y - scrolled),
             scroll: self.scroll_y.get_untracked(),
             moving: Some(Moving {
-                // The block alone, closed (a selection's content would
-                // carry a list item inside its open list).
-                slice: Slice::new(Fragment::from(node.clone()), 0, 0),
+                slice: Slice::new(carried.content, 0, 0),
                 moved: true,
                 click: None,
-                source: Some((pos, pos + node.node_size())),
+                source: Some((from, to)),
             }),
         });
         // The content may have moved on the page since its last layout.
@@ -1615,6 +1627,26 @@ impl Rv {
         // move of its own, so the drop cursor waits for the first `page`.
         self.drag_at(page);
         true
+    }
+
+    /// The blocks a non-empty `selection` spans beside the block at `pos`,
+    /// when it covers that block and at least one sibling: `from..to`.
+    fn sibling_range(&self, selection: &Selection, pos: usize) -> Option<(usize, usize)> {
+        if selection.empty() {
+            return None;
+        }
+        let doc = self.session.state().doc().clone();
+        let (from, to) = (
+            doc.resolve(selection.from()).ok()?,
+            doc.resolve(selection.to()).ok()?,
+        );
+        let depth = doc.resolve(pos).ok()?.depth;
+        let range = from.block_range(&to, None)?;
+        (range.depth == depth
+            && range.end_index() - range.start_index() > 1
+            && range.start() <= pos
+            && pos < range.end())
+        .then(|| (range.start(), range.end()))
     }
 
     /// The pointer dragged to `page` (root): the selection extends there.
@@ -1641,9 +1673,12 @@ impl Rv {
             // handle sits in the gutter, off the text; other content
             // where it is dropped.
             let slice = &moving.slice;
-            let block = (slice.open_start == 0 && slice.content.child_count() == 1)
-                .then(|| slice.content.child(0))
-                .filter(|n| n.is_block());
+            // Blocks carried together share a parent: the first stands for
+            // them all in where they fit.
+            let block =
+                (slice.open_start == 0 && slice.open_end == 0 && slice.content.child_count() > 0)
+                    .then(|| slice.content.child(0))
+                    .filter(|n| n.is_block());
             let target = block
                 .and_then(|node| self.block_drop(at, node))
                 .and_then(|p| drop_point(state.doc(), p, slice))

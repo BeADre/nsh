@@ -279,7 +279,8 @@ JS describes.
   outside the editor (a block handle): the view keeps the content's page offset, measured after each layout of the
   content and as a handle drag starts, and moved by the scroll since.
 - **Handle drags** (Tiptap's drag handle, ProseMirror's `view.dragging`): `dragBlock(pos, page)` selects the block
-  at `pos` (a table too, though a press does not select one) and carries it closed, `dragTo(page)` moves the drop
+  at `pos` (a table too, though a press does not select one) and carries it closed, or, pressed inside a selection over
+  several of its siblings, all of them, `dragTo(page)` moves the drop
   cursor and `endDrag()` drops it, removing the source, as one undo step; the app's handle sends its pointer's
   page points (`ViewRequest::DragBlock` / `DragTo` / `EndDrag`). The drop goes before or after the innermost block
   at the pointer's height whose parent takes the block, by the half the pointer is over, wherever the pointer is
