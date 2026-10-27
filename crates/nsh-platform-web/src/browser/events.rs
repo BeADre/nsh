@@ -90,6 +90,13 @@ pub(super) fn payload(host: &Bindings, payload: &EventPayload) -> Result<Value, 
             ("modifiers", modifiers(&p.modifiers)?),
         ])?,
         EventPayload::FileDrop(uris) => object([("uris", strings(uris)?)])?,
+        EventPayload::FileDropAt {
+            uris,
+            page_position,
+        } => object([
+            ("uris", strings(uris)?),
+            ("pagePosition", point(*page_position)?),
+        ])?,
         EventPayload::Paste(paste) => {
             let mut files = Vec::new();
             for file in &paste.files {

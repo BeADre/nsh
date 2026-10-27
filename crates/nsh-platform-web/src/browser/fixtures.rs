@@ -73,3 +73,26 @@ pub(crate) extern "C" fn nsh_browser_test_mouse_events() -> u32 {
     });
     Value::array(events).unwrap().into_raw()
 }
+
+/// Both file-drop variants keep the same public shape as the native JS host.
+#[unsafe(no_mangle)]
+pub(crate) extern "C" fn nsh_browser_test_file_drop_events() -> u32 {
+    use nsh_core::EventPayload;
+
+    use super::{bindings::Bindings, events, values::Value};
+    let host = Bindings::new();
+    let uris = vec![
+        "file:///tmp/hello.txt".to_owned(),
+        "file:///tmp/world.txt".to_owned(),
+    ];
+    let payloads = [
+        EventPayload::FileDrop(uris.clone()),
+        EventPayload::FileDropAt {
+            uris,
+            page_position: Point::new(Points(30.0), Points(40.0)),
+        },
+    ];
+    Value::array(payloads.iter().map(|p| events::payload(&host, p).unwrap()))
+        .unwrap()
+        .into_raw()
+}
