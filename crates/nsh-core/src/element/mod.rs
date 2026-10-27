@@ -138,9 +138,10 @@ pub use self::{
     },
     flow::{Each, If, IntoElements, Reset, catch_error, dynamic, each, when},
     host::{
-        CanvasArg, CanvasPaint, CanvasView, Input, InputAccessoryView, Modal, NativeView,
-        Orientation, Overlay, Painter, Screen, Scroll, Stack, Video, WebView, canvas, input,
-        input_accessory_view, native, overlay, scroll, video, web_view, web_view_html,
+        CanvasArg, CanvasPaint, CanvasView, Input, InputAccessoryView, IntoUniform, Modal,
+        NativeView, Orientation, Overlay, Painter, Screen, Scroll, ShaderView, Stack, Uniform,
+        Video, WebView, canvas, input, input_accessory_view, native, overlay, scroll, shader,
+        video, web_view, web_view_html,
     },
     js::{JsHost, JsIn, JsKind, JsOwned, JsRaw},
     keyboard::Keyboard,
@@ -158,7 +159,7 @@ pub use self::{
     renderer::{__decoding_props_of, RenderValue, Rendered, Renderer},
     resource::{Resource, ResourceInfo, ResourceState, resource, resource_with_value},
     responder::{ClaimRequest, PanGesture, ResponderEvent, TouchClaim},
-    rows::{RowAccessor, RowRef, Rows},
+    rows::{RowAccessor, RowRef, RowText, Rows},
     scrollable::Scrollable,
     services::{Fetch, HttpResponse, Prefetch},
     style::{
@@ -195,8 +196,8 @@ pub use crate::{
     LayoutCurve, LayoutProperty, LayoutTransition, ListViewport, Measurement, ModalAnimation,
     ModalPresentation, PanActivation, PasteBehavior, PasteEvent, PastedFile, PointerEvents,
     PressEvent, ResizeMode, ReturnKeyType, ScreenAnimation, SnapAlignment, StatusBarConfig,
-    StatusBarSetting, StatusBarStyle, SubmitBehavior, TouchEvent, TransformKind, TransformOrigin,
-    Viewability,
+    StatusBarSetting, StatusBarStyle, SubmitBehavior, TextShadow, TouchEvent, TransformKind,
+    TransformOrigin, Viewability,
     animation::{
         Curve, EaseMode, Easing, Extrapolate, Keyframe, KeyframeTiming, MotionChannel, MotionKind,
         MotionPreset, MotionSpec, Output as AnimationOutput, PlaybackDirection, StaggerFrom,
